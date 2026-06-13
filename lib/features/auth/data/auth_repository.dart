@@ -55,17 +55,17 @@ class AuthRepository {
       companyId: user.companyId,
     );
 
-    CloudSyncService.instance.startRealtimeSyncEngine();
     ProductSyncService.instance.start();
-    unawaited(CloudSyncService.instance.syncProductsIfEnabled());
-    CloudSyncService.instance.scheduleProductsSyncSoon(
-      delay: const Duration(milliseconds: 100),
-      reason: 'login_products',
+    unawaited(_startRequiredCloudSyncAfterLogin());
+  }
+
+  static Future<void> _startRequiredCloudSyncAfterLogin() async {
+    await CloudSyncService.instance.syncRequiredTargetsNow(
+      reason: 'login_required_sync',
     );
-    CloudSyncService.instance.scheduleSalesSyncSoon(
-      delay: const Duration(milliseconds: 180),
-      reason: 'login_sales',
-    );
+    CloudSyncService.instance.startRealtimeSyncEngine();
+    await ProductSyncService.instance.retryFailedNow();
+    await ProductSyncService.instance.flushNow();
   }
 
   /// Cierra la sesión del usuario

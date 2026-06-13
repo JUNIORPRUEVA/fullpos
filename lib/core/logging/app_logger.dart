@@ -129,4 +129,17 @@ class AppLogger {
     await init();
     return _file?.path;
   }
+
+  Future<void> flush() async {
+    await _queue;
+    final file = _file;
+    if (file != null && await file.exists()) {
+      final handle = await file.open(mode: FileMode.append);
+      try {
+        await handle.flush();
+      } finally {
+        await handle.close();
+      }
+    }
+  }
 }

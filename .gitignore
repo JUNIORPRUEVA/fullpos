@@ -37,7 +37,8 @@ migrate_working_dir/
 **/local.properties
 
 # Generated installers / artifacts
-/installer/output/
+/installer/output/*
+!/installer/output/.gitkeep
 /installer/redist/
 /dist/
 

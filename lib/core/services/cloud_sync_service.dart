@@ -12,6 +12,7 @@ import '../db/app_db.dart';
 import '../db/tables.dart';
 import '../network/api_client.dart';
 import '../sync/sync_outbox_repository.dart';
+import '../sync/product_sync_outbox_repository.dart';
 import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../../features/products/data/products_repository.dart';
@@ -150,13 +151,8 @@ class CloudSyncService {
     CloudSyncTarget.companyConfig,
     CloudSyncTarget.clients,
     CloudSyncTarget.categories,
-    CloudSyncTarget.suppliers,
     CloudSyncTarget.products,
     CloudSyncTarget.sales,
-    CloudSyncTarget.payments,
-    CloudSyncTarget.returns,
-    CloudSyncTarget.cash,
-    CloudSyncTarget.quotes,
   };
 
   static const Set<String> visibleTargetKeys = {
@@ -164,18 +160,14 @@ class CloudSyncService {
     'company_config',
     'clients',
     'categories',
-    'suppliers',
     'products',
     'sales',
-    'payments',
-    'returns',
-    'cash',
-    'quotes',
   };
 
   void startRealtimeSyncEngine() {
     if (_engineStarted) return;
     _engineStarted = true;
+    unawaited(_outbox.retainTargets(visibleTargetKeys));
 
     _outboxPollingTimer?.cancel();
     _outboxPollingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
@@ -191,13 +183,8 @@ class CloudSyncService {
       (CloudSyncTarget.users, 180, 'engine_start_initial_users'),
       (CloudSyncTarget.clients, 240, 'engine_start_initial_clients'),
       (CloudSyncTarget.categories, 300, 'engine_start_initial_categories'),
-      (CloudSyncTarget.suppliers, 360, 'engine_start_initial_suppliers'),
-      (CloudSyncTarget.products, 420, 'engine_start_initial_products'),
-      (CloudSyncTarget.sales, 520, 'engine_start_initial_sales'),
-      (CloudSyncTarget.payments, 620, 'engine_start_initial_payments'),
-      (CloudSyncTarget.returns, 720, 'engine_start_initial_returns'),
-      (CloudSyncTarget.cash, 820, 'engine_start_initial_cash'),
-      (CloudSyncTarget.quotes, 920, 'engine_start_initial_quotes'),
+      (CloudSyncTarget.products, 360, 'engine_start_initial_products'),
+      (CloudSyncTarget.sales, 460, 'engine_start_initial_sales'),
     ];
     for (final (target, delayMs, reason) in startupTargets) {
       unawaited(
@@ -348,6 +335,51 @@ class CloudSyncService {
   Future<void> retryAllFailedSyncNow() async {
     await _outbox.retryAllFailedNow();
     _kickOutboxDispatcher();
+  }
+
+  Future<bool> syncRequiredTargetsNow({
+    String reason = 'required_full_sync',
+  }) async {
+    if (!await _hasActiveSyncSession()) return false;
+    final settings = await BusinessSettingsRepository().loadSettings();
+    if (!settings.cloudEnabled) return false;
+
+    await _outbox.retainTargets(visibleTargetKeys);
+    for (final target in _enabledTargets) {
+      await _outbox.enqueue(
+        target: target.value,
+        reason: reason,
+        delay: Duration.zero,
+      );
+    }
+    await _drainOutbox();
+
+    final deadline = DateTime.now().add(const Duration(seconds: 90));
+    while (DateTime.now().isBefore(deadline)) {
+      final rows = await readSyncStatusRows();
+      final statuses = <String, String>{
+        for (final row in rows)
+          if (row['target'] is String)
+            row['target'] as String:
+                (row['status'] as String?)?.toLowerCase() ?? 'unknown',
+      };
+      if (visibleTargetKeys.every((target) => statuses[target] == 'synced')) {
+        return true;
+      }
+      if (visibleTargetKeys.any(
+        (target) => const {
+          'failed',
+          'error',
+          'rejected',
+          'conflict',
+        }.contains(statuses[target]),
+      )) {
+        return false;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await _drainOutbox();
+    }
+    return false;
   }
 
   Future<List<Map<String, dynamic>>> readSyncStatusRows() {
@@ -972,6 +1004,7 @@ class CloudSyncService {
   }
 
   Future<bool> syncProductsIfEnabled() async {
+    final snapshotStartedAtMs = DateTime.now().millisecondsSinceEpoch;
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
       if (!settings.cloudEnabled) return true;
@@ -1155,6 +1188,16 @@ class CloudSyncService {
         'Cloud products sync ok',
         module: 'cloud_sync',
       );
+      final reconciled = await ProductSyncOutboxRepository()
+          .reconcileVersionConflictsAfterFullSnapshot(
+            snapshotStartedAtMs: snapshotStartedAtMs,
+          );
+      if (reconciled > 0) {
+        await AppLogger.instance.logInfo(
+          'Reconciled $reconciled stale product version conflicts after full snapshot',
+          module: 'cloud_sync',
+        );
+      }
       return true;
     } catch (e) {
       _recordSyncFailure(e.toString());

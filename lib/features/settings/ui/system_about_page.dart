@@ -1,10 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/services/app_configuration_service.dart';
+import '../../../core/update/app_update_coordinator.dart';
 import 'settings_layout.dart';
 
-class SystemAboutPage extends StatelessWidget {
+class SystemAboutPage extends StatefulWidget {
   const SystemAboutPage({super.key});
+
+  @override
+  State<SystemAboutPage> createState() => _SystemAboutPageState();
+}
+
+class _SystemAboutPageState extends State<SystemAboutPage> {
+  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
+  bool _checking = false;
+
+  Future<void> _checkUpdates() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    await AppUpdateCoordinator.instance.check(manual: true);
+    if (!mounted) return;
+    setState(() => _checking = false);
+    final state = AppUpdateCoordinator.instance.state;
+    if (state.phase == AppUpdatePhase.current && state.message != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(state.message!)));
+    } else if (state.phase == AppUpdatePhase.offline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            state.message ??
+                'No se pudo consultar actualizaciones. Verifica tu conexión.',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,12 +113,37 @@ class SystemAboutPage extends StatelessWidget {
                         color: scheme.secondaryContainer.withOpacity(0.75),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text(
-                        'v1.0.0 LOCAL',
-                        style: textTheme.labelMedium?.copyWith(
-                          color: scheme.onSecondaryContainer,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      child: FutureBuilder<PackageInfo>(
+                        future: _packageInfo,
+                        builder: (context, snapshot) {
+                          final info = snapshot.data;
+                          return Text(
+                            info == null
+                                ? 'Consultando versión…'
+                                : 'v${info.version}+${info.buildNumber}',
+                            style: textTheme.labelMedium?.copyWith(
+                              color: scheme.onSecondaryContainer,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: FilledButton.icon(
+                      onPressed: _checking ? null : _checkUpdates,
+                      icon: _checking
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.system_update_alt_rounded),
+                      label: Text(
+                        _checking
+                            ? 'Buscando actualizaciones…'
+                            : 'Buscar actualizaciones',
                       ),
                     ),
                   ),
@@ -152,9 +210,9 @@ class _InfoCard extends StatelessWidget {
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           for (final item in items)

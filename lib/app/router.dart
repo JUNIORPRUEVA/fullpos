@@ -46,6 +46,7 @@ import '../features/settings/ui/printer_settings_page.dart';
 import '../features/settings/ui/logs_page.dart';
 import '../features/settings/ui/backup_settings_page.dart';
 import '../features/settings/ui/settings_page.dart';
+import '../features/settings/ui/users_page.dart';
 import '../features/tools/ui/electronic_invoicing_page.dart';
 import '../features/tools/ui/tools_page.dart';
 import '../features/license/ui/license_page.dart';
@@ -61,6 +62,7 @@ import '../core/session/session_manager.dart';
 import '../features/settings/data/user_model.dart';
 import '../features/registration/services/business_identity_guard.dart';
 import '../features/registration/services/business_identity_storage.dart';
+import '../core/update/app_update_coordinator.dart';
 
 Future<_LicenseGateDecision>? _licenseGateInFlight;
 _LicenseGateDecision? _licenseGateCached;
@@ -206,6 +208,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (!gate.isActive) {
         return (isOnPublicLicense || isOnLicensePurchase) ? null : '/license';
       }
+
+      // Una sola comprobación central, después de conocer el estado de licencia.
+      // Un fallo de red nunca bloquea; una política obligatoria validada sí.
+      await AppUpdateCoordinator.instance.ensureStarted();
 
       // Con licencia activa, no permitir volver a la pantalla de licencia/bloqueo.
       if (isOnBlocked) {
@@ -386,6 +392,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               autoPromptOnce: false,
               reason: 'Acceso a configuración',
               child: const SettingsPage(),
+            ),
+          ),
+          GoRoute(
+            path: '/settings/users',
+            builder: (context, state) => PermissionGate(
+              permission: Permissions.settingsAccess,
+              autoPromptOnce: false,
+              reason: 'Gestión de usuarios',
+              child: const UsersPage(),
             ),
           ),
           GoRoute(

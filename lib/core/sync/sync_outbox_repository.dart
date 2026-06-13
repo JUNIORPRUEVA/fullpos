@@ -39,23 +39,19 @@ class SyncOutboxRepository {
       // INSERT OR IGNORE crea la fila si no existe; si ya existe no hace nada.
       // El UPDATE posterior aplica siempre (nueva fila o existente), eliminando
       // la race condition en llamadas concurrentes.
-      await db.insert(
-        DbTables.syncOutbox,
-        {
-          'target': target,
-          'status': 'pending',
-          'attempt_count': 0,
-          'next_attempt_at_ms': next,
-          'last_attempt_at_ms': null,
-          'last_success_at_ms': null,
-          'last_error': null,
-          'reason': reason,
-          'created_at_ms': now,
-          'updated_at_ms': now,
-          'last_duration_ms': null,
-        },
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      await db.insert(DbTables.syncOutbox, {
+        'target': target,
+        'status': 'pending',
+        'attempt_count': 0,
+        'next_attempt_at_ms': next,
+        'last_attempt_at_ms': null,
+        'last_success_at_ms': null,
+        'last_error': null,
+        'reason': reason,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+        'last_duration_ms': null,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
       await db.update(
         DbTables.syncOutbox,
@@ -181,6 +177,18 @@ class SyncOutboxRepository {
         },
         where: 'status = ?',
         whereArgs: ['failed'],
+      );
+    });
+  }
+
+  Future<void> retainTargets(Set<String> targets) async {
+    if (targets.isEmpty) return;
+    await _withRecoveredDb((db) async {
+      final placeholders = List.filled(targets.length, '?').join(',');
+      await db.delete(
+        DbTables.syncOutbox,
+        where: 'target NOT IN ($placeholders)',
+        whereArgs: targets.toList(growable: false),
       );
     });
   }

@@ -4,8 +4,11 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../features/auth/data/auth_repository.dart';
@@ -20,6 +23,7 @@ import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 import '../../features/settings/data/user_model.dart';
 import '../../features/settings/data/users_repository.dart';
+import '../../features/tools/data/owner_app_links.dart';
 import '../config/app_config.dart';
 import '../notifications/fullpos_notifications.dart';
 import '../services/cloud_sync_service.dart';
@@ -1113,11 +1117,16 @@ class _CloudUtilityPanel extends StatefulWidget {
 }
 
 class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
+  final ScrollController _scrollController = ScrollController();
+  Timer? _statusRefreshTimer;
   bool _loading = true;
   bool _changingCloudState = false;
   bool _syncingNow = false;
   bool _reconnecting = false;
   bool _refreshing = false;
+  bool _openingOwnerDownload = false;
+  bool _openingOwnerWhatsApp = false;
+  bool _showingQrCode = false;
   Map<String, dynamic>? _summary;
   String? _loadError;
 
@@ -1125,6 +1134,24 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
   void initState() {
     super.initState();
     _reload();
+    _statusRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted ||
+          _loading ||
+          _changingCloudState ||
+          _syncingNow ||
+          _reconnecting ||
+          _refreshing) {
+        return;
+      }
+      unawaited(_reload());
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusRefreshTimer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _reload({bool showLoading = false}) async {
@@ -1133,6 +1160,7 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
     }
     try {
       final settings = await BusinessSettingsRepository().loadSettings();
+      final loggedIn = await SessionManager.isLoggedIn();
       final companyId = await SessionManager.companyId();
       final syncRows = await CloudSyncService.instance.readSyncStatusRows();
       final productRows = await ProductSyncService.instance.readStatusRows();
@@ -1239,7 +1267,14 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
       setState(() {
         _summary = {
           'settings': settings,
+          'loggedIn': loggedIn,
           'companyId': companyId,
+          'cloudBaseUrl': CloudSyncService.instance.debugResolveCloudBaseUrl(
+            settings,
+          ),
+          'hasCloudIdentity':
+              (settings.rnc?.trim().isNotEmpty ?? false) ||
+              (settings.cloudCompanyId?.trim().isNotEmpty ?? false),
           'pendingCount': pendingCount,
           'wsState': wsState,
           'latestSync': latestSync,
@@ -1411,15 +1446,13 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
       await BusinessSettingsRepository().saveSettings(updated);
 
       if (enabled) {
-        CloudSyncService.instance.startRealtimeSyncEngine();
         ProductSyncService.instance.start();
-        await Future.wait([
-          CloudSyncService.instance.syncProductsIfEnabled(),
-          CloudSyncService.instance.syncSalesIfEnabled(),
-        ]);
-        await CloudSyncService.instance.retryAllFailedSyncNow();
+        final allSynced = await CloudSyncService.instance
+            .syncRequiredTargetsNow(reason: 'cloud_enabled_from_panel');
+        CloudSyncService.instance.startRealtimeSyncEngine();
         await ProductSyncService.instance.retryFailedNow();
         await ProductSyncService.instance.flushNow();
+        if (!allSynced) throw StateError('required_cloud_sync_incomplete');
       } else {
         CloudSyncService.instance.stopRealtimeSyncEngine();
         ProductSyncService.instance.stop();
@@ -1447,16 +1480,14 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
     if (settings == null || !settings.cloudEnabled || _syncingNow) return;
     setState(() => _syncingNow = true);
     try {
-      CloudSyncService.instance.startRealtimeSyncEngine();
       ProductSyncService.instance.start();
-      final results = await Future.wait([
-        CloudSyncService.instance.syncProductsIfEnabled(),
-        CloudSyncService.instance.syncSalesIfEnabled(),
-      ]);
-      await CloudSyncService.instance.retryAllFailedSyncNow();
+      final allSynced = await CloudSyncService.instance.syncRequiredTargetsNow(
+        reason: 'manual_sync_from_panel',
+      );
+      CloudSyncService.instance.startRealtimeSyncEngine();
       await ProductSyncService.instance.retryFailedNow();
       await ProductSyncService.instance.flushNow();
-      if (results.any((ok) => !ok)) {
+      if (!allSynced) {
         throw StateError('cloud_sync_incomplete');
       }
       await _reload();
@@ -1509,6 +1540,618 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
     setState(() => _refreshing = false);
   }
 
+  Future<void> _openFullPosOwnerDownload() async {
+    if (_openingOwnerDownload) return;
+    setState(() => _openingOwnerDownload = true);
+    try {
+      final uri = Uri.parse(OwnerAppDistribution.androidDownloadUrl);
+      if (!await canLaunchUrl(uri)) {
+        throw StateError('owner_download_unavailable');
+      }
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) throw StateError('owner_download_not_opened');
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('FullPOS Owner download failed: $error');
+      }
+      _showFeedback(
+        'No se pudo abrir la descarga. Verifica tu conexión e inténtalo nuevamente.',
+        type: AppNotificationType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _openingOwnerDownload = false);
+    }
+  }
+
+  Future<void> _shareFullPosOwnerOnWhatsApp() async {
+    if (_openingOwnerWhatsApp) return;
+    setState(() => _openingOwnerWhatsApp = true);
+    try {
+      const message =
+          'Descarga FullPOS Owner para consultar ventas, reportes e inventario '
+          'desde tu dispositivo Android.\n\n'
+          '${OwnerAppDistribution.androidDownloadUrl}';
+      final uri = Uri.parse(
+        AppConfig.whatsappBaseUrl,
+      ).replace(path: '/', queryParameters: const {'text': message});
+      if (!await canLaunchUrl(uri)) {
+        throw StateError('owner_whatsapp_unavailable');
+      }
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened) throw StateError('owner_whatsapp_not_opened');
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('FullPOS Owner WhatsApp share failed: $error');
+      }
+      _showFeedback(
+        'No se pudo abrir WhatsApp. Verifica que esté disponible e inténtalo nuevamente.',
+        type: AppNotificationType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _openingOwnerWhatsApp = false);
+    }
+  }
+
+  Future<void> _copyOwnerApkChecksum() async {
+    await Clipboard.setData(
+      const ClipboardData(text: OwnerAppDistribution.androidSha256),
+    );
+    _showFeedback('Código SHA-256 copiado', type: AppNotificationType.success);
+  }
+
+  Future<void> _openUsersManagement() async {
+    final router = GoRouter.of(context);
+    Navigator.of(context).pop();
+    await Future<void>.delayed(const Duration(milliseconds: 280));
+    await router.push<void>('/settings/users');
+  }
+
+  Future<void> _focusCloudConfiguration() async {
+    if (!_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _completeCloudConfiguration() async {
+    if (_syncingNow || _changingCloudState) return;
+    setState(() => _syncingNow = true);
+    try {
+      final current =
+          (_summary?['settings'] as BusinessSettings?) ??
+          await BusinessSettingsRepository().loadSettings();
+      if (!current.cloudEnabled) {
+        await BusinessSettingsRepository().saveSettings(
+          current.copyWith(cloudEnabled: true),
+        );
+      }
+
+      ProductSyncService.instance.start();
+      final allSynced = await CloudSyncService.instance.syncRequiredTargetsNow(
+        reason: 'complete_cloud_configuration',
+      );
+      CloudSyncService.instance.startRealtimeSyncEngine();
+      await ProductSyncService.instance.retryFailedNow();
+      await ProductSyncService.instance.flushNow();
+      await _reload();
+
+      if (allSynced) {
+        _showFeedback(
+          'La configuración de nube fue verificada correctamente.',
+          type: AppNotificationType.success,
+        );
+      } else {
+        _showFeedback(
+          'La nube quedó configurada, pero algunos datos aún necesitan reintento.',
+          type: AppNotificationType.warning,
+        );
+      }
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('Cloud configuration verification failed: $error');
+      }
+      await _reload();
+      _showFeedback(
+        'No se pudo completar la configuración. Revisa la sesión, la empresa y la conexión.',
+        type: AppNotificationType.error,
+      );
+    } finally {
+      if (mounted) setState(() => _syncingNow = false);
+    }
+  }
+
+  Widget _buildFullPosOwnerSection({required bool isCloudEnabled}) {
+    final statusColor = isCloudEnabled
+        ? const Color(0xFF15803D)
+        : const Color(0xFFB45309);
+    final statusIcon = isCloudEnabled
+        ? Icons.cloud_done_outlined
+        : Icons.cloud_off_outlined;
+    final statusLabel = isCloudEnabled
+        ? 'Nube activa'
+        : 'Nube pendiente de activar';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: _cardDecoration(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 520;
+          final image = _buildFullPosOwnerImage(
+            width: stacked ? constraints.maxWidth : 156,
+            height: stacked ? 190 : 196,
+          );
+          final content = _buildFullPosOwnerContent(
+            isCloudEnabled: isCloudEnabled,
+            statusColor: statusColor,
+            statusIcon: statusIcon,
+            statusLabel: statusLabel,
+            fullWidthButtons: stacked,
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (stacked) ...[
+                image,
+                const SizedBox(height: 18),
+                content,
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    image,
+                    const SizedBox(width: 20),
+                    Expanded(child: content),
+                  ],
+                ),
+              const SizedBox(height: 14),
+              _buildOwnerSetupSection(isCloudEnabled: isCloudEnabled),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildFullPosOwnerContent({
+    required bool isCloudEnabled,
+    required Color statusColor,
+    required IconData statusIcon,
+    required String statusLabel,
+    required bool fullWidthButtons,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            const _OwnerBadge(
+              icon: Icons.phone_android_rounded,
+              label: 'APP MÓVIL',
+              color: Color(0xFF1A56DB),
+            ),
+            _OwnerBadge(
+              icon: statusIcon,
+              label: statusLabel,
+              color: statusColor,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Consulta tu negocio desde cualquier lugar',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: const Color(0xFF0F172A),
+            fontWeight: FontWeight.w900,
+            height: 1.15,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Descarga FullPOS Owner para consultar reportes, ventas, ingresos e inventario desde tu dispositivo Android.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: const Color(0xFF475569),
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          isCloudEnabled
+              ? 'Tu negocio está preparado para sincronizar información con FullPOS Owner.'
+              : 'La aplicación utiliza la información sincronizada mediante FullPOS Cloud. Activa la nube para ver datos en el móvil.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: isCloudEnabled
+                ? const Color(0xFF15803D)
+                : const Color(0xFF92400E),
+            height: 1.4,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 9,
+          runSpacing: 9,
+          children: [
+            SizedBox(
+              height: 44,
+              width: fullWidthButtons ? double.infinity : null,
+              child: FilledButton.icon(
+                onPressed: _openingOwnerDownload
+                    ? null
+                    : () => unawaited(_openFullPosOwnerDownload()),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A56DB),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: _openingOwnerDownload
+                    ? const SizedBox(
+                        width: 17,
+                        height: 17,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.android_rounded, size: 19),
+                label: Text(
+                  _openingOwnerDownload
+                      ? 'Abriendo descarga...'
+                      : 'Descargar FullPOS Owner',
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 44,
+              width: fullWidthButtons ? double.infinity : null,
+              child: OutlinedButton.icon(
+                onPressed: _openingOwnerWhatsApp
+                    ? null
+                    : () => unawaited(_shareFullPosOwnerOnWhatsApp()),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF087A43),
+                  side: const BorderSide(color: Color(0xFF86D7AE)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: _openingOwnerWhatsApp
+                    ? const SizedBox(
+                        width: 17,
+                        height: 17,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chat_rounded, size: 18),
+                label: const Text('WhatsApp'),
+              ),
+            ),
+            SizedBox(
+              height: 44,
+              width: fullWidthButtons ? double.infinity : null,
+              child: OutlinedButton.icon(
+                onPressed: () => setState(() => _showingQrCode = !_showingQrCode),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF1A56DB),
+                  side: const BorderSide(color: Color(0xFFBFDBFE)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: Icon(
+                  _showingQrCode
+                      ? Icons.close_rounded
+                      : Icons.qr_code_rounded,
+                  size: 18,
+                ),
+                label: Text(
+                  _showingQrCode ? 'Cerrar QR' : 'Código QR',
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Icon(
+              Icons.android_rounded,
+              size: 16,
+              color: Color(0xFF64748B),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Disponible para Android',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOwnerSetupSection({required bool isCloudEnabled}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: ExpansionTile(
+        shape: const Border(),
+        collapsedShape: const Border(),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        childrenPadding: const EdgeInsets.fromLTRB(14, 2, 14, 14),
+        leading: const Icon(
+          Icons.format_list_numbered_rounded,
+          color: Color(0xFF1A56DB),
+          size: 20,
+        ),
+        title: Text(
+          'Cómo configurar FullPOS Owner',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: const Color(0xFF0F172A),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        subtitle: Text(
+          'Ver pasos, usuarios y verificación',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+        ),
+        children: [
+          _SetupStep(
+            number: 1,
+            title: 'Activa FullPOS Cloud',
+            description:
+                'En esta misma pantalla, activa la nube y completa la configuración de sincronización.',
+            action: isCloudEnabled
+                ? null
+                : TextButton.icon(
+                    onPressed: () => unawaited(_focusCloudConfiguration()),
+                    icon: const Icon(Icons.tune_rounded, size: 18),
+                    label: const Text('Configurar nube'),
+                  ),
+          ),
+          _SetupStep(
+            number: 2,
+            title: 'Crea un usuario de acceso',
+            description:
+                'Ve a Configuración → Usuarios y crea el usuario que tendrá acceso a FullPOS Owner.',
+            action: OutlinedButton.icon(
+              onPressed: () => unawaited(_openUsersManagement()),
+              icon: const Icon(Icons.manage_accounts_outlined, size: 18),
+              label: const Text('Administrar usuarios'),
+            ),
+          ),
+          const _SetupStep(
+            number: 3,
+            title: 'Verifica la sincronización',
+            description:
+                'Confirma que la nube esté activa y que los datos del negocio se estén sincronizando correctamente.',
+          ),
+          const _SetupStep(
+            number: 4,
+            title: 'Instala FullPOS Owner',
+            description:
+                'Abre la página informativa, descarga la aplicación e inicia sesión con el usuario creado.',
+            isLast: true,
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFBFDBFE)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.info_outline_rounded,
+                  color: Color(0xFF1D4ED8),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'La aplicación necesita FullPOS Cloud activa y un usuario de acceso válido.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF1E3A8A),
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _buildChecksumSection(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFullPosOwnerImage({
+    required double width,
+    required double height,
+  }) {
+    return Semantics(
+      image: true,
+      label: 'Imagen promocional de FullPOS Owner',
+      child: Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF2F6F9),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFD8E2EE)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              OwnerAppDistribution.promotionalImageUrl,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const Center(
+                  child: SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                return const _OwnerImageFallback();
+              },
+            ),
+            if (_showingQrCode) ...[
+              Container(color: Colors.black.withOpacity(0.65)),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      QrImageView(
+                        data: OwnerAppDistribution.androidDownloadUrl,
+                        version: QrVersions.auto,
+                        size: (width < height ? width : height) - 60,
+                        backgroundColor: Colors.white,
+                        eyeStyle: const QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: Color(0xFF1A56DB),
+                        ),
+                        dataModuleStyle: const QrDataModuleStyle(
+                          dataModuleShape: QrDataModuleShape.square,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Escanea para descargar',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF475569),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Material(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(20),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => setState(() => _showingQrCode = false),
+                    child: const Padding(
+                      padding: EdgeInsets.all(5),
+                      child: Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChecksumSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: ExpansionTile(
+        shape: const Border(),
+        collapsedShape: const Border(),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 8, 12),
+        leading: const Icon(
+          Icons.verified_outlined,
+          size: 20,
+          color: Color(0xFF64748B),
+        ),
+        title: Text(
+          'Verificar archivo',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: const Color(0xFF334155),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'SHA-256',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: const Color(0xFF64748B),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: SelectableText(
+                  OwnerAppDistribution.androidSha256,
+                  style: TextStyle(
+                    fontFamily: 'ReceiptFont',
+                    fontSize: 11.5,
+                    color: Color(0xFF334155),
+                    height: 1.45,
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: 'Copiar código SHA-256',
+                child: IconButton(
+                  onPressed: () => unawaited(_copyOwnerApkChecksum()),
+                  icon: const Icon(Icons.copy_rounded, size: 19),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSyncTargetsSection(List<Map<String, dynamic>> targets) {
     final theme = Theme.of(context);
     return Container(
@@ -1556,6 +2199,143 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
     );
   }
 
+  Widget _buildCloudManagementSection({
+    required bool isCloudEnabled,
+    required bool busy,
+    required bool loggedIn,
+    required bool hasCloudIdentity,
+    required bool hasFailedStatus,
+    required String wsState,
+    required String cloudBaseUrl,
+    required DateTime? latestSync,
+    required String productStatus,
+    required String salesStatus,
+    required int pendingCount,
+    required Object? companyId,
+    required List<Map<String, dynamic>> targets,
+  }) {
+    return Container(
+      decoration: _cardDecoration(),
+      child: ExpansionTile(
+        initiallyExpanded:
+            !isCloudEnabled ||
+            !loggedIn ||
+            companyId == null ||
+            !hasCloudIdentity ||
+            hasFailedStatus,
+        shape: const Border(),
+        collapsedShape: const Border(),
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        leading: const Icon(
+          Icons.tune_rounded,
+          color: Color(0xFF2563EB),
+          size: 21,
+        ),
+        title: Text(
+          'Administrar nube',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: const Color(0xFF0F172A),
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        subtitle: Text(
+          'Estado detallado, sincronización y conexión',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
+        ),
+        children: [
+          _CloudConfigurationChecklist(
+            isCloudEnabled: isCloudEnabled,
+            loggedIn: loggedIn,
+            hasCompanyId: companyId != null,
+            hasCloudIdentity: hasCloudIdentity,
+            hasSyncFailures: hasFailedStatus,
+            cloudBaseUrl: cloudBaseUrl,
+            onCompleteConfiguration: busy
+                ? null
+                : () => unawaited(_completeCloudConfiguration()),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              children: [
+                _InfoLine(
+                  label: 'Nube',
+                  value: isCloudEnabled ? 'Activa' : 'Desactivada',
+                ),
+                _InfoLine(
+                  label: 'Tiempo real',
+                  value: !isCloudEnabled
+                      ? 'Desactivado'
+                      : wsState == 'connected'
+                      ? 'Conectado'
+                      : 'Reconexión automática',
+                ),
+                _InfoLine(
+                  label: 'Último envío',
+                  value: _formatDateTime(latestSync),
+                ),
+                _InfoLine(
+                  label: 'Empresa',
+                  value: '${companyId ?? 'No disponible'}',
+                ),
+                _InfoLine(
+                  label: 'Productos',
+                  value: _statusLabel(productStatus),
+                ),
+                _InfoLine(label: 'Ventas', value: _statusLabel(salesStatus)),
+                _InfoLine(
+                  label: 'Pendientes',
+                  value: pendingCount == 1
+                      ? '1 elemento'
+                      : '$pendingCount elementos',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _ActionTile(
+            icon: Icons.sync_rounded,
+            title: 'Sincronizar ahora',
+            subtitle: isCloudEnabled
+                ? 'Envía pendientes y refresca el estado.'
+                : 'Activa la nube para enviar cambios.',
+            onTap: _syncNow,
+            enabled: isCloudEnabled && !busy,
+            isBusy: _syncingNow,
+          ),
+          _ActionTile(
+            icon: Icons.monitor_heart_outlined,
+            title: 'Actualizar estado',
+            subtitle: 'Consulta nuevamente el estado de la nube.',
+            onTap: _refreshStatus,
+            enabled: !busy,
+            isBusy: _refreshing,
+          ),
+          _ActionTile(
+            icon: Icons.wifi_protected_setup_rounded,
+            title: 'Reiniciar tiempo real',
+            subtitle:
+                'Reintenta las actualizaciones instantáneas de productos.',
+            onTap: _reconnect,
+            enabled: isCloudEnabled && !busy,
+            isBusy: _reconnecting,
+          ),
+          const SizedBox(height: 2),
+          _buildSyncTargetsSection(targets),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -1572,6 +2352,9 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
 
     final summary = _summary!;
     final settings = summary['settings'] as BusinessSettings;
+    final loggedIn = summary['loggedIn'] as bool;
+    final hasCloudIdentity = summary['hasCloudIdentity'] as bool;
+    final cloudBaseUrl = summary['cloudBaseUrl'] as String;
     final wsState = summary['wsState'] as String;
     final latestSync = summary['latestSync'] as DateTime?;
     final productStatus = summary['productStatus'] as String;
@@ -1593,18 +2376,18 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
           'La aplicación está trabajando únicamente con los datos guardados en este equipo.';
       overallColor = const Color(0xFFB45309);
       overallIcon = Icons.cloud_off_outlined;
-    } else if (wsState == 'connecting') {
-      overallTitle = 'Conectando con la nube';
+    } else if (!loggedIn || summary['companyId'] == null || !hasCloudIdentity) {
+      overallTitle = 'Configuración pendiente';
       overallDescription =
-          'Estamos intentando establecer la conexión en tiempo real.';
-      overallColor = const Color(0xFF2563EB);
-      overallIcon = Icons.cloud_sync_outlined;
-    } else if (wsState != 'connected' || hasFailedStatus) {
-      overallTitle = 'Conexión interrumpida';
+          'Completa la identidad de la empresa y verifica la sesión para sincronizar correctamente.';
+      overallColor = const Color(0xFFB45309);
+      overallIcon = Icons.settings_outlined;
+    } else if (hasFailedStatus) {
+      overallTitle = 'Sincronización con incidencias';
       overallDescription =
-          'No se pudo mantener la conexión con la nube. Puedes intentar reconectar.';
+          'Hay datos que no pudieron enviarse. Abre Administrar nube para reintentarlos.';
       overallColor = const Color(0xFFB91C1C);
-      overallIcon = Icons.cloud_off_outlined;
+      overallIcon = Icons.sync_problem_rounded;
     } else if (pendingCount > 0 ||
         const {'syncing', 'pending', 'queued'}.contains(productStatus) ||
         const {'syncing', 'pending', 'queued'}.contains(salesStatus)) {
@@ -1615,13 +2398,16 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
       overallColor = const Color(0xFFB45309);
       overallIcon = Icons.cloud_sync_outlined;
     } else {
-      overallTitle = 'Todo sincronizado';
-      overallDescription = 'Los datos locales y la nube están actualizados.';
+      overallTitle = latestSync == null ? 'Nube lista' : 'Todo sincronizado';
+      overallDescription = wsState == 'connected'
+          ? 'Los datos están sincronizados y las actualizaciones en tiempo real están conectadas.'
+          : 'La sincronización está disponible. Las actualizaciones en tiempo real se reconectan automáticamente.';
       overallColor = const Color(0xFF15803D);
       overallIcon = Icons.cloud_done_outlined;
     }
 
     return SingleChildScrollView(
+      controller: _scrollController,
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1724,74 +2510,26 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
             ),
           ),
           const SizedBox(height: 16),
-          _SectionTitle('Estado actual'),
+          _SectionTitle('FullPOS Owner'),
           const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: _cardDecoration(),
-            child: Column(
-              children: [
-                _InfoLine(
-                  label: 'Estado de la nube',
-                  value: isCloudEnabled ? 'Activa' : 'Desactivada',
-                ),
-                _InfoLine(
-                  label: 'Conexión en tiempo real',
-                  value: isCloudEnabled ? _statusLabel(wsState) : 'Desactivada',
-                ),
-                _InfoLine(
-                  label: 'Última sincronización',
-                  value: _formatDateTime(latestSync),
-                ),
-                _InfoLine(
-                  label: 'Empresa en sesión',
-                  value: '${summary['companyId'] ?? 'No disponible'}',
-                ),
-                _InfoLine(
-                  label: 'Productos',
-                  value: _statusLabel(productStatus),
-                ),
-                _InfoLine(label: 'Ventas', value: _statusLabel(salesStatus)),
-                _InfoLine(
-                  label: 'Pendientes',
-                  value: pendingCount == 1
-                      ? '1 elemento'
-                      : '$pendingCount elementos',
-                ),
-              ],
-            ),
-          ),
+          _buildFullPosOwnerSection(isCloudEnabled: isCloudEnabled),
           const SizedBox(height: 16),
-          _buildSyncTargetsSection(targets),
-          const SizedBox(height: 16),
-          _SectionTitle('Acciones'),
+          _SectionTitle('Configuración'),
           const SizedBox(height: 10),
-          _ActionTile(
-            icon: Icons.sync_rounded,
-            title: 'Sincronizar ahora',
-            subtitle: isCloudEnabled
-                ? 'Envía pendientes y refresca el estado de la nube.'
-                : 'Activa la nube para enviar cambios pendientes.',
-            onTap: _syncNow,
-            enabled: isCloudEnabled && !busy,
-            isBusy: _syncingNow,
-          ),
-          _ActionTile(
-            icon: Icons.monitor_heart_outlined,
-            title: 'Actualizar estado',
-            subtitle: 'Actualiza los datos visibles sin salir de este panel.',
-            onTap: _refreshStatus,
-            enabled: !busy,
-            isBusy: _refreshing,
-          ),
-          _ActionTile(
-            icon: Icons.wifi_protected_setup_rounded,
-            title: 'Reconectar',
-            subtitle:
-                'Reinicia la conexión en tiempo real y vuelve a comprobar.',
-            onTap: _reconnect,
-            enabled: isCloudEnabled && !busy,
-            isBusy: _reconnecting,
+          _buildCloudManagementSection(
+            isCloudEnabled: isCloudEnabled,
+            busy: busy,
+            loggedIn: loggedIn,
+            hasCloudIdentity: hasCloudIdentity,
+            hasFailedStatus: hasFailedStatus,
+            wsState: wsState,
+            cloudBaseUrl: cloudBaseUrl,
+            latestSync: latestSync,
+            productStatus: productStatus,
+            salesStatus: salesStatus,
+            pendingCount: pendingCount,
+            companyId: summary['companyId'],
+            targets: targets,
           ),
         ],
       ),
@@ -1845,6 +2583,340 @@ class _CloudTargetRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CloudConfigurationChecklist extends StatelessWidget {
+  const _CloudConfigurationChecklist({
+    required this.isCloudEnabled,
+    required this.loggedIn,
+    required this.hasCompanyId,
+    required this.hasCloudIdentity,
+    required this.hasSyncFailures,
+    required this.cloudBaseUrl,
+    required this.onCompleteConfiguration,
+  });
+
+  final bool isCloudEnabled;
+  final bool loggedIn;
+  final bool hasCompanyId;
+  final bool hasCloudIdentity;
+  final bool hasSyncFailures;
+  final String cloudBaseUrl;
+  final VoidCallback? onCompleteConfiguration;
+
+  bool get _needsAttention =>
+      !isCloudEnabled ||
+      !loggedIn ||
+      !hasCompanyId ||
+      !hasCloudIdentity ||
+      hasSyncFailures;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _needsAttention
+            ? const Color(0xFFFFFBEB)
+            : const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(
+          color: _needsAttention
+              ? const Color(0xFFFDE68A)
+              : const Color(0xFFBBF7D0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _needsAttention
+                    ? Icons.build_circle_outlined
+                    : Icons.verified_outlined,
+                color: _needsAttention
+                    ? const Color(0xFFB45309)
+                    : const Color(0xFF15803D),
+                size: 21,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  _needsAttention
+                      ? 'Configuración que debes revisar'
+                      : 'Configuración principal verificada',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: const Color(0xFF0F172A),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _CloudRequirementRow(
+            label: 'Sincronización activada',
+            completed: isCloudEnabled,
+          ),
+          _CloudRequirementRow(
+            label: 'Sesión de usuario iniciada',
+            completed: loggedIn,
+          ),
+          _CloudRequirementRow(
+            label: 'Empresa vinculada a la sesión',
+            completed: hasCompanyId,
+          ),
+          _CloudRequirementRow(
+            label: 'Identidad de nube configurada',
+            completed: hasCloudIdentity,
+          ),
+          _CloudRequirementRow(
+            label: 'Datos sin fallos pendientes',
+            completed: !hasSyncFailures,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Servidor de nube',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: const Color(0xFF64748B),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          SelectableText(
+            cloudBaseUrl,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: const Color(0xFF1D4ED8),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (_needsAttention) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 42,
+              child: FilledButton.icon(
+                onPressed: onCompleteConfiguration,
+                icon: const Icon(Icons.auto_fix_high_rounded, size: 18),
+                label: const Text('Completar y verificar configuración'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CloudRequirementRow extends StatelessWidget {
+  const _CloudRequirementRow({required this.label, required this.completed});
+
+  final String label;
+  final bool completed;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = completed ? const Color(0xFF15803D) : const Color(0xFFB45309);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        children: [
+          Icon(
+            completed
+                ? Icons.check_circle_rounded
+                : Icons.error_outline_rounded,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF334155),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Text(
+            completed ? 'Listo' : 'Pendiente',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OwnerBadge extends StatelessWidget {
+  const _OwnerBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SetupStep extends StatelessWidget {
+  const _SetupStep({
+    required this.number,
+    required this.title,
+    required this.description,
+    this.action,
+    this.isLast = false,
+  });
+
+  final int number;
+  final String title;
+  final String description;
+  final Widget? action;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 30,
+            child: Column(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF1A56DB),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '$number',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 1,
+                      margin: const EdgeInsets.symmetric(vertical: 5),
+                      color: const Color(0xFFD8E2EE),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF0F172A),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    description,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: const Color(0xFF64748B),
+                      height: 1.4,
+                    ),
+                  ),
+                  if (action != null) ...[const SizedBox(height: 8), action!],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OwnerImageFallback extends StatelessWidget {
+  const _OwnerImageFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: const Color(0xFFF2F6F9),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A56DB).withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.phone_android_rounded,
+                  color: Color(0xFF1A56DB),
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'FullPOS Owner',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF0F172A),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

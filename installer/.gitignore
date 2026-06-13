@@ -1,5 +1,6 @@
 # Ignore generated installer outputs (keep sources like setup.iss)
-/output/
+/output/*
+!/output/.gitkeep
 /redist/
 
 # Common Inno Setup artifacts

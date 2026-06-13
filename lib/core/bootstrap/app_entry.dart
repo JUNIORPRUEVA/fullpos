@@ -9,6 +9,7 @@ import '../session/session_manager.dart';
 import '../services/cloud_sync_service.dart';
 import '../sync/product_sync_service.dart';
 import '../window/window_startup_controller.dart';
+import '../update/update_gate.dart';
 import 'app_bootstrap_controller.dart';
 
 final _minSplashDelayProvider = FutureProvider<void>((ref) async {
@@ -51,17 +52,13 @@ class _AppEntryState extends ConsumerState<AppEntry> {
     _startupSyncScheduled = true;
 
     try {
-      CloudSyncService.instance.startRealtimeSyncEngine();
       ProductSyncService.instance.start();
-      unawaited(CloudSyncService.instance.syncProductsIfEnabled());
-      CloudSyncService.instance.scheduleProductsSyncSoon(
-        delay: const Duration(milliseconds: 100),
-        reason: 'startup_products',
+      await CloudSyncService.instance.syncRequiredTargetsNow(
+        reason: 'app_start_required_sync',
       );
-      CloudSyncService.instance.scheduleSalesSyncSoon(
-        delay: const Duration(milliseconds: 180),
-        reason: 'startup_sales',
-      );
+      CloudSyncService.instance.startRealtimeSyncEngine();
+      await ProductSyncService.instance.retryFailedNow();
+      await ProductSyncService.instance.flushNow();
     } catch (_) {
       // Nunca bloquear UI por sync.
     }
@@ -92,8 +89,7 @@ class _AppEntryState extends ConsumerState<AppEntry> {
     final boot = ref.watch(appBootstrapProvider).snapshot;
     final delay = ref.watch(_minSplashDelayProvider);
 
-    final showSplash =
-        boot.status != BootStatus.ready || delay.isLoading;
+    final showSplash = boot.status != BootStatus.ready || delay.isLoading;
 
     final switchDuration = Platform.isWindows
         ? Duration.zero
@@ -101,13 +97,15 @@ class _AppEntryState extends ConsumerState<AppEntry> {
 
     final body = showSplash ? const SplashPage() : widget.child;
 
-    return AnimatedSwitcher(
-      duration: switchDuration,
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) =>
-          FadeTransition(opacity: animation, child: child),
-      child: KeyedSubtree(key: ValueKey<bool>(showSplash), child: body),
+    return UpdateGate(
+      child: AnimatedSwitcher(
+        duration: switchDuration,
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) =>
+            FadeTransition(opacity: animation, child: child),
+        child: KeyedSubtree(key: ValueKey<bool>(showSplash), child: body),
+      ),
     );
   }
 }

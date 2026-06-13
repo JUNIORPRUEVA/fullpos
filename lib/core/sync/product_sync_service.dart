@@ -314,6 +314,24 @@ class ProductSyncService {
     return parsed;
   }
 
+  bool _isCompanyLocatorConflict(int statusCode, Map<String, dynamic> body) {
+    if (statusCode != 404 && statusCode != 409) return false;
+    final normalized = jsonEncode(body).toUpperCase();
+    return normalized.contains('COMPANY_TENANT_LOCATOR_CONFLICT') ||
+        normalized.contains('COMPANY_TENANT_IDENTITY_CONFLICT') ||
+        normalized.contains('COMPANY_TENANT_NOT_LINKED') ||
+        normalized.contains('COMPANY_RNC_AMBIGUOUS');
+  }
+
+  Map<String, dynamic> _decodeResponseBody(String rawBody) {
+    try {
+      final decoded = jsonDecode(rawBody);
+      return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
   Map<String, dynamic> _normalizeOperationPayloadForRequest(
     Map<String, dynamic> payload,
   ) {
@@ -431,20 +449,47 @@ class ProductSyncService {
       module: 'product_sync',
     );
 
-    final response = await ApiClient(baseUrl: baseUrl).postJson(
+    final api = ApiClient(baseUrl: baseUrl);
+    var response = await api.postJson(
       '/api/products/sync/operations',
       headers: headers,
       body: requestBody,
       timeout: const Duration(seconds: 12),
     );
 
-    final decodedBody = jsonDecode(response.body);
-    final body = decodedBody is Map<String, dynamic>
-        ? decodedBody
-        : <String, dynamic>{};
+    var body = _decodeResponseBody(response.body);
+    if (_isCompanyLocatorConflict(response.statusCode, body) &&
+        companyRnc.isNotEmpty &&
+        companyCloudId.isNotEmpty) {
+      final retryBody = Map<String, dynamic>.from(requestBody)
+        ..remove('companyCloudId')
+        ..remove('companyTenantKey');
+      await AppLogger.instance.logWarn(
+        'Product sync locator conflict, retrying by RNC status=${response.statusCode}',
+        module: 'product_sync',
+      );
+      response = await api.postJson(
+        '/api/products/sync/operations',
+        headers: headers,
+        body: retryBody,
+        timeout: const Duration(seconds: 12),
+      );
+      body = _decodeResponseBody(response.body);
+    }
+
     if (response.statusCode == 409) {
+      final rawConflictProduct = body['serverProduct'];
+      if (rawConflictProduct is! Map) {
+        throw _ProductSyncRequestFailed(
+          statusCode: response.statusCode,
+          message:
+              body['message']?.toString() ??
+              'El servidor reportó un conflicto sin datos del producto.',
+          errorCode: body['errorCode']?.toString(),
+        );
+      }
       final conflictProduct = _serverProductFromJson(
-        body['serverProduct'] as Map<String, dynamic>,
+        Map<String, dynamic>.from(rawConflictProduct),
       );
       throw _ProductSyncConflict(
         localProductId: (normalizedPayload['localProductId'] as num).toInt(),

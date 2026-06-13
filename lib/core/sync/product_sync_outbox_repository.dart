@@ -231,4 +231,59 @@ class ProductSyncOutboxRepository {
       );
     });
   }
+
+  Future<int> reconcileVersionConflictsAfterFullSnapshot({
+    required int snapshotStartedAtMs,
+  }) async {
+    return _withRecoveredDb((db) async {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      return db.transaction((txn) async {
+        final conflicts = await txn.query(
+          DbTables.productSyncOutbox,
+          columns: ['id', 'entity_id'],
+          where: 'status = ? AND updated_at_ms <= ? AND last_error LIKE ?',
+          whereArgs: [
+            'failed',
+            snapshotStartedAtMs,
+            '%server_version_conflict%',
+          ],
+        );
+        if (conflicts.isEmpty) return 0;
+
+        final ids = conflicts.map((row) => row['id'] as int).toList();
+        final entityIds = conflicts
+            .map((row) => row['entity_id'] as int)
+            .toList();
+        final idPlaceholders = List.filled(ids.length, '?').join(',');
+        await txn.update(
+          DbTables.productSyncOutbox,
+          {
+            'status': 'synced',
+            'retry_count': 0,
+            'next_attempt_at_ms': now,
+            'locked_at_ms': null,
+            'last_success_at_ms': now,
+            'last_error': null,
+            'updated_at_ms': now,
+          },
+          where: 'id IN ($idPlaceholders)',
+          whereArgs: ids,
+        );
+
+        final entityPlaceholders = List.filled(entityIds.length, '?').join(',');
+        await txn.update(
+          DbTables.products,
+          {
+            'sync_status': 'synced',
+            'last_sync_error': null,
+            'needs_sync': 0,
+            'last_synced_at_ms': now,
+          },
+          where: 'id IN ($entityPlaceholders)',
+          whereArgs: entityIds,
+        );
+        return conflicts.length;
+      });
+    });
+  }
 }

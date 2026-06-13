@@ -16,7 +16,14 @@ class CloudSettingsPage extends ConsumerStatefulWidget {
 }
 
 class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
-  static const Set<String> _visibleTargets = {'products', 'sales'};
+  static const Set<String> _visibleTargets = {
+    'products',
+    'categories',
+    'clients',
+    'company_config',
+    'users',
+    'sales',
+  };
 
   final _formKey = GlobalKey<FormState>();
   late BusinessSettings _settings;
@@ -56,17 +63,13 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
     try {
       await notifier.saveSettings(updated);
       if (enabled) {
-        CloudSyncService.instance.startRealtimeSyncEngine();
         ProductSyncService.instance.start();
-        unawaited(CloudSyncService.instance.syncProductsIfEnabled());
-        CloudSyncService.instance.scheduleProductsSyncSoon(
-          delay: const Duration(milliseconds: 100),
-          reason: 'cloud_enabled_toggle',
+        await CloudSyncService.instance.syncRequiredTargetsNow(
+          reason: 'cloud_enabled_from_settings',
         );
-        CloudSyncService.instance.scheduleSalesSyncSoon(
-          delay: const Duration(milliseconds: 180),
-          reason: 'cloud_enabled_toggle',
-        );
+        CloudSyncService.instance.startRealtimeSyncEngine();
+        await ProductSyncService.instance.retryFailedNow();
+        await ProductSyncService.instance.flushNow();
       }
       await _reloadSyncStatus();
     } catch (_) {
@@ -87,8 +90,9 @@ class _CloudSettingsPageState extends ConsumerState<CloudSettingsPage> {
   Future<void> _triggerFullSyncNow() async {
     final notifier = ref.read(businessSettingsProvider.notifier);
     await notifier.saveSettings(_settings);
-    await CloudSyncService.instance.syncProductsIfEnabled();
-    await CloudSyncService.instance.syncSalesIfEnabled();
+    await CloudSyncService.instance.syncRequiredTargetsNow(
+      reason: 'cloud_settings_manual_sync',
+    );
     await ProductSyncService.instance.retryFailedNow();
     await _reloadSyncStatus();
     if (mounted) {
