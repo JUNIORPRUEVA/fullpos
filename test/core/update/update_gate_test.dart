@@ -112,6 +112,20 @@ void main() {
     expect(find.text('Nueva versión disponible'), findsNothing);
     expect(find.text('FullPOS listo'), findsOneWidget);
     expect(coordinator.state.phase, AppUpdatePhase.current);
+
+    await coordinator.check();
+    await tester.pumpAndSettle();
+    expect(find.text('Nueva versión disponible'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final reopenedCoordinator = _coordinator(_policy(mandatory: false));
+    await tester.pumpWidget(_app(reopenedCoordinator));
+    await reopenedCoordinator.check();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nueva versión disponible'), findsOneWidget);
+    await tester.tap(find.text('Más tarde'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('Actualizar ahora starts the existing download flow', (

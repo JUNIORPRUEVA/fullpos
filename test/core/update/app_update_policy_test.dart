@@ -74,4 +74,29 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('allows the official GitHub release asset redirect host', () {
+    final redirect = Uri.parse(
+      'https://release-assets.githubusercontent.com/'
+      'github-production-release-asset/123/installer'
+      '?response-content-disposition=attachment',
+    );
+
+    expect(
+      () => AppUpdatePolicy.validateInstallerUri(redirect),
+      returnsNormally,
+    );
+  });
+
+  test('continues rejecting lookalike GitHub asset hosts', () {
+    expect(
+      () => AppUpdatePolicy.validateInstallerUri(
+        Uri.parse(
+          'https://release-assets.githubusercontent.com.evil.example/'
+          'FullPOS-Setup.exe',
+        ),
+      ),
+      throwsFormatException,
+    );
+  });
 }

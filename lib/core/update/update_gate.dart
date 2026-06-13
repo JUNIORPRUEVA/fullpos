@@ -22,7 +22,7 @@ class _UpdateGateState extends State<UpdateGate> {
   late final AppUpdateCoordinator coordinator =
       widget.coordinator ?? AppUpdateCoordinator.instance;
   int _shownPresentationToken = 0;
-  bool _optionalDialogScheduled = false;
+  int _scheduledPresentationToken = 0;
   bool _optionalDialogVisible = false;
   Timer? _navigatorRetryTimer;
   AppUpdatePhase? _lastLoggedPhase;
@@ -63,13 +63,17 @@ class _UpdateGateState extends State<UpdateGate> {
   void _scheduleOptionalDialog(int presentationToken) {
     if (!mounted || presentationToken <= _shownPresentationToken) return;
     if (_optionalDialogVisible) {
+      _shownPresentationToken = presentationToken;
       _log(
         'Optional update dialog skipped because it is already visible '
         'presentationToken=$presentationToken',
       );
       return;
     }
-    if (_optionalDialogScheduled) {
+    if (_scheduledPresentationToken > 0) {
+      if (presentationToken > _scheduledPresentationToken) {
+        _scheduledPresentationToken = presentationToken;
+      }
       _log(
         'Optional update dialog skipped because presentation is already '
         'scheduled presentationToken=$presentationToken',
@@ -77,11 +81,12 @@ class _UpdateGateState extends State<UpdateGate> {
       return;
     }
 
-    _optionalDialogScheduled = true;
+    _scheduledPresentationToken = presentationToken;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _optionalDialogScheduled = false;
+      final scheduledToken = _scheduledPresentationToken;
+      _scheduledPresentationToken = 0;
       if (!mounted) return;
-      unawaited(_showOptionalDialog(presentationToken));
+      unawaited(_showOptionalDialog(scheduledToken));
     });
   }
 

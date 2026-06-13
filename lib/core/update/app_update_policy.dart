@@ -21,6 +21,7 @@ class AppUpdatePolicy {
     'github.com',
     'objects.githubusercontent.com',
     'github-releases.githubusercontent.com',
+    'release-assets.githubusercontent.com',
   };
 
   final AppVersion latest;

@@ -268,9 +268,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
               Future<void> resetPassword() async {
                 var canUpdateDialogState = true;
-                final token = tokenController.text.trim();
-                final newPassword = newPasswordController.text;
-                final confirmPassword = confirmPasswordController.text;
+                final token = tokenController.text.trim().toUpperCase();
+                final newPassword = newPasswordController.text.trim();
+                final confirmPassword = confirmPasswordController.text.trim();
 
                 if (token.isEmpty) {
                   setDialogState(() {
@@ -278,10 +278,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   });
                   return;
                 }
-                if (newPassword.length < 6) {
+                if (newPassword.length < 8) {
                   setDialogState(() {
                     error =
-                        'La nueva contraseña debe tener al menos 6 caracteres';
+                        'La nueva contraseña debe tener al menos 8 caracteres';
+                  });
+                  return;
+                }
+                if (newPassword == AuthRepository.initialAdminPassword) {
+                  setDialogState(() {
+                    error =
+                        'Elige una contraseña diferente de ${AuthRepository.initialAdminPassword}';
                   });
                   return;
                 }
@@ -299,11 +306,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 });
 
                 try {
-                  await service.confirmSupportToken(
-                    username: recoveryUsername,
-                    token: token,
-                  );
-
                   var user = await UsersRepository.getByUsername(
                     recoveryUsername,
                   );
@@ -324,7 +326,33 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     );
                   }
 
-                  await UsersRepository.changePassword(user.id!, newPassword);
+                  // El token es de un solo uso: primero comprobamos que el
+                  // destino local existe y solo entonces lo consumimos.
+                  await service.confirmSupportToken(
+                    username: recoveryUsername,
+                    token: token,
+                  );
+
+                  final changed = await UsersRepository.changePassword(
+                    user.id!,
+                    newPassword,
+                  );
+                  if (changed != 1) {
+                    throw Exception(
+                      'No se pudo actualizar la contraseña del administrador.',
+                    );
+                  }
+
+                  final verified = await UsersRepository.verifyCredentials(
+                    user.username,
+                    newPassword,
+                    companyId: user.companyId,
+                  );
+                  if (verified?.id != user.id) {
+                    throw Exception(
+                      'La contraseña no pudo verificarse después del cambio.',
+                    );
+                  }
 
                   if (!mounted) {
                     canUpdateDialogState = false;
@@ -335,6 +363,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   }
 
                   _mode = _LoginMode.password;
+                  _usernameController.text = user.username;
                   _passwordController.text = newPassword;
 
                   if (dialogContext.mounted) {
@@ -365,123 +394,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 }
               }
 
-              return AlertDialog(
-                title: const Text('Recuperar contraseña'),
-                content: SizedBox(
-                  width: 460,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'Cuenta de recuperación: administrador local',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Solicita el token a soporte. Es válido por 15 minutos y de un solo uso.',
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: tokenController,
-                        enabled: !loading,
-                        textCapitalization: TextCapitalization.characters,
-                        decoration: const InputDecoration(
-                          labelText: 'Token de soporte',
-                          hintText: 'ABCD-EF12-3456-7890',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: loading ? null : requestSupport,
-                        icon: const Icon(Icons.support_agent_outlined),
-                        label: const Text('Solicitar soporte'),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: newPasswordController,
-                        enabled: !loading,
-                        obscureText: obscureNew,
-                        decoration: InputDecoration(
-                          labelText: 'Nueva contraseña',
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              obscureNew
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                            ),
-                            onPressed: loading
-                                ? null
-                                : () {
-                                    setDialogState(() {
-                                      obscureNew = !obscureNew;
-                                    });
-                                  },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: confirmPasswordController,
-                        enabled: !loading,
-                        obscureText: obscureConfirm,
-                        decoration: InputDecoration(
-                          labelText: 'Confirmar nueva contraseña',
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              obscureConfirm
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                            ),
-                            onPressed: loading
-                                ? null
-                                : () {
-                                    setDialogState(() {
-                                      obscureConfirm = !obscureConfirm;
-                                    });
-                                  },
-                          ),
-                        ),
-                      ),
-                      if (info != null) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          info!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ],
-                      if (error != null) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          error!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: loading
-                        ? null
-                        : () => Navigator.of(dialogContext).pop(),
-                    child: const Text('Cerrar'),
-                  ),
-                  FilledButton(
-                    onPressed: loading ? null : resetPassword,
-                    child: loading
-                        ? const SizedBox(
-                            height: 18,
-                            width: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Validar token y restablecer'),
-                  ),
-                ],
+              return _PasswordRecoveryDialog(
+                tokenController: tokenController,
+                newPasswordController: newPasswordController,
+                confirmPasswordController: confirmPasswordController,
+                loading: loading,
+                obscureNew: obscureNew,
+                obscureConfirm: obscureConfirm,
+                info: info,
+                error: error,
+                onClose: () => Navigator.of(dialogContext).pop(),
+                onRequestSupport: requestSupport,
+                onResetPassword: resetPassword,
+                onToggleNewVisibility: () {
+                  setDialogState(() => obscureNew = !obscureNew);
+                },
+                onToggleConfirmVisibility: () {
+                  setDialogState(() => obscureConfirm = !obscureConfirm);
+                },
               );
             },
           );
@@ -1390,6 +1320,442 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _PasswordRecoveryDialog extends StatelessWidget {
+  const _PasswordRecoveryDialog({
+    required this.tokenController,
+    required this.newPasswordController,
+    required this.confirmPasswordController,
+    required this.loading,
+    required this.obscureNew,
+    required this.obscureConfirm,
+    required this.onClose,
+    required this.onRequestSupport,
+    required this.onResetPassword,
+    required this.onToggleNewVisibility,
+    required this.onToggleConfirmVisibility,
+    this.info,
+    this.error,
+  });
+
+  final TextEditingController tokenController;
+  final TextEditingController newPasswordController;
+  final TextEditingController confirmPasswordController;
+  final bool loading;
+  final bool obscureNew;
+  final bool obscureConfirm;
+  final String? info;
+  final String? error;
+  final VoidCallback onClose;
+  final VoidCallback onRequestSupport;
+  final VoidCallback onResetPassword;
+  final VoidCallback onToggleNewVisibility;
+  final VoidCallback onToggleConfirmVisibility;
+
+  @override
+  Widget build(BuildContext context) {
+    const primary = Color(0xFF2563EB);
+    const title = Color(0xFF111827);
+    const body = Color(0xFF64748B);
+    const border = Color(0xFFE2E8F0);
+    const fieldBackground = Color(0xFFF8FAFC);
+    final viewport = MediaQuery.sizeOf(context);
+    final compact = viewport.width < 560;
+
+    InputDecoration fieldDecoration({
+      required String label,
+      required String hint,
+      required IconData prefixIcon,
+      Widget? suffixIcon,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(prefixIcon, size: 20),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: fieldBackground,
+        labelStyle: const TextStyle(color: body),
+        hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+        prefixIconColor: const Color(0xFF64748B),
+        suffixIconColor: const Color(0xFF64748B),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 15,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: primary, width: 1.6),
+        ),
+      );
+    }
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 16 : 32,
+        vertical: 24,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 720),
+        child: Material(
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: border),
+          ),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(compact ? 22 : 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: primary.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      child: const Icon(
+                        Icons.lock_reset_rounded,
+                        color: primary,
+                        size: 27,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Recuperar contraseña',
+                            style: TextStyle(
+                              color: title,
+                              fontSize: 21,
+                              height: 1.2,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            'Restablece el acceso del administrador local.',
+                            style: TextStyle(
+                              color: body,
+                              fontSize: 13.5,
+                              height: 1.35,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Cerrar',
+                      onPressed: loading ? null : onClose,
+                      icon: const Icon(Icons.close_rounded),
+                      color: body,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFBFDBFE)),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.shield_outlined, color: primary, size: 20),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'El token de soporte dura 15 minutos y funciona una sola vez. No cierres esta ventana mientras realizas el cambio.',
+                          style: TextStyle(
+                            color: Color(0xFF1E40AF),
+                            fontSize: 12.5,
+                            height: 1.4,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: tokenController,
+                  enabled: !loading,
+                  autofocus: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textCapitalization: TextCapitalization.characters,
+                  textInputAction: TextInputAction.next,
+                  style: const TextStyle(
+                    color: title,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.7,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(
+                      RegExp(r'[A-Za-z0-9\-\s]'),
+                    ),
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      return newValue.copyWith(
+                        text: newValue.text.toUpperCase(),
+                        selection: newValue.selection,
+                      );
+                    }),
+                  ],
+                  decoration: fieldDecoration(
+                    label: 'Token de soporte',
+                    hint: 'ABCD-EF12-3456-7890',
+                    prefixIcon: Icons.key_rounded,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 46,
+                  child: OutlinedButton.icon(
+                    onPressed: loading ? null : onRequestSupport,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: primary,
+                      side: const BorderSide(color: Color(0xFF93C5FD)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.support_agent_rounded, size: 20),
+                    label: const Text(
+                      'Solicitar token a soporte',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Row(
+                  children: [
+                    Expanded(child: Divider(color: border)),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'NUEVA CONTRASEÑA',
+                        style: TextStyle(
+                          color: body,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: border)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: newPasswordController,
+                  enabled: !loading,
+                  obscureText: obscureNew,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  textInputAction: TextInputAction.next,
+                  style: const TextStyle(color: title),
+                  decoration: fieldDecoration(
+                    label: 'Nueva contraseña',
+                    hint: 'Mínimo 8 caracteres',
+                    prefixIcon: Icons.lock_outline_rounded,
+                    suffixIcon: IconButton(
+                      tooltip: obscureNew
+                          ? 'Mostrar contraseña'
+                          : 'Ocultar contraseña',
+                      onPressed: loading ? null : onToggleNewVisibility,
+                      icon: Icon(
+                        obscureNew
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmPasswordController,
+                  enabled: !loading,
+                  obscureText: obscureConfirm,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: loading ? null : (_) => onResetPassword(),
+                  style: const TextStyle(color: title),
+                  decoration: fieldDecoration(
+                    label: 'Confirmar contraseña',
+                    hint: 'Repite la nueva contraseña',
+                    prefixIcon: Icons.verified_user_outlined,
+                    suffixIcon: IconButton(
+                      tooltip: obscureConfirm
+                          ? 'Mostrar contraseña'
+                          : 'Ocultar contraseña',
+                      onPressed: loading ? null : onToggleConfirmVisibility,
+                      icon: Icon(
+                        obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                if (info != null) ...[
+                  const SizedBox(height: 14),
+                  _RecoveryMessage(
+                    icon: Icons.check_circle_outline_rounded,
+                    background: const Color(0xFFF0FDF4),
+                    border: const Color(0xFFBBF7D0),
+                    foreground: const Color(0xFF166534),
+                    message: info!,
+                  ),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 14),
+                  _RecoveryMessage(
+                    icon: Icons.error_outline_rounded,
+                    background: const Color(0xFFFEF2F2),
+                    border: const Color(0xFFFECACA),
+                    foreground: const Color(0xFFB91C1C),
+                    message: error!,
+                  ),
+                ],
+                const SizedBox(height: 22),
+                if (compact) ...[
+                  SizedBox(
+                    height: 48,
+                    child: FilledButton(
+                      onPressed: loading ? null : onResetPassword,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: primary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: _RecoverySubmitContent(loading: loading),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: loading ? null : onClose,
+                    child: const Text('Cancelar'),
+                  ),
+                ] else
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: loading ? null : onClose,
+                        child: const Text('Cancelar'),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        height: 48,
+                        child: FilledButton(
+                          onPressed: loading ? null : onResetPassword,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: primary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                          ),
+                          child: _RecoverySubmitContent(loading: loading),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecoveryMessage extends StatelessWidget {
+  const _RecoveryMessage({
+    required this.icon,
+    required this.background,
+    required this.border,
+    required this.foreground,
+    required this.message,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color border;
+  final Color foreground;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: foreground, size: 19),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 12.5,
+                height: 1.35,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecoverySubmitContent extends StatelessWidget {
+  const _RecoverySubmitContent({required this.loading});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const SizedBox(
+        height: 20,
+        width: 20,
+        child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+      );
+    }
+    return const Text(
+      'Restablecer contraseña',
+      style: TextStyle(fontWeight: FontWeight.w700),
     );
   }
 }
