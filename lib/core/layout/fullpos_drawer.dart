@@ -37,6 +37,7 @@ const String _kInventoryCountRoute = '/products/count';
 const String _kReportsRoute = '/reports';
 
 const String _kClientsRoute = '/clients';
+const String _kClientQuotesRoute = '/quotes-list';
 const String _kClientCreditsRoute = '/credits';
 const String _kClientLayawaysRoute = '/layaways';
 
@@ -371,6 +372,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                   isExpanded: _clientsExpanded,
                                   isActive: _isAnyActive([
                                     _kClientsRoute,
+                                    _kClientQuotesRoute,
                                     _kClientCreditsRoute,
                                     _kClientLayawaysRoute,
                                   ]),
@@ -390,6 +392,15 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                       title: 'Clientes',
                                       isActive: _isActive(_kClientsRoute),
                                       onTap: () => _navigate(_kClientsRoute),
+                                    ),
+                                    _DrawerSubItem(
+                                      icon: PhosphorIcons.notePencil(
+                                        PhosphorIconsStyle.regular,
+                                      ),
+                                      title: 'Cotizaciones',
+                                      isActive: _isActive(_kClientQuotesRoute),
+                                      onTap: () =>
+                                          _navigate(_kClientQuotesRoute),
                                     ),
                                     _DrawerSubItem(
                                       icon: PhosphorIcons.creditCard(

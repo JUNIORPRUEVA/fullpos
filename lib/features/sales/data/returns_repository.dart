@@ -2,14 +2,13 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/logging/app_logger.dart';
 import '../../../core/services/cloud_sync_service.dart';
+import 'refund_calculator.dart';
 import 'sales_model.dart';
 
 class ReturnsRepository {
   ReturnsRepository._();
-
-  static double _roundMoney(double value) =>
-      (value * 100).roundToDouble() / 100.0;
 
   static String _normalizeElectronicDocumentType(SaleModel sale) {
     final explicitType = (sale.electronicDocumentType ?? '')
@@ -93,10 +92,11 @@ class ReturnsRepository {
     );
   }
 
-  static Future<void> _validateReturnItemsAgainstOriginalSale(
+  static Future<List<Map<String, dynamic>>> _canonicalizeReturnItems(
     Transaction txn,
     int originalSaleId,
     List<Map<String, dynamic>> returnItems,
+    SaleModel original,
   ) async {
     if (returnItems.isEmpty) {
       throw Exception('La devolución no puede quedar vacía');
@@ -104,15 +104,30 @@ class ReturnsRepository {
 
     final originalItemRows = await txn.query(
       DbTables.saleItems,
-      columns: ['id', 'qty'],
+      columns: [
+        'id',
+        'product_id',
+        'product_name_snapshot',
+        'qty',
+        'unit_price',
+        'discount_line',
+        'total_line',
+      ],
       where: 'sale_id = ?',
       whereArgs: [originalSaleId],
     );
-    final originalQtyBySaleItemId = <int, double>{
+    final originalBySaleItemId = <int, Map<String, Object?>>{
       for (final row in originalItemRows)
-        if (row['id'] is int)
-          row['id'] as int: (row['qty'] as num?)?.toDouble() ?? 0.0,
+        if (row['id'] is int) row['id'] as int: row,
     };
+    final lineNetSubtotal = originalItemRows.fold<double>(
+      0,
+      (sum, row) => sum + ((row['total_line'] as num?)?.toDouble() ?? 0.0),
+    );
+    final globalDiscountFactor = RefundCalculator.globalDiscountFactor(
+      saleSubtotal: original.subtotal,
+      lineNetSubtotal: lineNetSubtotal,
+    );
 
     final returnedRows = await txn.rawQuery(
       '''
@@ -132,6 +147,7 @@ class ReturnsRepository {
     };
 
     final requestedQtyBySaleItemId = <int, double>{};
+    final canonicalItems = <Map<String, dynamic>>[];
     for (final item in returnItems) {
       final saleItemId = item['sale_item_id'] as int?;
       if (saleItemId == null) {
@@ -140,13 +156,14 @@ class ReturnsRepository {
         );
       }
 
-      final originalQty = originalQtyBySaleItemId[saleItemId];
-      if (originalQty == null) {
+      final originalItem = originalBySaleItemId[saleItemId];
+      if (originalItem == null) {
         throw Exception('sale_item_id no pertenece a la venta original');
       }
 
+      final originalQty = (originalItem['qty'] as num?)?.toDouble() ?? 0.0;
       final qty = (item['qty'] as num?)?.toDouble() ?? 0.0;
-      if (qty <= 0) {
+      if (!qty.isFinite || qty <= 0) {
         throw Exception('La cantidad devuelta debe ser mayor que cero');
       }
 
@@ -158,7 +175,22 @@ class ReturnsRepository {
       }
 
       requestedQtyBySaleItemId[saleItemId] = requestedSoFar + qty;
+      canonicalItems.add({
+        'sale_item_id': saleItemId,
+        'product_id': originalItem['product_id'],
+        'description':
+            (originalItem['product_name_snapshot'] as String?) ?? 'Producto',
+        'qty': qty,
+        'price': RefundCalculator.refundableUnitPrice(
+          quantity: originalQty,
+          unitPrice: (originalItem['unit_price'] as num?)?.toDouble() ?? 0.0,
+          lineDiscount:
+              (originalItem['discount_line'] as num?)?.toDouble() ?? 0.0,
+          globalDiscountFactor: globalDiscountFactor,
+        ),
+      });
     }
+    return canonicalItems;
   }
 
   /// Crea una devolución completa con stock restoration
@@ -169,6 +201,10 @@ class ReturnsRepository {
     String? note,
     bool? electronicCreditNoteRequested,
   }) async {
+    final normalizedNote = note?.trim() ?? '';
+    if (normalizedNote.isEmpty) {
+      throw Exception('El motivo de la devolución es obligatorio');
+    }
     final db = await AppDb.database;
 
     // Leer la venta original fuera de la transacción evita bloqueos
@@ -185,29 +221,38 @@ class ReturnsRepository {
     }
 
     final original = SaleModel.fromMap(originalSaleRows.first);
+    final normalizedStatus = original.status.trim().toUpperCase();
+    final normalizedKind = original.kind.trim().toLowerCase();
+    if (normalizedStatus == 'CANCELLED' || normalizedStatus == 'REFUNDED') {
+      throw Exception('Esta factura ya no admite devoluciones');
+    }
+    if (normalizedKind != 'invoice' && normalizedKind != 'sale') {
+      throw Exception('El documento seleccionado no es una venta reembolsable');
+    }
 
     final returnSaleId = await db.transaction((txn) async {
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      await _validateReturnItemsAgainstOriginalSale(
+      final canonicalItems = await _canonicalizeReturnItems(
         txn,
         originalSaleId,
         returnItems,
+        original,
       );
 
-      // Calcular totales de devolución
-      double returnSubtotal = 0.0;
-      for (final item in returnItems) {
-        final qty = (item['qty'] as num).toDouble();
-        final price = (item['price'] as num).toDouble();
-        final lineTotal = qty * price;
-        returnSubtotal += lineTotal;
-      }
-      returnSubtotal = _roundMoney(returnSubtotal);
-      final returnTax = original.itbisEnabled == 1
-          ? _roundMoney(returnSubtotal * original.itbisRate)
-          : 0.0;
-      final returnTotal = _roundMoney(returnSubtotal + returnTax);
+      final totals = RefundCalculator.totals(
+        items: canonicalItems.map(
+          (item) => (
+            quantity: (item['qty'] as num).toDouble(),
+            unitPrice: (item['price'] as num).toDouble(),
+          ),
+        ),
+        itbisEnabled: original.itbisEnabled == 1,
+        itbisRate: original.itbisRate,
+      );
+      final returnSubtotal = totals.subtotal;
+      final returnTax = totals.tax;
+      final returnTotal = totals.total;
       final canGenerateElectronicCreditNote = _supportsElectronicCreditNote(
         original,
       );
@@ -234,9 +279,9 @@ class ReturnsRepository {
             row['id'] as int: (row['qty'] as num?)?.toDouble() ?? 0.0,
       };
       final isTotalReturn =
-          returnItems.isNotEmpty &&
-          returnItems.length == originalQtyBySaleItemId.length &&
-          returnItems.every((item) {
+          canonicalItems.isNotEmpty &&
+          canonicalItems.length == originalQtyBySaleItemId.length &&
+          canonicalItems.every((item) {
             final saleItemId = item['sale_item_id'] as int?;
             if (saleItemId == null) return false;
             final originalQty = originalQtyBySaleItemId[saleItemId];
@@ -246,8 +291,7 @@ class ReturnsRepository {
           });
 
       // Generar código de devolución
-      final returnCode =
-          'DEV-${DateTime.now().millisecondsSinceEpoch.toString().substring(6)}';
+      final returnCode = 'DEV-${DateTime.now().microsecondsSinceEpoch}';
 
       // Insertar venta de devolución (con valores negativo para offset)
       final returnSaleId = await txn.insert(DbTables.sales, {
@@ -262,14 +306,8 @@ class ReturnsRepository {
         'itbis_rate': original.itbisRate,
         'discount_total': 0.0,
         'subtotal': -returnSubtotal,
-        'itbis_amount': original.itbisEnabled == 1
-            ? -(returnSubtotal * original.itbisRate)
-            : 0.0,
-        'total':
-            -(returnSubtotal +
-                (original.itbisEnabled == 1
-                    ? returnSubtotal * original.itbisRate
-                    : 0.0)),
+        'itbis_amount': -returnTax,
+        'total': -returnTotal,
         'payment_method': 'return',
         'paid_amount': 0.0,
         'change_amount': 0.0,
@@ -289,8 +327,8 @@ class ReturnsRepository {
         'original_sale_id': originalSaleId,
         'return_sale_id': returnSaleId,
         'refund_type': isTotalReturn ? 'TOTAL' : 'PARTIAL',
-        'reason': note,
-        'note': note,
+        'reason': normalizedNote,
+        'note': normalizedNote,
         'subtotal_amount': returnSubtotal,
         'tax_amount': returnTax,
         'total_amount': returnTotal,
@@ -310,7 +348,7 @@ class ReturnsRepository {
       });
 
       // Insertar items de devolución y restaurar stock
-      for (final item in returnItems) {
+      for (final item in canonicalItems) {
         await txn.insert(DbTables.returnItems, {
           // FK apunta a returns.id, no a sales.id
           'return_id': returnId,
@@ -362,8 +400,16 @@ class ReturnsRepository {
       return returnSaleId;
     });
 
-    await CloudSyncService.instance.syncReturnsNow(reason: 'return_applied');
-    await CloudSyncService.instance.syncSalesNow(reason: 'return_applied');
+    CloudSyncService.instance.scheduleProductsSyncSoon();
+    try {
+      await CloudSyncService.instance.syncReturnsNow(reason: 'return_applied');
+      await CloudSyncService.instance.syncSalesNow(reason: 'return_applied');
+    } catch (error) {
+      await AppLogger.instance.logWarn(
+        'Devolución $returnSaleId confirmada localmente; sincronización pendiente: $error',
+        module: 'sales/returns/sync',
+      );
+    }
 
     return returnSaleId;
   }

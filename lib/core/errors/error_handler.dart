@@ -22,6 +22,11 @@ class ErrorHandler {
 
   BuildContext? get _fallbackContext => navigatorKey.currentContext;
 
+  static bool isTransientFlutterLayoutError(String message) {
+    return message.contains('!_debugDuringDeviceUpdate') ||
+        message.contains('mouse_tracker.dart');
+  }
+
   bool _shouldSuppressPresentation(AppException ex) {
     // El usuario pidió no mostrar notificaciones de conectividad.
     if (ex.type == AppErrorType.network || ex.type == AppErrorType.timeout) {
@@ -32,6 +37,9 @@ class ErrorHandler {
     // Errores típicos de debug/noise que no deben mostrarse al usuario.
     if (dev.contains('Zone mismatch')) return true;
     if (dev.contains('A RenderFlex overflowed')) return true;
+    if (isTransientFlutterLayoutError(dev)) {
+      return true;
+    }
     // Puede ocurrir si intentamos mostrar UI en medio de una transición.
     if (dev.contains('!navigator._debugLocked')) return true;
     if (dev.contains('A KeyDownEvent is dispatched')) return true;
@@ -58,7 +66,8 @@ class ErrorHandler {
     final signature = '${ex.type}|${ex.code}|${ex.messageUser}';
     final now = DateTime.now();
     final recentlyShown =
-        _lastShownAt != null && now.difference(_lastShownAt!) < const Duration(seconds: 2);
+        _lastShownAt != null &&
+        now.difference(_lastShownAt!) < const Duration(seconds: 2);
 
     if (_presenting && recentlyShown && _lastSignature == signature) {
       return ex;
@@ -72,11 +81,7 @@ class ErrorHandler {
       // Evita asserts de navegación (ej. Navigator bloqueado) y mostrar UI
       // dentro del mismo frame/transición.
       await WidgetsBinding.instance.endOfFrame;
-      await AppErrorDialog.show(
-        ctx,
-        exception: ex,
-        onRetry: onRetry,
-      );
+      await AppErrorDialog.show(ctx, exception: ex, onRetry: onRetry);
     } catch (_) {
       // Fallback: si mostrar dialog falla, empuja una página de error.
       try {
@@ -154,6 +159,9 @@ class ErrorHandler {
     if (msg.contains('A RenderFlex overflowed')) {
       final ex = ErrorMapper.map(details, details.stack, module ?? 'flutter');
       unawaited(AppLogger.instance.logError(ex, module: module ?? 'flutter'));
+      return;
+    }
+    if (isTransientFlutterLayoutError(msg)) {
       return;
     }
     unawaited(handle(error, stackTrace: st, module: module ?? 'flutter'));

@@ -45,6 +45,17 @@ class RenderDiagnostics {
     FlutterError.onError = (details) {
       final message = details.exceptionAsString();
 
+      if (ErrorHandler.isTransientFlutterLayoutError(message)) {
+        unawaited(
+          _logger.warn(
+            'flutter_transient_layout_error_suppressed',
+            module: 'flutter',
+            data: {'exception': message},
+          ),
+        );
+        return;
+      }
+
       // Windows/Flutter (debug) can occasionally throw this assertion for AltRight/AltGr
       // due to inconsistent modifier flags coming from the OS/embedder.
       // It is non-fatal in release, but in debug it can spam logs and appear as a freeze.

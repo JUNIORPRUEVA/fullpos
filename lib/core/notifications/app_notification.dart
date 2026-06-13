@@ -38,6 +38,8 @@ class AppNotification {
     this.priority = AppNotificationPriority.normal,
     this.dismissOnAction = true,
     this.showProgress = true,
+    this.isDismissible = true,
+    this.details,
   });
 
   final String id;
@@ -57,6 +59,8 @@ class AppNotification {
   final AppNotificationPriority priority;
   final bool dismissOnAction;
   final bool showProgress;
+  final bool isDismissible;
+  final String? details;
 
   String get effectiveDeduplicationKey {
     final explicit = deduplicationKey?.trim();
@@ -69,6 +73,8 @@ class AppNotification {
     int? duplicateCount,
     Duration? duration,
     AppNotificationPriority? priority,
+    bool? isDismissible,
+    String? details,
   }) {
     return AppNotification(
       id: id,
@@ -88,6 +94,8 @@ class AppNotification {
       priority: priority ?? this.priority,
       dismissOnAction: dismissOnAction,
       showProgress: showProgress,
+      isDismissible: isDismissible ?? this.isDismissible,
+      details: details ?? this.details,
     );
   }
 }

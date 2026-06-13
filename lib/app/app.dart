@@ -10,6 +10,7 @@ import '../core/bootstrap/bootstrap_loading_screen.dart';
 import '../core/backup/backup_lifecycle.dart';
 import '../core/loading/app_loading_overlay.dart';
 import '../core/notifications/fullpos_notification_host.dart';
+import '../core/errors/error_handler.dart';
 import '../core/shortcuts/app_shortcuts.dart';
 import '../core/window/window_service.dart';
 import '../features/settings/providers/business_settings_provider.dart';
@@ -83,7 +84,10 @@ class FullPosApp extends ConsumerWidget {
 
             final layered = AppGlobalBackground(child: safeChild);
             final content = AppEntry(child: AppLoadingOverlay(child: layered));
-            return AppFrame(child: FullPosNotificationHost(child: content));
+            return FullPosNotificationHost(
+              navigatorKey: ErrorHandler.navigatorKey,
+              child: AppFrame(child: content),
+            );
           },
         ),
       ),

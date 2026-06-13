@@ -1256,7 +1256,16 @@ class SalesRepository {
       if (saleRows.isEmpty) return false;
 
       final sale = SaleModel.fromMap(saleRows.first);
-      if (sale.status == 'cancelled') return false; // Ya está cancelada
+      final normalizedStatus = sale.status.trim().toUpperCase();
+      final normalizedKind = sale.kind.trim().toLowerCase();
+      if (normalizedStatus == 'CANCELLED' ||
+          normalizedStatus == 'REFUNDED' ||
+          normalizedStatus == 'PARTIAL_REFUND') {
+        return false;
+      }
+      if (normalizedKind != 'invoice' && normalizedKind != 'sale') {
+        return false;
+      }
 
       // Obtener los items de la venta
       final items = await txn.query(

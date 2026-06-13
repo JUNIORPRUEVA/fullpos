@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/logging/app_logger.dart';
+import '../../../core/notifications/fullpos_notifications.dart';
 import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
@@ -21,7 +23,7 @@ import '../../settings/data/printer_settings_repository.dart';
 import '../data/sales_model.dart';
 import '../data/sales_repository.dart';
 import '../data/returns_repository.dart';
-import 'dialogs/refund_reason_dialog.dart';
+import '../data/refund_calculator.dart';
 
 /// Filtros de fecha predefinidos
 enum DateFilter { all, today, yesterday, thisWeek, thisMonth, custom }
@@ -59,23 +61,39 @@ Future<SaleRefundOutcome?> showSaleRefundDialog(
     throw StateError('No se puede procesar una factura sin ID.');
   }
 
+  final currentSale = await SalesRepository.getSaleById(saleId);
+  if (currentSale == null) {
+    throw StateError('La factura ya no está disponible.');
+  }
+  final status = currentSale.status.trim().toUpperCase();
+  if (status == 'CANCELLED' || status == 'REFUNDED') {
+    throw StateError('Esta factura ya no admite devoluciones.');
+  }
+
   final items = await SalesRepository.getItemsBySaleId(saleId);
   final returnedQuantities = await ReturnsRepository.returnedQuantitiesForSale(
     saleId,
   );
   if (!context.mounted) return null;
 
+  if (items.isEmpty) {
+    throw StateError('La factura no contiene productos para devolver.');
+  }
   if (items.any((item) => item.id == null)) {
     throw StateError(
       'No se puede procesar: hay productos de la factura sin ID.',
     );
   }
 
+  await WidgetsBinding.instance.endOfFrame;
+  await Future<void>.delayed(const Duration(milliseconds: 20));
+  if (!context.mounted) return null;
+
   final result = await showDialog<_RefundDialogResult>(
     context: context,
     barrierDismissible: false,
     builder: (context) => _RefundDialog(
-      sale: sale,
+      sale: currentSale,
       items: items,
       returnedQuantities: returnedQuantities,
     ),
@@ -2305,12 +2323,17 @@ class _FacturaPageState extends State<FacturaPage> {
       }
     } catch (e, st) {
       if (!mounted) return;
-      await ErrorHandler.instance.handle(
-        e,
-        stackTrace: st,
-        context: context,
-        onRetry: () => _showRefundDialog(sale),
+      await AppLogger.instance.logWarn(
+        'No se pudo abrir devolución ${sale.localCode}: $e\n$st',
         module: 'sales/returns_list/refund_dialog',
+      );
+      final message = e.toString().replaceFirst('Exception: ', '').trim();
+      FullPosNotifications.error(
+        message.isEmpty ? 'No se pudo abrir la devolución.' : message,
+        title: 'Devolución no disponible',
+        deduplicationKey: 'invoice-refund-open-${sale.id}',
+        actionLabel: 'Reintentar',
+        onAction: () => _showRefundDialog(sale),
       );
     }
   }
@@ -2738,6 +2761,7 @@ class _RefundDialogState extends State<_RefundDialog> {
   final _noteController = TextEditingController();
   bool _isProcessing = false;
   bool _refundAll = false;
+  String? _noteError;
 
   bool get _supportsE34 => _supportsElectronicCreditNote(widget.sale);
 
@@ -2776,26 +2800,136 @@ class _RefundDialogState extends State<_RefundDialog> {
   }
 
   double get _totalReturn {
-    double total = 0;
+    final items = <({double quantity, double unitPrice})>[];
     for (var i = 0; i < widget.items.length; i++) {
-      final item = widget.items[i];
       final qty = _returnQuantities[i];
-      total += qty * _refundUnitPrice(item);
+      if (qty > 0) {
+        items.add((
+          quantity: qty,
+          unitPrice: _refundUnitPrice(widget.items[i]),
+        ));
+      }
     }
-    if (widget.sale.itbisEnabled == 1) {
-      total += total * widget.sale.itbisRate;
-    }
-    return total;
+    return RefundCalculator.totals(
+      items: items,
+      itbisEnabled: widget.sale.itbisEnabled == 1,
+      itbisRate: widget.sale.itbisRate,
+    ).total;
   }
+
+  double get _refundSubtotal {
+    final items = <({double quantity, double unitPrice})>[];
+    for (var i = 0; i < widget.items.length; i++) {
+      final qty = _returnQuantities[i];
+      if (qty > 0) {
+        items.add((
+          quantity: qty,
+          unitPrice: _refundUnitPrice(widget.items[i]),
+        ));
+      }
+    }
+    return RefundCalculator.totals(
+      items: items,
+      itbisEnabled: false,
+      itbisRate: widget.sale.itbisRate,
+    ).subtotal;
+  }
+
+  double get _refundTax => widget.sale.itbisEnabled == 1
+      ? RefundCalculator.roundMoney(_refundSubtotal * widget.sale.itbisRate)
+      : 0;
 
   bool get _hasSelectedItems => _returnQuantities.any((qty) => qty > 0);
   bool get _hasPreviousReturns =>
       widget.returnedQuantities.values.any((quantity) => quantity > 0.0001);
 
   double _refundUnitPrice(SaleItemModel item) {
-    if (item.qty <= 0) return item.unitPrice;
-    final netLine = (item.unitPrice * item.qty) - item.discountLine;
-    return (netLine / item.qty).clamp(0, item.unitPrice).toDouble();
+    final lineNetSubtotal = widget.items.fold<double>(
+      0,
+      (sum, current) => sum + current.totalLine,
+    );
+    final factor = RefundCalculator.globalDiscountFactor(
+      saleSubtotal: widget.sale.subtotal,
+      lineNetSubtotal: lineNetSubtotal,
+    );
+    return RefundCalculator.refundableUnitPrice(
+      quantity: item.qty,
+      unitPrice: item.unitPrice,
+      lineDiscount: item.discountLine,
+      globalDiscountFactor: factor,
+    );
+  }
+
+  bool _validateReason() {
+    final reason = _noteController.text.trim();
+    if (reason.length >= 3) {
+      if (_noteError != null) setState(() => _noteError = null);
+      return true;
+    }
+    setState(() {
+      _noteError = 'Escribe un motivo de al menos 3 caracteres.';
+    });
+    return false;
+  }
+
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+    required String actionLabel,
+    bool destructive = false,
+  }) async {
+    final scheme = Theme.of(context).colorScheme;
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Volver'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: destructive ? scheme.error : scheme.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(actionLabel),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _reportRefundFailure(
+    Object error,
+    StackTrace stackTrace, {
+    required String operation,
+    required Future<void> Function() retry,
+  }) async {
+    await AppLogger.instance.logWarn(
+      '$operation falló para ${widget.sale.localCode}: $error\n$stackTrace',
+      module: 'sales/refund',
+    );
+    if (!mounted) return;
+    final message = error.toString().replaceFirst('Exception: ', '').trim();
+    FullPosNotifications.error(
+      message.isEmpty
+          ? 'No se pudo completar la devolución. Revisa los datos e inténtalo nuevamente.'
+          : message,
+      title: 'No se pudo completar la devolución',
+      deduplicationKey: 'refund-error-${widget.sale.id}-$operation',
+      actionLabel: 'Reintentar',
+      onAction: retry,
+    );
   }
 
   Future<bool> _ensureCashAvailableForRefund(double amount) async {
@@ -2912,19 +3046,30 @@ class _RefundDialogState extends State<_RefundDialog> {
     });
   }
 
+  String _formatQuantity(double value) {
+    return value == value.roundToDouble()
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(2);
+  }
+
   Future<void> _processRefund() async {
     if (!_hasSelectedItems) return;
+    if (!_validateReason()) return;
 
     if (!await _ensureCashAvailableForRefund(_totalReturn)) {
       return;
     }
 
-    // Motivo obligatorio (incluye confirmación previa)
-    final reason = await showRefundReasonDialog(context);
+    final confirmed = await _confirmAction(
+      title: _supportsE34
+          ? 'Confirmar nota de crédito'
+          : 'Confirmar devolución',
+      message:
+          'Se devolverán ${CurrencyDisplay.format(_totalReturn)} y se restaurará el inventario seleccionado. Esta acción quedará registrada.',
+      actionLabel: _supportsE34 ? 'Generar E34' : 'Confirmar devolución',
+    );
     if (!mounted) return;
-    if (!mounted) return;
-    if (reason == null || reason.trim().isEmpty) return;
-    _noteController.text = reason.trim();
+    if (!confirmed) return;
 
     final authorized = await requireAuthorizationIfNeeded(
       context: context,
@@ -2936,9 +3081,8 @@ class _RefundDialogState extends State<_RefundDialog> {
     if (!mounted) return;
     if (!authorized) return;
 
-    if (!mounted) return;
-    if (!mounted) return;
     setState(() => _isProcessing = true);
+    var completed = false;
 
     try {
       final returnItems = <Map<String, dynamic>>[];
@@ -2950,13 +3094,7 @@ class _RefundDialogState extends State<_RefundDialog> {
           if (saleItemId == null) {
             throw StateError('Item inválido: sale_item_id nulo');
           }
-          returnItems.add({
-            'sale_item_id': saleItemId,
-            'product_id': item.productId,
-            'description': item.productNameSnapshot,
-            'qty': qty,
-            'price': _refundUnitPrice(item),
-          });
+          returnItems.add({'sale_item_id': saleItemId, 'qty': qty});
         }
       }
 
@@ -2964,45 +3102,50 @@ class _RefundDialogState extends State<_RefundDialog> {
         originalSaleId: widget.sale.id!,
         returnItems: returnItems,
         cashSessionId: await CashRepository.getCurrentSessionId(),
-        note: _noteController.text.isEmpty ? null : _noteController.text,
+        note: _noteController.text.trim(),
         electronicCreditNoteRequested: _supportsE34,
       );
 
+      completed = true;
       if (mounted) Navigator.pop(context, _RefundDialogResult.refunded);
     } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: _processRefund,
-          module: 'sales/returns_list/refund',
-        );
-      }
+      await _reportRefundFailure(
+        e,
+        st,
+        operation: 'procesar',
+        retry: _processRefund,
+      );
     } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (!completed && mounted) {
+        setState(() => _isProcessing = false);
+      }
     }
   }
 
   Future<void> _cancelFullSale() async {
     if (_hasPreviousReturns) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Esta factura ya tiene devoluciones. Devuelve únicamente los productos restantes.',
-          ),
-        ),
+      FullPosNotifications.warning(
+        'Esta factura ya tiene devoluciones. Devuelve únicamente los productos restantes.',
+        title: 'Anulación no disponible',
+        deduplicationKey: 'refund-existing-${widget.sale.id}',
       );
       return;
     }
 
-    final reason = await showRefundReasonDialog(context);
-    if (reason == null || reason.trim().isEmpty) return;
-    _noteController.text = reason.trim();
+    if (!_validateReason()) return;
 
     final proceed = await _warnIfDifferentSession();
     if (!mounted) return;
     if (!proceed) return;
+
+    final confirmed = await _confirmAction(
+      title: 'Anular factura completa',
+      message:
+          'Se anulará ${widget.sale.localCode} y se restaurará todo su inventario. Esta acción no se puede deshacer.',
+      actionLabel: 'Anular factura',
+      destructive: true,
+    );
+    if (!mounted || !confirmed) return;
 
     final authorized = await requireAuthorizationIfNeeded(
       context: context,
@@ -3024,9 +3167,7 @@ class _RefundDialogState extends State<_RefundDialog> {
 
       final ok = await SalesRepository.cancelSale(
         saleId,
-        reason: _noteController.text.trim().isEmpty
-            ? null
-            : _noteController.text.trim(),
+        reason: _noteController.text.trim(),
       );
       if (!ok) {
         throw StateError('No se pudo anular (posiblemente ya estaba anulada)');
@@ -3034,15 +3175,12 @@ class _RefundDialogState extends State<_RefundDialog> {
 
       if (mounted) Navigator.pop(context, _RefundDialogResult.cancelled);
     } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: _cancelFullSale,
-          module: 'sales/returns_list/cancel',
-        );
-      }
+      await _reportRefundFailure(
+        e,
+        st,
+        operation: 'anular',
+        retry: _cancelFullSale,
+      );
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
@@ -3062,80 +3200,77 @@ class _RefundDialogState extends State<_RefundDialog> {
           error: scheme.error,
           info: scheme.primary,
         );
-    final gradientTheme = theme.extension<AppGradientTheme>();
-    final headerGradient =
-        gradientTheme?.backgroundGradient ??
-        LinearGradient(
-          colors: [scheme.primary, scheme.primaryContainer],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-    final headerMid = gradientTheme?.mid ?? scheme.primaryContainer;
-    final headerText = ColorUtils.ensureReadableColor(
-      scheme.onPrimary,
-      headerMid,
-    );
+    const brandBlue = Color(0xFF1A56DB);
+    const brandNavy = Color(0xFF0F172A);
+    const borderColor = Color(0xFFD8E0EA);
+    const surfaceSoft = Color(0xFFF6F8FB);
+    final hasRefundableItems = List.generate(
+      widget.items.length,
+      _remainingQuantity,
+    ).any((quantity) => quantity > 0.0001);
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.symmetric(
-        horizontal: screenSize.width * 0.05,
-        vertical: screenSize.height * 0.05,
-      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
       child: Container(
         constraints: BoxConstraints(
-          maxWidth: 500,
-          maxHeight: screenSize.height * 0.85,
+          maxWidth: 720,
+          maxHeight: screenSize.height * 0.88,
         ),
         decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(16),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: borderColor),
           boxShadow: [
             BoxShadow(
-              color: theme.shadowColor.withOpacity(0.2),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
+              color: brandNavy.withOpacity(0.18),
+              blurRadius: 28,
+              offset: const Offset(0, 12),
             ),
           ],
         ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
             Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: headerGradient,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
-                ),
-              ),
+              padding: const EdgeInsets.fromLTRB(22, 17, 14, 17),
+              color: brandBlue,
               child: Row(
                 children: [
-                  Icon(
-                    Icons.keyboard_return_rounded,
-                    color: headerText,
-                    size: 28,
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                    ),
+                    child: const Icon(
+                      Icons.assignment_return_outlined,
+                      color: Colors.white,
+                      size: 23,
+                    ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 13),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           _refundDialogTitle,
-                          style: TextStyle(
-                            color: headerText,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18.5,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
+                        const SizedBox(height: 3),
                         Text(
                           _refundDialogSubtitle,
                           style: TextStyle(
-                            color: headerText.withOpacity(0.8),
-                            fontSize: 13,
+                            color: Colors.white.withOpacity(0.82),
+                            fontSize: 12.5,
                           ),
                         ),
                       ],
@@ -3145,64 +3280,77 @@ class _RefundDialogState extends State<_RefundDialog> {
                     onPressed: _isProcessing
                         ? null
                         : () => Navigator.pop(context),
-                    icon: Icon(Icons.close, color: headerText),
+                    tooltip: 'Cerrar',
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
                   ),
                 ],
               ),
             ),
 
-            // Seleccionar todo
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 13),
+              decoration: const BoxDecoration(
+                color: surfaceSoft,
+                border: Border(bottom: BorderSide(color: borderColor)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Row(
-                    children: [
-                      Text(
-                        'Productos',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: scheme.onSurfaceVariant,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Productos de la factura',
+                          style: TextStyle(
+                            color: brandNavy,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      const Spacer(),
-                      TextButton.icon(
-                        onPressed: _toggleRefundAll,
-                        icon: Icon(
-                          _refundAll
-                              ? Icons.check_box
-                              : Icons.check_box_outline_blank,
-                          size: 18,
+                        const SizedBox(height: 3),
+                        Text(
+                          _refundSelectionHint,
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                          ),
                         ),
-                        label: Text(
-                          _refundAll ? 'Deseleccionar' : 'Seleccionar todo',
-                        ),
-                        style: TextButton.styleFrom(
-                          foregroundColor: scheme.primary,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _refundSelectionHint,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 12,
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: hasRefundableItems && !_isProcessing
+                        ? _toggleRefundAll
+                        : null,
+                    icon: Icon(
+                      _refundAll
+                          ? Icons.check_box_rounded
+                          : Icons.check_box_outline_blank_rounded,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _refundAll ? 'Quitar selección' : 'Seleccionar todo',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: brandBlue,
+                      side: const BorderSide(color: Color(0xFFB8C8E8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
 
-            // Lista de productos
             Flexible(
               child: ListView.separated(
                 shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
                 itemCount: widget.items.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final item = widget.items[index];
                   final returnQty = _returnQuantities[index];
@@ -3210,10 +3358,43 @@ class _RefundDialogState extends State<_RefundDialog> {
                   final remainingQty = _remainingQuantity(index);
                   final hasRemaining = remainingQty > 0.0001;
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 140),
+                    padding: const EdgeInsets.fromLTRB(14, 11, 10, 11),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFFF0F5FF)
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected
+                            ? const Color(0xFF8FB0F4)
+                            : borderColor,
+                      ),
+                    ),
                     child: Row(
                       children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? brandBlue
+                                : const Color(0xFFEFF3F8),
+                            borderRadius: BorderRadius.circular(7),
+                          ),
+                          child: Icon(
+                            isSelected
+                                ? Icons.check_rounded
+                                : Icons.inventory_2_outlined,
+                            size: 18,
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF64748B),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3221,15 +3402,14 @@ class _RefundDialogState extends State<_RefundDialog> {
                               Text(
                                 item.productNameSnapshot,
                                 style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                  color: isSelected
-                                      ? scheme.primary
-                                      : scheme.onSurface,
+                                  fontWeight: FontWeight.w700,
+                                  color: isSelected ? brandBlue : brandNavy,
                                 ),
                               ),
+                              const SizedBox(height: 3),
                               Text(
                                 hasRemaining
-                                    ? '${currencyFormat.format(_refundUnitPrice(item))} × ${item.qty.toInt()} · Disponible: ${remainingQty.toInt()}'
+                                    ? '${currencyFormat.format(_refundUnitPrice(item))} c/u · Vendido: ${_formatQuantity(item.qty)} · Disponible: ${_formatQuantity(remainingQty)}'
                                     : 'Este producto ya fue devuelto por completo',
                                 style: TextStyle(
                                   fontSize: 12,
@@ -3242,15 +3422,14 @@ class _RefundDialogState extends State<_RefundDialog> {
                           ),
                         ),
                         Container(
+                          height: 38,
                           decoration: BoxDecoration(
-                            color: isSelected
-                                ? scheme.primary.withOpacity(0.12)
-                                : scheme.surfaceVariant.withOpacity(0.4),
-                            borderRadius: BorderRadius.circular(8),
+                            color: isSelected ? Colors.white : surfaceSoft,
+                            borderRadius: BorderRadius.circular(7),
                             border: Border.all(
                               color: isSelected
-                                  ? scheme.primary.withOpacity(0.5)
-                                  : scheme.outlineVariant,
+                                  ? const Color(0xFFB8C8E8)
+                                  : borderColor,
                             ),
                           ),
                           child: Row(
@@ -3261,13 +3440,15 @@ class _RefundDialogState extends State<_RefundDialog> {
                                   Icons.remove,
                                   size: 18,
                                   color: returnQty > 0
-                                      ? scheme.primary
-                                      : scheme.onSurfaceVariant,
+                                      ? brandBlue
+                                      : const Color(0xFF94A3B8),
                                 ),
                                 onPressed: returnQty > 0
                                     ? () => setState(() {
                                         _returnQuantities[index] =
-                                            returnQty - 1;
+                                            (returnQty - 1)
+                                                .clamp(0, remainingQty)
+                                                .toDouble();
                                         _refundAll = false;
                                       })
                                     : null,
@@ -3277,15 +3458,15 @@ class _RefundDialogState extends State<_RefundDialog> {
                                 ),
                               ),
                               SizedBox(
-                                width: 32,
+                                width: 42,
                                 child: Text(
-                                  '${returnQty.toInt()}',
+                                  _formatQuantity(returnQty),
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     color: isSelected
-                                        ? scheme.primary
-                                        : scheme.onSurfaceVariant,
+                                        ? brandBlue
+                                        : const Color(0xFF64748B),
                                   ),
                                 ),
                               ),
@@ -3294,13 +3475,15 @@ class _RefundDialogState extends State<_RefundDialog> {
                                   Icons.add,
                                   size: 18,
                                   color: returnQty < item.qty
-                                      ? scheme.primary
-                                      : scheme.onSurfaceVariant,
+                                      ? brandBlue
+                                      : const Color(0xFF94A3B8),
                                 ),
                                 onPressed: returnQty < remainingQty
                                     ? () => setState(
                                         () => _returnQuantities[index] =
-                                            returnQty + 1,
+                                            (returnQty + 1)
+                                                .clamp(0, remainingQty)
+                                                .toDouble(),
                                       )
                                     : null,
                                 constraints: const BoxConstraints(
@@ -3318,61 +3501,80 @@ class _RefundDialogState extends State<_RefundDialog> {
               ),
             ),
 
-            // Nota
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: TextField(
                 controller: _noteController,
+                enabled: !_isProcessing,
                 maxLines: 2,
+                onChanged: (_) {
+                  if (_noteError != null) setState(() => _noteError = null);
+                },
                 decoration: InputDecoration(
-                  hintText: 'Motivo del reembolso o anulación',
-                  hintStyle: TextStyle(
-                    fontSize: 13,
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  labelText: 'Motivo obligatorio',
+                  hintText: 'Ej.: producto defectuoso, cambio o error de venta',
+                  errorText: _noteError,
+                  prefixIcon: const Icon(Icons.edit_note_rounded),
                   filled: true,
-                  fillColor: scheme.surfaceVariant.withOpacity(0.35),
-                  contentPadding: const EdgeInsets.all(12),
+                  fillColor: surfaceSoft,
+                  contentPadding: const EdgeInsets.all(14),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
+                    borderSide: const BorderSide(color: borderColor),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: borderColor),
                   ),
                 ),
               ),
             ),
 
-            // Footer
             Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: _hasSelectedItems
-                    ? scheme.primary.withOpacity(0.12)
-                    : scheme.surfaceVariant.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _hasSelectedItems
-                      ? scheme.primary.withOpacity(0.5)
-                      : scheme.outlineVariant,
-                ),
+              margin: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+              padding: const EdgeInsets.all(14),
+              decoration: const BoxDecoration(
+                color: surfaceSoft,
+                borderRadius: BorderRadius.all(Radius.circular(8)),
+                border: Border.fromBorderSide(BorderSide(color: borderColor)),
               ),
               child: Column(
                 children: [
+                  _refundSummaryRow(
+                    'Subtotal seleccionado',
+                    currencyFormat.format(_refundSubtotal),
+                  ),
+                  if (widget.sale.itbisEnabled == 1) ...[
+                    const SizedBox(height: 7),
+                    _refundSummaryRow(
+                      'ITBIS (${(widget.sale.itbisRate * 100).toStringAsFixed(2)}%)',
+                      currencyFormat.format(_refundTax),
+                    ),
+                  ],
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    child: Divider(height: 1, color: borderColor),
+                  ),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Total a reembolsar:',
-                        style: TextStyle(fontWeight: FontWeight.w500),
+                      const Expanded(
+                        child: Text(
+                          'Total a reembolsar',
+                          style: TextStyle(
+                            color: brandNavy,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ),
                       Text(
                         currencyFormat.format(_totalReturn),
                         style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 21,
                           color: _hasSelectedItems
-                              ? scheme.primary
-                              : scheme.onSurfaceVariant,
+                              ? brandBlue
+                              : const Color(0xFF94A3B8),
                         ),
                       ),
                     ],
@@ -3390,7 +3592,7 @@ class _RefundDialogState extends State<_RefundDialog> {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: status.error,
                             side: BorderSide(color: status.error),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            minimumSize: const Size(0, 44),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -3420,11 +3622,12 @@ class _RefundDialogState extends State<_RefundDialog> {
                                 : _refundActionLabel,
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: scheme.primary,
-                            foregroundColor: scheme.onPrimary,
+                            backgroundColor: brandBlue,
+                            foregroundColor: Colors.white,
                             disabledBackgroundColor: scheme.surfaceVariant
                                 .withOpacity(0.6),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            minimumSize: const Size(0, 44),
+                            elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -3439,6 +3642,31 @@ class _RefundDialogState extends State<_RefundDialog> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _refundSummaryRow(String label, String value) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Color(0xFF0F172A),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }

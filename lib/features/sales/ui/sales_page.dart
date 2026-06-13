@@ -2620,12 +2620,21 @@ class _SalesPageState extends ConsumerState<SalesPage>
       await _loadRecentSales();
     } catch (error, stackTrace) {
       if (!mounted) return;
-      await ErrorHandler.instance.handle(
-        error,
-        stackTrace: stackTrace,
-        context: context,
-        onRetry: () => _showRecentSaleRefundDialog(sale),
+      await debug_log.DebugAppLogger.instance.error(
+        'No se pudo abrir la devolución rápida',
         module: 'sales/recent_sales/refund',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      final message = error.toString().replaceFirst('Exception: ', '').trim();
+      FullPosNotifications.error(
+        message.isEmpty
+            ? 'No se pudo abrir la factura para devolución.'
+            : message,
+        title: 'Devolución no disponible',
+        deduplicationKey: 'recent-refund-open-${sale.id}',
+        actionLabel: 'Reintentar',
+        onAction: () => _showRecentSaleRefundDialog(sale),
       );
     }
   }
@@ -10579,337 +10588,390 @@ class _SalesPageState extends ConsumerState<SalesPage>
         // BOTÓN COBRAR + BOTÓN DE VENTAS RECIENTES
         // ─────────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 7),
-          child: SizedBox(
-            height: 72,
+  padding: const EdgeInsets.fromLTRB(12, 12, 12, 7),
+  child: SizedBox(
+    height: 72,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: ElevatedButton(
+            onPressed: canSell
+                ? () => _processPayment(
+                      SaleKind.invoice,
+                      initialPrintTicket: false,
+                    )
+                : null,
+            style: ButtonStyle(
+              padding: WidgetStateProperty.all(
+                const EdgeInsets.fromLTRB(20, 10, 18, 10),
+              ),
+              elevation: WidgetStateProperty.all(0),
+              shadowColor: WidgetStateProperty.all(
+                Colors.transparent,
+              ),
+              shape: WidgetStateProperty.all(
+                const RoundedRectangleBorder(
+                  borderRadius: primaryRadius,
+                ),
+              ),
+              backgroundColor:
+                  WidgetStateProperty.resolveWith<Color>(
+                (states) {
+                  if (states.contains(WidgetState.disabled)) {
+                    return disabledBackground;
+                  }
+
+                  if (states.contains(WidgetState.hovered)) {
+                    return fullposBlueDark;
+                  }
+
+                  if (states.contains(WidgetState.pressed)) {
+                    return const Color(0xFF10388F);
+                  }
+
+                  return fullposBlue;
+                },
+              ),
+              foregroundColor:
+                  WidgetStateProperty.all(Colors.white),
+            ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: canSell
-                        ? () => _processPayment(
-                            SaleKind.invoice,
-                            initialPrintTicket: false,
-                          )
-                        : null,
-                    style: ButtonStyle(
-                      padding: WidgetStateProperty.all(
-                        const EdgeInsets.fromLTRB(20, 10, 18, 10),
-                      ),
-                      elevation: WidgetStateProperty.all(0),
-                      shadowColor: WidgetStateProperty.all(Colors.transparent),
-                      shape: WidgetStateProperty.all(
-                        const RoundedRectangleBorder(
-                          borderRadius: primaryRadius,
-                        ),
-                      ),
-                      backgroundColor: WidgetStateProperty.resolveWith<Color>((
-                        states,
-                      ) {
-                        if (states.contains(WidgetState.disabled)) {
-                          return disabledBackground;
-                        }
-
-                        if (states.contains(WidgetState.hovered)) {
-                          return fullposBlueDark;
-                        }
-
-                        if (states.contains(WidgetState.pressed)) {
-                          return const Color(0xFF10388F);
-                        }
-
-                        return fullposBlue;
-                      }),
-                      foregroundColor: WidgetStateProperty.all(Colors.white),
+                // ICONO DE COBRO
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(
+                      canSell ? 0.15 : 0.10,
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(
-                              canSell ? 0.15 : 0.10,
-                            ),
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(13),
-                              topRight: Radius.circular(5),
-                              bottomLeft: Radius.circular(5),
-                              bottomRight: Radius.circular(13),
-                            ),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(
-                                canSell ? 0.16 : 0.08,
-                              ),
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.payments_rounded,
-                            size: 22,
-                            color: Colors.white,
-                          ),
-                        ),
-
-                        const SizedBox(width: 13),
-
-                        const Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Cobrar venta',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 18.5,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1,
-                                  letterSpacing: -0.20,
-                                ),
-                              ),
-                              SizedBox(height: 5),
-                              Text(
-                                'Procesar pago',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1,
-                                  color: Color(0xFFDCE7FF),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(width: 12),
-
-                        Flexible(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              const Text(
-                                'TOTAL A COBRAR',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Color(0xFFDCE7FF),
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.55,
-                                  height: 1,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                totalLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1,
-                                  letterSpacing: -0.45,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(13),
+                      topRight: Radius.circular(5),
+                      bottomLeft: Radius.circular(5),
+                      bottomRight: Radius.circular(13),
                     ),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(
+                        canSell ? 0.16 : 0.08,
+                      ),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.payments_rounded,
+                    size: 22,
+                    color: Colors.white,
                   ),
                 ),
 
-                const SizedBox(width: 9),
+                const SizedBox(width: 13),
 
-                Material(
-                  color: Colors.transparent,
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    onEnter: (_) {
-                      if (!mounted) return;
-
-                      setState(() {
-                        _isFacturaActionHovered = true;
-                      });
-                    },
-                    onExit: (_) {
-                      if (!mounted) return;
-
-                      setState(() {
-                        _isFacturaActionHovered = false;
-                        _isFacturaActionPressed = false;
-                      });
-                    },
-                    child: GestureDetector(
-                      onTapDown: (_) {
-                        if (!mounted) return;
-
-                        setState(() {
-                          _isFacturaActionPressed = true;
-                        });
-                      },
-                      onTapCancel: () {
-                        if (!mounted) return;
-
-                        setState(() {
-                          _isFacturaActionPressed = false;
-                        });
-                      },
-                      onTapUp: (_) {
-                        if (!mounted) return;
-
-                        setState(() {
-                          _isFacturaActionPressed = false;
-                        });
-                      },
-                      child: AnimatedScale(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        scale: _isFacturaActionPressed
-                            ? 0.95
-                            : _isFacturaActionHovered
-                            ? 1.025
-                            : 1,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeOutCubic,
-                              width: 66,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                color: _showRecentSalesPanel
-                                    ? softBlue
-                                    : Colors.white,
-                                borderRadius: secondaryRadius,
-                                border: Border.all(
-                                  color:
-                                      _showRecentSalesPanel ||
-                                          _isFacturaActionHovered
-                                      ? fullposBlue
-                                      : borderColor,
-                                  width: _showRecentSalesPanel ? 1.2 : 0.9,
-                                ),
-                                boxShadow:
-                                    _isFacturaActionHovered ||
-                                        _showRecentSalesPanel
-                                    ? [
-                                        BoxShadow(
-                                          color: fullposBlue.withOpacity(0.13),
-                                          blurRadius: 14,
-                                          spreadRadius: -4,
-                                          offset: const Offset(0, 6),
-                                        ),
-                                      ]
-                                    : const [],
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                borderRadius: secondaryRadius,
-                                child: InkWell(
-                                  onTap: () =>
-                                      unawaited(_toggleRecentSalesPanel()),
-                                  borderRadius: secondaryRadius,
-                                  splashColor: fullposBlue.withOpacity(0.10),
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      AnimatedSlide(
-                                        duration: const Duration(
-                                          milliseconds: 180,
-                                        ),
-                                        curve: Curves.easeOutCubic,
-                                        offset: _isFacturaActionHovered
-                                            ? const Offset(0, -0.03)
-                                            : Offset.zero,
-                                        child: const ImageIcon(
-                                          AssetImage(
-                                            'assets/imagen/iconos/factura.png',
-                                          ),
-                                          color: fullposBlue,
-                                          size: 29,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 5),
-                                      const Text(
-                                        'Ventas',
-                                        maxLines: 1,
-                                        style: TextStyle(
-                                          color: fullposBlue,
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w800,
-                                          height: 1,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-
-                            if (_recentSales.isNotEmpty)
-                              Positioned(
-                                top: -5,
-                                right: -5,
-                                child: Container(
-                                  constraints: const BoxConstraints(
-                                    minWidth: 19,
-                                    minHeight: 19,
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF16A39A),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 1.4,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(
-                                          0xFF16A39A,
-                                        ).withOpacity(0.18),
-                                        blurRadius: 7,
-                                        spreadRadius: -2,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Text(
-                                    _recentSales.length > 9
-                                        ? '9+'
-                                        : '${_recentSales.length}',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w800,
-                                      height: 1,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
+                // INFORMACIÓN DE LA ACCIÓN
+                const Expanded(
+                  flex: 5,
+                  child: Column(
+                    mainAxisAlignment:
+                        MainAxisAlignment.center,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Cobrar venta',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 18.5,
+                          fontWeight: FontWeight.w800,
+                          height: 1,
+                          letterSpacing: -0.20,
                         ),
                       ),
-                    ),
+                      SizedBox(height: 5),
+                      Text(
+                        'Procesar pago',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1,
+                          color: Color(0xFFDCE7FF),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(width: 10),
+
+                // TOTAL A COBRAR
+                // NUNCA SE CORTA NI MUESTRA TRES PUNTOS
+                Expanded(
+                  flex: 4,
+                  child: Column(
+                    mainAxisAlignment:
+                        MainAxisAlignment.center,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.end,
+                    children: [
+                      const SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          'TOTAL A COBRAR',
+                          maxLines: 1,
+                          softWrap: false,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: Color(0xFFDCE7FF),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.30,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 5),
+
+                      SizedBox(
+                        width: double.infinity,
+                        height: 27,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              totalLabel,
+                              maxLines: 1,
+                              softWrap: false,
+                              textAlign: TextAlign.right,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                height: 1,
+                                letterSpacing: -0.65,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
         ),
+
+        const SizedBox(width: 9),
+
+        // BOTÓN DE VENTAS RECIENTES
+        Material(
+          color: Colors.transparent,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) {
+              if (!mounted) return;
+
+              setState(() {
+                _isFacturaActionHovered = true;
+              });
+            },
+            onExit: (_) {
+              if (!mounted) return;
+
+              setState(() {
+                _isFacturaActionHovered = false;
+                _isFacturaActionPressed = false;
+              });
+            },
+            child: GestureDetector(
+              onTapDown: (_) {
+                if (!mounted) return;
+
+                setState(() {
+                  _isFacturaActionPressed = true;
+                });
+              },
+              onTapCancel: () {
+                if (!mounted) return;
+
+                setState(() {
+                  _isFacturaActionPressed = false;
+                });
+              },
+              onTapUp: (_) {
+                if (!mounted) return;
+
+                setState(() {
+                  _isFacturaActionPressed = false;
+                });
+              },
+              child: AnimatedScale(
+                duration:
+                    const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                scale: _isFacturaActionPressed
+                    ? 0.95
+                    : _isFacturaActionHovered
+                        ? 1.025
+                        : 1,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    AnimatedContainer(
+                      duration:
+                          const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                      width: 66,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: _showRecentSalesPanel
+                            ? softBlue
+                            : Colors.white,
+                        borderRadius: secondaryRadius,
+                        border: Border.all(
+                          color:
+                              _showRecentSalesPanel ||
+                                      _isFacturaActionHovered
+                                  ? fullposBlue
+                                  : borderColor,
+                          width: _showRecentSalesPanel
+                              ? 1.2
+                              : 0.9,
+                        ),
+                        boxShadow:
+                            _isFacturaActionHovered ||
+                                    _showRecentSalesPanel
+                                ? [
+                                    BoxShadow(
+                                      color: fullposBlue
+                                          .withOpacity(0.13),
+                                      blurRadius: 14,
+                                      spreadRadius: -4,
+                                      offset:
+                                          const Offset(0, 6),
+                                    ),
+                                  ]
+                                : const [],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        borderRadius: secondaryRadius,
+                        child: InkWell(
+                          onTap: () => unawaited(
+                            _toggleRecentSalesPanel(),
+                          ),
+                          borderRadius: secondaryRadius,
+                          splashColor:
+                              fullposBlue.withOpacity(0.10),
+                          hoverColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          child: Column(
+                            mainAxisAlignment:
+                                MainAxisAlignment.center,
+                            children: [
+                              AnimatedSlide(
+                                duration: const Duration(
+                                  milliseconds: 180,
+                                ),
+                                curve: Curves.easeOutCubic,
+                                offset:
+                                    _isFacturaActionHovered
+                                        ? const Offset(
+                                            0,
+                                            -0.03,
+                                          )
+                                        : Offset.zero,
+                                child: const ImageIcon(
+                                  AssetImage(
+                                    'assets/imagen/iconos/factura.png',
+                                  ),
+                                  color: fullposBlue,
+                                  size: 29,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              const Text(
+                                'Ventas',
+                                maxLines: 1,
+                                style: TextStyle(
+                                  color: fullposBlue,
+                                  fontSize: 9.5,
+                                  fontWeight:
+                                      FontWeight.w800,
+                                  height: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // CONTADOR DE VENTAS RECIENTES
+                    if (_recentSales.isNotEmpty)
+                      Positioned(
+                        top: -5,
+                        right: -5,
+                        child: Container(
+                          constraints:
+                              const BoxConstraints(
+                            minWidth: 19,
+                            minHeight: 19,
+                          ),
+                          padding:
+                              const EdgeInsets.symmetric(
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                const Color(0xFF16A39A),
+                            borderRadius:
+                                BorderRadius.circular(999),
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 1.4,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF16A39A,
+                                ).withOpacity(0.18),
+                                blurRadius: 7,
+                                spreadRadius: -2,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            _recentSales.length > 9
+                                ? '9+'
+                                : '${_recentSales.length}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight:
+                                  FontWeight.w800,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  ),
+),
 
         // ─────────────────────────────────────────────
         // PRODUCTOS + CANCELAR VENTA

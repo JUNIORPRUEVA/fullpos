@@ -21,11 +21,11 @@ import '../../features/settings/data/business_settings_repository.dart';
 import '../../features/settings/data/user_model.dart';
 import '../../features/settings/data/users_repository.dart';
 import '../config/app_config.dart';
+import '../notifications/fullpos_notifications.dart';
 import '../services/cloud_sync_service.dart';
 import '../session/session_manager.dart';
 import '../session/ui_preferences.dart';
 import '../sync/product_sync_service.dart';
-import '../ui/app_toast.dart';
 import '../window/window_service.dart';
 import 'app_side_sheet.dart';
 
@@ -1354,9 +1354,21 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
     };
   }
 
-  void _showFeedback(String message, {AppToastType type = AppToastType.info}) {
+  void _showFeedback(
+    String message, {
+    AppNotificationType type = AppNotificationType.information,
+  }) {
     if (!mounted) return;
-    AppToast.show(context, message, type: type);
+    FullPosNotifications.show(
+      type: type,
+      title: switch (type) {
+        AppNotificationType.success => 'Operación completada',
+        AppNotificationType.error => 'Revisa esto',
+        AppNotificationType.warning => 'Atención',
+        _ => 'Notificación',
+      },
+      message: message,
+    );
   }
 
   Future<bool> _confirmDisable() async {
@@ -1417,12 +1429,12 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
         enabled
             ? 'Sincronización en la nube activada.'
             : 'Sincronización en la nube desactivada.',
-        type: AppToastType.success,
+        type: AppNotificationType.success,
       );
     } catch (_) {
       _showFeedback(
         'No pudimos cambiar la configuración de la nube. Intenta nuevamente.',
-        type: AppToastType.error,
+        type: AppNotificationType.error,
       );
       await _reload();
     } finally {
@@ -1450,12 +1462,12 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
       await _reload();
       _showFeedback(
         'Sincronización completada correctamente.',
-        type: AppToastType.success,
+        type: AppNotificationType.success,
       );
     } catch (_) {
       _showFeedback(
         'No se pudo completar la sincronización. Revisa la conexión e inténtalo de nuevo.',
-        type: AppToastType.error,
+        type: AppNotificationType.error,
       );
       await _reload();
     } finally {
@@ -1476,12 +1488,12 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
       await _reload();
       _showFeedback(
         'Conexión con la nube reiniciada.',
-        type: AppToastType.success,
+        type: AppNotificationType.success,
       );
     } catch (_) {
       _showFeedback(
         'No se pudo restablecer la conexión con la nube.',
-        type: AppToastType.error,
+        type: AppNotificationType.error,
       );
       await _reload();
     } finally {
@@ -1531,9 +1543,7 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
               icon: _targetIcon(targets[index]['target'] as String),
               name: _targetLabel(targets[index]['target'] as String),
               status: _statusLabel(targets[index]['status'] as String),
-              statusColor: _statusColor(
-                targets[index]['status'] as String,
-              ),
+              statusColor: _statusColor(targets[index]['status'] as String),
               lastSync: _formatDateTime(
                 targets[index]['lastSuccess'] as DateTime?,
               ),

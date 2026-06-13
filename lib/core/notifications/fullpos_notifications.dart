@@ -27,6 +27,8 @@ class FullPosNotifications {
     AppNotificationPriority priority = AppNotificationPriority.normal,
     bool dismissOnAction = true,
     bool showProgress = true,
+    bool isDismissible = true,
+    String? details,
   }) {
     final now = DateTime.now();
     final id = '${now.microsecondsSinceEpoch}-${_sequence++}';
@@ -48,6 +50,8 @@ class FullPosNotifications {
         priority: priority,
         dismissOnAction: dismissOnAction,
         showProgress: showProgress,
+        isDismissible: isDismissible,
+        details: details,
       ),
     );
     return id;
@@ -79,6 +83,7 @@ class FullPosNotifications {
     bool isPersistent = false,
     String? actionLabel,
     AppNotificationCallback? onAction,
+    String? details,
   }) {
     return show(
       type: AppNotificationType.error,
@@ -90,6 +95,7 @@ class FullPosNotifications {
       actionLabel: actionLabel,
       onAction: onAction,
       priority: AppNotificationPriority.high,
+      details: details,
     );
   }
 
@@ -168,4 +174,22 @@ class FullPosNotifications {
           : AppNotificationPriority.high,
     );
   }
+
+  static String info(
+    String message, {
+    String title = 'Información',
+    String? deduplicationKey,
+    Duration duration = const Duration(seconds: 5),
+  }) {
+    return information(
+      message,
+      title: title,
+      deduplicationKey: deduplicationKey,
+      duration: duration,
+    );
+  }
+
+  static Future<void> dismiss(String id) => controller.dismiss(id);
+
+  static void dismissAll() => controller.dismissAll();
 }

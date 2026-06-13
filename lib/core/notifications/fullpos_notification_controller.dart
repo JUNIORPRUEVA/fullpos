@@ -14,15 +14,24 @@ class FullPosNotificationController extends ChangeNotifier {
   final Duration duplicateWindow;
   final List<AppNotification> _visible = <AppNotification>[];
   final List<AppNotification> _queued = <AppNotification>[];
+  final Set<String> _expandedDetails = <String>{};
+  bool _disposed = false;
 
   List<AppNotification> get visibleNotifications =>
       List<AppNotification>.unmodifiable(_visible);
   List<AppNotification> get queuedNotifications =>
       List<AppNotification>.unmodifiable(_queued);
+  bool isDetailsExpanded(String id) => _expandedDetails.contains(id);
 
   void show(AppNotification notification) {
+    if (_disposed) {
+      debugPrint(
+        '[FullPosNotifications] Controller disposed. Notification skipped.',
+      );
+      return;
+    }
     if (_mergeDuplicate(notification)) {
-      notifyListeners();
+      _notifySafely();
       return;
     }
 
@@ -32,10 +41,11 @@ class FullPosNotificationController extends ChangeNotifier {
       _queued.add(notification);
       _sortQueue();
     }
-    notifyListeners();
+    _notifySafely();
   }
 
   Future<void> dismiss(String id) async {
+    if (_disposed) return;
     AppNotification? removed;
     final visibleIndex = _visible.indexWhere((item) => item.id == id);
     if (visibleIndex >= 0) {
@@ -49,18 +59,49 @@ class FullPosNotificationController extends ChangeNotifier {
     }
 
     if (removed == null) return;
-    notifyListeners();
-    await removed.onDismiss?.call();
+    _expandedDetails.remove(id);
+    _notifySafely();
+    try {
+      await removed.onDismiss?.call();
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[FullPosNotifications] onDismiss failed: $error\n$stackTrace',
+      );
+    }
   }
 
-  void clear() {
+  void dismissAll() {
+    if (_disposed) return;
     final removed = <AppNotification>[..._visible, ..._queued];
     _visible.clear();
     _queued.clear();
-    notifyListeners();
+    _expandedDetails.clear();
+    _notifySafely();
     for (final notification in removed) {
-      unawaited(Future<void>.sync(() => notification.onDismiss?.call()));
+      unawaited(
+        Future<void>.sync(() => notification.onDismiss?.call()).catchError((
+          Object error,
+          StackTrace stackTrace,
+        ) {
+          debugPrint(
+            '[FullPosNotifications] onDismiss failed: $error\n$stackTrace',
+          );
+        }),
+      );
     }
+  }
+
+  void clear() => dismissAll();
+
+  void toggleDetails(String id) {
+    if (_disposed) return;
+    final index = _visible.indexWhere((item) => item.id == id);
+    if (index < 0 || (_visible[index].details?.trim().isEmpty ?? true)) return;
+
+    if (!_expandedDetails.add(id)) {
+      _expandedDetails.remove(id);
+    }
+    _notifySafely();
   }
 
   bool _mergeDuplicate(AppNotification incoming) {
@@ -116,5 +157,19 @@ class FullPosNotificationController extends ChangeNotifier {
       if (priority != 0) return priority;
       return a.createdAt.compareTo(b.createdAt);
     });
+  }
+
+  void _notifySafely() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _visible.clear();
+    _queued.clear();
+    _expandedDetails.clear();
+    super.dispose();
   }
 }

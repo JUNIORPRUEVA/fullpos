@@ -1,26 +1,39 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
-import '../data/quotes_repository.dart';
+
 import '../data/quote_model.dart';
 import '../data/quote_to_ticket_converter.dart';
+import '../data/quotes_repository.dart';
 import '../data/settings_repository.dart';
 import '../../../core/db_hardening/db_hardening.dart';
+import '../../../core/errors/error_handler.dart';
 import '../../../core/printing/quote_printer.dart';
 import '../../../core/session/session_manager.dart';
-import '../../../core/errors/error_handler.dart';
 import '../../../core/theme/app_status_theme.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/utils/currency_display.dart';
-import '../../../core/ui/ui_scale.dart';
 import '../../../theme/app_colors.dart' as ui_colors;
-import '../../settings/data/printer_settings_repository.dart';
 import 'widgets/compact_quote_row.dart';
-import 'widgets/quotes_filter_bar.dart';
-import 'utils/quotes_filter_util.dart';
+
+enum _QuoteSort {
+  newest,
+  oldest,
+  highest,
+  lowest,
+}
+
+enum _QuoteDatePreset {
+  all,
+  today,
+  last7Days,
+  last30Days,
+  thisMonth,
+}
 
 class QuotesPage extends StatefulWidget {
   const QuotesPage({super.key});
@@ -30,38 +43,31 @@ class QuotesPage extends StatefulWidget {
 }
 
 class _QuotesPageState extends State<QuotesPage> {
-  List<QuoteDetailDto> _quotes = [];
-  List<QuoteDetailDto> _filteredQuotes = [];
-  bool _isLoading = false;
-  int _loadSeq = 0;
-  late QuotesFilterConfig _filterConfig;
-  late SearchDebouncer _searchDebouncer;
+  final TextEditingController _searchController = TextEditingController();
   final ScrollController _quoteItemsScrollController = ScrollController();
+
+  List<QuoteDetailDto> _quotes = <QuoteDetailDto>[];
+  List<QuoteDetailDto> _filteredQuotes = <QuoteDetailDto>[];
 
   QuoteDetailDto? _selectedQuote;
   int? _selectedQuoteId;
 
-  static const _brandRadius = 10.0;
-  static const _wideDetailBreakpoint = 1200.0;
+  bool _isLoading = false;
+  bool _showFilterPanel = false;
+  bool _showDetailsPanel = false;
 
-  BoxConstraints _detailPanelConstraints(double width) {
-    if (width < 1350) {
-      final max = (width * 0.38).clamp(320.0, 450.0);
-      final min = (max - 80).clamp(300.0, max);
-      return BoxConstraints(minWidth: min, maxWidth: max);
-    }
-    if (width < 1600) {
-      final max = (width * 0.35).clamp(400.0, 520.0);
-      final min = (max - 90).clamp(360.0, max);
-      return BoxConstraints(minWidth: min, maxWidth: max);
-    }
-    final max = (width * 0.33).clamp(460.0, 600.0);
-    final min = (max - 100).clamp(380.0, max);
-    return BoxConstraints(minWidth: min, maxWidth: max);
-  }
+  String _selectedStatus = 'ALL';
+  _QuoteSort _sort = _QuoteSort.newest;
+  _QuoteDatePreset _datePreset = _QuoteDatePreset.all;
+
+  int _loadSequence = 0;
+
+  static const double _pageMaxWidth = 1480;
+  static const double _brandRadius = 10;
 
   ThemeData get _theme => Theme.of(context);
   ColorScheme get _scheme => _theme.colorScheme;
+
   AppStatusTheme get _status =>
       _theme.extension<AppStatusTheme>() ??
       AppStatusTheme(
@@ -74,50 +80,50 @@ class _QuotesPageState extends State<QuotesPage> {
   @override
   void initState() {
     super.initState();
-    _filterConfig = const QuotesFilterConfig();
-    _searchDebouncer = SearchDebouncer(
-      duration: const Duration(milliseconds: 300),
-      onDebounce: (_) {
-        if (!mounted) return;
-        _applyFilters();
-      },
-    );
+    _searchController.addListener(_applyFilters);
     _loadQuotes();
   }
 
   @override
   void dispose() {
-    _searchDebouncer.dispose();
+    _searchController
+      ..removeListener(_applyFilters)
+      ..dispose();
     _quoteItemsScrollController.dispose();
     super.dispose();
   }
 
-  void _safeSetState(VoidCallback fn) {
+  void _safeSetState(VoidCallback callback) {
     if (!mounted) return;
-    setState(fn);
+    setState(callback);
   }
 
   Future<void> _loadQuotes() async {
-    final seq = ++_loadSeq;
+    final int sequence = ++_loadSequence;
     _safeSetState(() => _isLoading = true);
+
     try {
       final quotes = await DbHardening.instance.runDbSafe<List<QuoteDetailDto>>(
         () => QuotesRepository().listQuotes(),
         stage: 'sales/quotes/load',
       );
-      if (!mounted || seq != _loadSeq) return;
+
+      if (!mounted || sequence != _loadSequence) return;
+
       _safeSetState(() {
         _quotes = quotes;
         _isLoading = false;
-        _applyFilters();
       });
-    } catch (e, st) {
-      if (!mounted || seq != _loadSeq) return;
+
+      _applyFilters();
+    } catch (error, stackTrace) {
+      if (!mounted || sequence != _loadSequence) return;
+
       _safeSetState(() => _isLoading = false);
-      if (!mounted) return;
+
       await ErrorHandler.instance.handle(
-        e,
-        stackTrace: st,
+        error,
+        stackTrace: stackTrace,
         context: context,
         onRetry: _loadQuotes,
         module: 'sales/quotes/load',
@@ -126,75 +132,191 @@ class _QuotesPageState extends State<QuotesPage> {
   }
 
   void _applyFilters() {
+    final String query = _searchController.text.trim().toLowerCase();
+    final DateTime now = DateTime.now();
+
+    DateTime? dateFrom;
+
+    switch (_datePreset) {
+      case _QuoteDatePreset.all:
+        dateFrom = null;
+        break;
+      case _QuoteDatePreset.today:
+        dateFrom = DateTime(now.year, now.month, now.day);
+        break;
+      case _QuoteDatePreset.last7Days:
+        dateFrom = DateTime(now.year, now.month, now.day)
+            .subtract(const Duration(days: 6));
+        break;
+      case _QuoteDatePreset.last30Days:
+        dateFrom = DateTime(now.year, now.month, now.day)
+            .subtract(const Duration(days: 29));
+        break;
+      case _QuoteDatePreset.thisMonth:
+        dateFrom = DateTime(now.year, now.month);
+        break;
+    }
+
+    final List<QuoteDetailDto> result = _quotes.where((detail) {
+      final quote = detail.quote;
+      final createdAt =
+          DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
+
+      final String code = quote.id == null
+          ? ''
+          : 'cot-${quote.id.toString().padLeft(5, '0')}';
+
+      final bool matchesSearch = query.isEmpty ||
+          detail.clientName.toLowerCase().contains(query) ||
+          (detail.clientPhone ?? '').toLowerCase().contains(query) ||
+          (detail.clientRnc ?? '').toLowerCase().contains(query) ||
+          code.contains(query) ||
+          quote.total.toStringAsFixed(2).contains(query);
+
+      final bool matchesStatus =
+          _selectedStatus == 'ALL' || quote.status == _selectedStatus;
+
+      final bool matchesDate =
+          dateFrom == null || !createdAt.isBefore(dateFrom);
+
+      return matchesSearch && matchesStatus && matchesDate;
+    }).toList();
+
+    switch (_sort) {
+      case _QuoteSort.newest:
+        result.sort(
+          (a, b) => b.quote.createdAtMs.compareTo(a.quote.createdAtMs),
+        );
+        break;
+      case _QuoteSort.oldest:
+        result.sort(
+          (a, b) => a.quote.createdAtMs.compareTo(b.quote.createdAtMs),
+        );
+        break;
+      case _QuoteSort.highest:
+        result.sort((a, b) => b.quote.total.compareTo(a.quote.total));
+        break;
+      case _QuoteSort.lowest:
+        result.sort((a, b) => a.quote.total.compareTo(b.quote.total));
+        break;
+    }
+
     _safeSetState(() {
-      _filteredQuotes = QuotesFilterUtil.applyFilters(_quotes, _filterConfig);
+      _filteredQuotes = result;
 
-      if (_filteredQuotes.isEmpty) {
-        _selectedQuote = null;
-        _selectedQuoteId = null;
-        return;
+      if (_selectedQuoteId != null) {
+        final int selectedIndex = result.indexWhere(
+          (item) => item.quote.id == _selectedQuoteId,
+        );
+
+        if (selectedIndex >= 0) {
+          _selectedQuote = result[selectedIndex];
+        } else {
+          _selectedQuote = null;
+          _selectedQuoteId = null;
+          _showDetailsPanel = false;
+        }
       }
-
-      final currentId = _selectedQuoteId;
-      if (currentId == null) {
-        return;
-      }
-
-      final match = _filteredQuotes.firstWhere(
-        (q) => q.quote.id == currentId,
-        orElse: () => _filteredQuotes.first,
-      );
-      _selectedQuote = match;
-      _selectedQuoteId = match.quote.id;
     });
   }
 
-  void _selectQuote(QuoteDetailDto quoteDetail, {required bool showDetails}) {
+  void _resetFilters() {
+    _searchController.clear();
+
+    _safeSetState(() {
+      _selectedStatus = 'ALL';
+      _sort = _QuoteSort.newest;
+      _datePreset = _QuoteDatePreset.all;
+    });
+
+    _applyFilters();
+  }
+
+  void _openFilterPanel() {
+    _safeSetState(() {
+      _showDetailsPanel = false;
+      _showFilterPanel = true;
+    });
+  }
+
+  void _openQuoteDetails(QuoteDetailDto quoteDetail) {
     _safeSetState(() {
       _selectedQuote = quoteDetail;
       _selectedQuoteId = quoteDetail.quote.id;
+      _showFilterPanel = false;
+      _showDetailsPanel = true;
     });
-    if (showDetails) {
-      _showQuoteDetails(quoteDetail);
-    }
   }
 
-  void _onFilterChanged(QuotesFilterConfig newConfig) {
+  void _closeSidePanels() {
     _safeSetState(() {
-      _filterConfig = newConfig;
+      _showFilterPanel = false;
+      _showDetailsPanel = false;
     });
-    _searchDebouncer(_filterConfig.searchText);
+  }
+
+  double _sidePanelWidth(double screenWidth, {required bool details}) {
+    if (screenWidth < 760) {
+      return screenWidth;
+    }
+
+    if (details) {
+      return (screenWidth * 0.40).clamp(520.0, 680.0);
+    }
+
+    return (screenWidth * 0.30).clamp(390.0, 480.0);
   }
 
   @override
   Widget build(BuildContext context) {
-    final totalsWidget = _buildQuotesTotalsSummary();
-
     return Scaffold(
+      backgroundColor: const Color(0xFFF3F6FA),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final scale = uiScale(context);
-          final horizontalPadding =
-              (constraints.maxWidth * 0.018).clamp(12.0, 28.0) * scale;
-          final verticalPadding = 10.0 * scale;
-          final listPadding = EdgeInsets.fromLTRB(
-            horizontalPadding,
-            verticalPadding,
-            horizontalPadding,
-            22.0 * scale,
-          );
+          final double availableWidth = constraints.maxWidth;
+          final double detailWidth =
+              _sidePanelWidth(availableWidth, details: true);
+          final double filterWidth =
+              _sidePanelWidth(availableWidth, details: false);
 
           return Column(
             children: [
-              QuotesFilterBar(
-                initialConfig: _filterConfig,
-                onFilterChanged: _onFilterChanged,
-                summary: totalsWidget,
-              ),
+              _buildCleanToolbar(),
               Expanded(
-                child: _buildQuotesContent(
-                  listPadding: listPadding,
-                  isWide: constraints.maxWidth >= _wideDetailBreakpoint,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildMainContent(),
+
+                    if (_showFilterPanel || _showDetailsPanel)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _closeSidePanels,
+                          child: Container(
+                            color: Colors.black.withOpacity(0.055),
+                          ),
+                        ),
+                      ),
+
+                    if (_showFilterPanel)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        width: filterWidth,
+                        child: _buildFilterPanel(),
+                      ),
+
+                    if (_showDetailsPanel)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        bottom: 0,
+                        width: detailWidth,
+                        child: _buildDetailsSideSheet(_selectedQuote),
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -204,18 +326,173 @@ class _QuotesPageState extends State<QuotesPage> {
     );
   }
 
-  Widget _buildQuotesTotalsSummary() {
-    final theme = _theme;
-    final scheme = _scheme;
-    final count = _filteredQuotes.length;
-    final totalAmount = _filteredQuotes.fold<double>(
-      0,
-      (sum, q) => sum + q.quote.total,
+  Widget _buildCleanToolbar() {
+    return Container(
+      height: 66,
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: ui_colors.AppColors.borderSoft),
+        ),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _pageMaxWidth),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    style: const TextStyle(
+                      color: Color(0xFF172033),
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w500,
+                      fontFamily: 'Inter',
+                    ),
+                    decoration: InputDecoration(
+                      hintText:
+                          'Buscar por cliente, teléfono, RNC, código o total...',
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 13,
+                        fontFamily: 'Inter',
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.search_rounded,
+                        size: 20,
+                        color: ui_colors.AppColors.primaryBlue,
+                      ),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: _searchController.clear,
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                size: 18,
+                              ),
+                            ),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 13,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(_brandRadius),
+                        borderSide: const BorderSide(
+                          color: ui_colors.AppColors.borderSoft,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(_brandRadius),
+                        borderSide: const BorderSide(
+                          color: ui_colors.AppColors.primaryBlue,
+                          width: 1.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: _openFilterPanel,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF334155),
+                    backgroundColor:
+                        _hasActiveAdvancedFilters
+                            ? const Color(0xFFEAF2FF)
+                            : Colors.white,
+                    side: BorderSide(
+                      color: _hasActiveAdvancedFilters
+                          ? ui_colors.AppColors.primaryBlue
+                          : ui_colors.AppColors.borderSoft,
+                    ),
+                    minimumSize: const Size(106, 42),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_brandRadius),
+                    ),
+                  ),
+                  icon: const Icon(Icons.tune_rounded, size: 18),
+                  label: const Text(
+                    'Filtrar',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _buildQuotesTotalsSummary(),
+                const SizedBox(width: 10),
+                IconButton(
+                  onPressed: _isLoading ? null : _loadQuotes,
+                  style: IconButton.styleFrom(
+                    foregroundColor: const Color(0xFF334155),
+                    backgroundColor: const Color(0xFFF8FAFC),
+                    side: const BorderSide(
+                      color: ui_colors.AppColors.borderSoft,
+                    ),
+                    minimumSize: const Size(42, 42),
+                    maximumSize: const Size(42, 42),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_brandRadius),
+                    ),
+                  ),
+                  icon: const Icon(Icons.refresh_rounded, size: 20),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: () => context.go('/sales'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: ui_colors.AppColors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(146, 42),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(_brandRadius),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 19),
+                  label: const Text(
+                    'Nueva cotización',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
+  }
+
+  bool get _hasActiveAdvancedFilters =>
+      _selectedStatus != 'ALL' ||
+      _sort != _QuoteSort.newest ||
+      _datePreset != _QuoteDatePreset.all;
+
+  Widget _buildQuotesTotalsSummary() {
+    final int count = _filteredQuotes.length;
+    final double total = _filteredQuotes.fold<double>(
+      0,
+      (sum, item) => sum + item.quote.total,
+    );
+
     final money = CurrencyDisplay.currency();
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 13),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(_brandRadius),
@@ -225,25 +502,32 @@ class _QuotesPageState extends State<QuotesPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(
-            Icons.summarize_outlined,
-            size: 16,
+            Icons.request_quote_outlined,
+            size: 17,
             color: ui_colors.AppColors.primaryBlue,
           ),
           const SizedBox(width: 8),
           Text(
-            'Cotizaciones: $count',
-            style: theme.textTheme.bodySmall?.copyWith(
+            '$count cotizaciones',
+            style: const TextStyle(
+              color: Color(0xFF475569),
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
-              color: scheme.onSurface,
               fontFamily: 'Inter',
             ),
           ),
-          const SizedBox(width: 12),
+          Container(
+            width: 1,
+            height: 18,
+            margin: const EdgeInsets.symmetric(horizontal: 11),
+            color: ui_colors.AppColors.borderSoft,
+          ),
           Text(
-            'Total: ${money.format(totalAmount)}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: FontWeight.w700,
+            money.format(total),
+            style: const TextStyle(
               color: ui_colors.AppColors.primaryBlue,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
               fontFamily: 'Inter',
             ),
           ),
@@ -252,1093 +536,1393 @@ class _QuotesPageState extends State<QuotesPage> {
     );
   }
 
-  ButtonStyle _secondaryActionButtonStyle() {
-    return OutlinedButton.styleFrom(
-      foregroundColor: ui_colors.AppColors.primaryBlue,
-      side: BorderSide(color: ui_colors.AppColors.borderSoft),
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(_brandRadius),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      minimumSize: const Size(0, 38),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      textStyle: const TextStyle(
-        fontWeight: FontWeight.w500,
-        fontSize: 14,
-        fontFamily: 'Inter',
-      ),
-    );
-  }
-
-  ButtonStyle _dangerActionButtonStyle() {
-    return OutlinedButton.styleFrom(
-      foregroundColor: const Color(0xFFB91C1C),
-      side: const BorderSide(color: Color(0xFFFECACA)),
-      backgroundColor: const Color(0xFFFEF2F2),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(_brandRadius),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      minimumSize: const Size(0, 38),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-      textStyle: const TextStyle(
-        fontWeight: FontWeight.w500,
-        fontSize: 14,
-        fontFamily: 'Inter',
-      ),
-    );
-  }
-
-  Widget _buildQuotesContent({
-    required EdgeInsets listPadding,
-    required bool isWide,
-  }) {
-    if (!isWide) {
-      return _buildQuotesList(listPadding: listPadding, isWide: false);
-    }
-
-    final panelConstraints = _detailPanelConstraints(
-      MediaQuery.of(context).size.width,
-    );
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        listPadding.left,
-        listPadding.top,
-        listPadding.right,
-        listPadding.bottom,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: _buildQuotesList(listPadding: EdgeInsets.zero, isWide: true),
+  Widget _buildMainContent() {
+    return Center(
+      child: FractionallySizedBox(
+        widthFactor: 0.92,
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _pageMaxWidth),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(0, 14, 0, 18),
+            child: _buildQuotesList(),
           ),
-          const SizedBox(width: 14),
-          SizedBox(
-            width: panelConstraints.maxWidth,
-            child: _buildQuoteDetailsPanel(_selectedQuote),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildQuotesList({
-    required EdgeInsets listPadding,
-    required bool isWide,
-  }) {
-    final scheme = _scheme;
+  Widget _buildQuotesList() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 2.4),
+        ),
+      );
     }
 
     if (_filteredQuotes.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.description_outlined,
-              size: 80,
-              color: scheme.onSurface.withOpacity(0.3),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 34, vertical: 32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: ui_colors.AppColors.borderSoft),
             ),
-            const SizedBox(height: 16),
-            Text(
-              _quotes.isEmpty ? 'No hay cotizaciones' : 'No hay resultados',
-              style: TextStyle(
-                fontSize: 18,
-                color: scheme.onSurface.withOpacity(0.7),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _quotes.isEmpty
-                  ? 'Crea una cotización desde la página de ventas'
-                  : 'Ajusta los filtros e intenta de nuevo',
-              style: TextStyle(
-                fontSize: 14,
-                color: scheme.onSurface.withOpacity(0.5),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.separated(
-      padding: listPadding,
-      itemCount: _filteredQuotes.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        thickness: 1,
-        color: ui_colors.AppColors.borderSoft.withOpacity(0.65),
-      ),
-      itemBuilder: (context, index) {
-        final quoteDetail = _filteredQuotes[index];
-        final isSelected = quoteDetail.quote.id == _selectedQuoteId;
-        return CompactQuoteRow(
-          quoteDetail: quoteDetail,
-          isSelected: isSelected,
-          onTap: () => _selectQuote(quoteDetail, showDetails: !isWide),
-          onWhatsApp: () => _shareWhatsApp(quoteDetail),
-          onPdf: () => _viewPDF(quoteDetail),
-          onDownload: () => _downloadPDF(quoteDetail),
-          onDuplicate: () => _duplicateQuote(quoteDetail),
-          onDelete: () => _deleteQuote(quoteDetail),
-          onConvertToTicket: () => _convertToTicket(quoteDetail),
-        );
-      },
-    );
-  }
-
-  Widget _buildQuoteDetailsPanel(QuoteDetailDto? quoteDetail) {
-    final theme = _theme;
-    final scheme = _scheme;
-    final status = _status;
-
-    if (quoteDetail == null) {
-      return Card(
-        elevation: 1,
-        shadowColor: scheme.shadow.withOpacity(0.08),
-        color: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: ui_colors.AppColors.borderSoft),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Detalle de cotización',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 20,
-                  fontFamily: 'Inter',
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEAF2FF),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.request_quote_outlined,
+                    size: 29,
+                    color: ui_colors.AppColors.primaryBlue,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Selecciona una cotización para ver sus detalles.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: ui_colors.AppColors.textSecondary,
-                  fontFamily: 'Inter',
-                  fontSize: 13,
+                const SizedBox(height: 16),
+                Text(
+                  _quotes.isEmpty
+                      ? 'Aún no hay cotizaciones'
+                      : 'No encontramos resultados',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF172033),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Inter',
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 7),
+                Text(
+                  _quotes.isEmpty
+                      ? 'Crea una cotización desde Ventas y aparecerá aquí.'
+                      : 'Ajusta la búsqueda o limpia los filtros.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: ui_colors.AppColors.textSecondary,
+                    fontSize: 13,
+                    height: 1.45,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 18),
+                if (_quotes.isEmpty)
+                  FilledButton.icon(
+                    onPressed: () => context.go('/sales'),
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Crear cotización'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: _resetFilters,
+                    icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                    label: const Text('Limpiar filtros'),
+                  ),
+              ],
+            ),
           ),
         ),
       );
     }
 
-    final quote = quoteDetail.quote;
-    final quoteId = quote.id;
-    final createdAt = DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
-    final createdLabel = DateFormat('dd/MM/yy HH:mm').format(createdAt);
-    final compactSecondaryStyle = _secondaryActionButtonStyle().copyWith(
-      padding: const MaterialStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: ui_colors.AppColors.borderSoft),
       ),
-      minimumSize: const MaterialStatePropertyAll(Size(double.infinity, 34)),
-      visualDensity: VisualDensity.compact,
-    );
-    final compactIconStyle = _secondaryActionButtonStyle().copyWith(
-      padding: const MaterialStatePropertyAll(EdgeInsets.zero),
-      minimumSize: const MaterialStatePropertyAll(Size(34, 34)),
-      maximumSize: const MaterialStatePropertyAll(Size(34, 34)),
-      visualDensity: VisualDensity.compact,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-    final compactDangerIconStyle = _dangerActionButtonStyle().copyWith(
-      padding: const MaterialStatePropertyAll(EdgeInsets.zero),
-      minimumSize: const MaterialStatePropertyAll(Size(34, 34)),
-      maximumSize: const MaterialStatePropertyAll(Size(34, 34)),
-      visualDensity: VisualDensity.compact,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-    final money = CurrencyDisplay.currency();
-
-    Color statusColor(String value) {
-      switch (value) {
-        case 'OPEN':
-          return const Color(0xFFF3F4F6);
-        case 'CONVERTED':
-          return status.success;
-        case 'CANCELLED':
-          return status.error;
-        case 'TICKET':
-        case 'PASSED_TO_TICKET':
-          return const Color(0xFFFEF3C7);
-        default:
-          return const Color(0xFFF3F4F6);
-      }
-    }
-
-    final chipColor = statusColor(quote.status);
-
-    return Card(
-      elevation: 1,
-      shadowColor: scheme.shadow.withOpacity(0.08),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: ui_colors.AppColors.borderSoft),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: ui_colors.AppColors.borderSoft,
-                            ),
-                          ),
-                          child: Text(
-                            quoteId == null
-                                ? 'COT-—'
-                                : 'COT-${quoteId.toString().padLeft(5, '0')}',
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'Inter',
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: chipColor.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            quote.status,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: _statusTextColor(quote.status, scheme),
-                              fontFamily: 'Inter',
-                              fontSize: 11,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          tooltip: 'Abrir detalle',
-                          onPressed: () => _showQuoteDetails(quoteDetail),
-                          icon: const Icon(Icons.open_in_new, size: 18),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      quoteDetail.clientName,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 20,
-                        fontFamily: 'Inter',
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      createdLabel,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: ui_colors.AppColors.textSecondary,
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Divider(color: ui_colors.AppColors.borderSoft, height: 16),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Productos (${quoteDetail.items.length})',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (quoteDetail.items.isEmpty)
-                      Text(
-                        'Sin productos.',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurface.withOpacity(0.7),
-                        ),
-                      )
-                    else
-                      Container(
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: ui_colors.AppColors.borderSoft,
-                          ),
-                        ),
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                SizedBox(
-                                  width: 44,
-                                  child: Text(
-                                    'Cant',
-                                    textAlign: TextAlign.center,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: ui_colors.AppColors.textSecondary,
-                                      fontFamily: 'Inter',
-                                      fontSize: 12,
-                                      letterSpacing: 0.15,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    'Producto',
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: ui_colors.AppColors.textSecondary,
-                                      fontFamily: 'Inter',
-                                      fontSize: 12,
-                                      letterSpacing: 0.15,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                SizedBox(
-                                  width: 86,
-                                  child: Text(
-                                    'Importe',
-                                    textAlign: TextAlign.right,
-                                    style: theme.textTheme.labelSmall?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      color: ui_colors.AppColors.textSecondary,
-                                      fontFamily: 'Inter',
-                                      fontSize: 12,
-                                      letterSpacing: 0.15,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              width: double.infinity,
-                              height: 1,
-                              color: ui_colors.AppColors.borderSoft,
-                            ),
-                            const SizedBox(height: 8),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxHeight: 240),
-                              child: Scrollbar(
-                                controller: _quoteItemsScrollController,
-                                thumbVisibility: quoteDetail.items.length > 4,
-                                child: ListView.separated(
-                                  controller: _quoteItemsScrollController,
-                                  primary: false,
-                                  itemCount: quoteDetail.items.length,
-                                  separatorBuilder: (context, index) =>
-                                      const SizedBox(height: 4),
-                                  itemBuilder: (context, index) {
-                                    final item = quoteDetail.items[index];
-                                    final qtyLabel = item.qty.toStringAsFixed(
-                                      item.qty % 1 == 0 ? 0 : 2,
-                                    );
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 6,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          SizedBox(
-                                            width: 44,
-                                            child: Text(
-                                              qtyLabel,
-                                              textAlign: TextAlign.center,
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w500,
-                                                    fontFamily: 'Inter',
-                                                    fontSize: 14,
-                                                  ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              item.description,
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w500,
-                                                    fontFamily: 'Inter',
-                                                    fontSize: 14,
-                                                  ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          SizedBox(
-                                            width: 86,
-                                            child: Text(
-                                              CurrencyDisplay.format(
-                                                item.totalLine,
-                                              ),
-                                              textAlign: TextAlign.right,
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w600,
-                                                    fontFamily: 'Inter',
-                                                    fontSize: 14,
-                                                    color: scheme.primary,
-                                                  ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if ((quote.notes ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        'Notas',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        quote.notes!.trim(),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: ui_colors.AppColors.textSecondary,
-                          fontFamily: 'Inter',
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                  ],
-                ),
+      child: Column(
+        children: [
+          _buildListHeader(),
+          Expanded(
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              itemCount: _filteredQuotes.length,
+              separatorBuilder: (_, __) => Divider(
+                height: 1,
+                thickness: 1,
+                color: ui_colors.AppColors.borderSoft.withOpacity(0.72),
               ),
+              itemBuilder: (context, index) {
+                final detail = _filteredQuotes[index];
+                final bool isSelected =
+                    detail.quote.id == _selectedQuoteId &&
+                    _showDetailsPanel;
+
+                return CompactQuoteRow(
+                  quoteDetail: detail,
+                  isSelected: isSelected,
+                  onTap: () => _openQuoteDetails(detail),
+                  onWhatsApp: () => _shareWhatsApp(detail),
+                  onPdf: () => _viewPDF(detail),
+                  onDownload: () => _downloadPDF(detail),
+                  onDuplicate: () => _duplicateQuote(detail),
+                  onDelete: () => _deleteQuote(detail),
+                  onConvertToTicket: () => _convertToTicket(detail),
+                );
+              },
             ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: ui_colors.AppColors.borderSoft),
-              ),
-              padding: const EdgeInsets.all(12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListHeader() {
+    const style = TextStyle(
+      color: Color(0xFF64748B),
+      fontSize: 10.5,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.35,
+      fontFamily: 'Inter',
+    );
+
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        border: Border(
+          bottom: BorderSide(color: ui_colors.AppColors.borderSoft),
+        ),
+      ),
+      child: const Row(
+        children: [
+          Expanded(flex: 2, child: Text('CÓDIGO', style: style)),
+          SizedBox(width: 16),
+          Expanded(flex: 5, child: Text('CLIENTE', style: style)),
+          SizedBox(width: 16),
+          Expanded(flex: 3, child: Text('FECHA', style: style)),
+          SizedBox(width: 16),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'TOTAL',
+              textAlign: TextAlign.right,
+              style: style,
+            ),
+          ),
+          SizedBox(width: 12),
+          SizedBox(width: 82, child: Text('ESTADO', style: style)),
+          SizedBox(width: 42),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterPanel() {
+    return Material(
+      color: Colors.white,
+      elevation: 18,
+      shadowColor: Colors.black.withOpacity(0.15),
+      child: Column(
+        children: [
+          _buildSidePanelHeader(
+            icon: Icons.tune_rounded,
+            title: 'Filtrar cotizaciones',
+            subtitle: 'Organiza y encuentra resultados con precisión.',
+            onClose: _closeSidePanels,
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 30),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Totales',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Inter',
-                    ),
+                  _filterLabel('Estado'),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedStatus,
+                    isExpanded: true,
+                    decoration: _filterInputDecoration(),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'ALL',
+                        child: Text('Todos los estados'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'OPEN',
+                        child: Text('Abierta'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'PASSED_TO_TICKET',
+                        child: Text('Pasada a ticket'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'TICKET',
+                        child: Text('Ticket'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'CONVERTED',
+                        child: Text('Convertida'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'CANCELLED',
+                        child: Text('Cancelada'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      _safeSetState(() => _selectedStatus = value);
+                      _applyFilters();
+                    },
                   ),
-                  const SizedBox(height: 10),
-                  _buildTotalsRow(
-                    label: 'Subtotal',
-                    value: money.format(quote.subtotal),
+                  const SizedBox(height: 20),
+                  _filterLabel('Período'),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<_QuoteDatePreset>(
+                    initialValue: _datePreset,
+                    isExpanded: true,
+                    decoration: _filterInputDecoration(),
+                    items: const [
+                      DropdownMenuItem(
+                        value: _QuoteDatePreset.all,
+                        child: Text('Todas las fechas'),
+                      ),
+                      DropdownMenuItem(
+                        value: _QuoteDatePreset.today,
+                        child: Text('Hoy'),
+                      ),
+                      DropdownMenuItem(
+                        value: _QuoteDatePreset.last7Days,
+                        child: Text('Últimos 7 días'),
+                      ),
+                      DropdownMenuItem(
+                        value: _QuoteDatePreset.last30Days,
+                        child: Text('Últimos 30 días'),
+                      ),
+                      DropdownMenuItem(
+                        value: _QuoteDatePreset.thisMonth,
+                        child: Text('Este mes'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      _safeSetState(() => _datePreset = value);
+                      _applyFilters();
+                    },
                   ),
-                  const SizedBox(height: 6),
-                  _buildTotalsRow(
-                    label: 'Descuento',
-                    value: quote.discountTotal > 0
-                        ? '-${money.format(quote.discountTotal)}'
-                        : money.format(0),
+                  const SizedBox(height: 20),
+                  _filterLabel('Ordenar'),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<_QuoteSort>(
+                    initialValue: _sort,
+                    isExpanded: true,
+                    decoration: _filterInputDecoration(),
+                    items: const [
+                      DropdownMenuItem(
+                        value: _QuoteSort.newest,
+                        child: Text('Más recientes'),
+                      ),
+                      DropdownMenuItem(
+                        value: _QuoteSort.oldest,
+                        child: Text('Más antiguas'),
+                      ),
+                      DropdownMenuItem(
+                        value: _QuoteSort.highest,
+                        child: Text('Mayor total'),
+                      ),
+                      DropdownMenuItem(
+                        value: _QuoteSort.lowest,
+                        child: Text('Menor total'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      _safeSetState(() => _sort = value);
+                      _applyFilters();
+                    },
                   ),
-                  const SizedBox(height: 6),
-                  _buildTotalsRow(
-                    label: quote.itbisEnabled ? 'ITBIS' : 'ITBIS (No aplica)',
-                    value: quote.itbisEnabled
-                        ? money.format(quote.itbisAmount)
-                        : '—',
-                    muted: !quote.itbisEnabled,
-                  ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 24),
                   Container(
                     width: double.infinity,
-                    height: 1,
-                    color: ui_colors.AppColors.borderSoft,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildTotalsRow(
-                    label: 'Total',
-                    value: money.format(quote.total),
-                    isTotal: true,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: ui_colors.AppColors.borderSoft,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Resultados actuales',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${_filteredQuotes.length} cotizaciones',
+                          style: const TextStyle(
+                            color: Color(0xFF172033),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed:
-                    (quote.status == 'CONVERTED' || quote.status == 'CANCELLED')
-                    ? null
-                    : () => _convertToTicket(quoteDetail),
-                icon: const Icon(Icons.receipt_long, size: 16),
-                label: const Text('Pasar a ticket'),
-                style: compactSecondaryStyle,
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                top: BorderSide(color: ui_colors.AppColors.borderSoft),
               ),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => _shareWhatsApp(quoteDetail),
-                icon: const Icon(Icons.chat, size: 16),
-                label: const Text('Enviar por WhatsApp'),
-                style: compactSecondaryStyle,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
+            child: Row(
               children: [
-                Tooltip(
-                  message: 'Ver PDF',
+                Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _viewPDF(quoteDetail),
-                    style: compactIconStyle,
-                    child: const Icon(Icons.picture_as_pdf, size: 16),
+                    onPressed: _resetFilters,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 42),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(_brandRadius),
+                      ),
+                    ),
+                    child: const Text('Limpiar'),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Tooltip(
-                  message: 'Descargar PDF',
-                  child: OutlinedButton(
-                    onPressed: () => _downloadPDF(quoteDetail),
-                    style: compactIconStyle,
-                    child: const Icon(Icons.download, size: 16),
-                  ),
-                ),
-                const Spacer(),
-                Tooltip(
-                  message: 'Duplicar',
-                  child: OutlinedButton(
-                    onPressed: () => _duplicateQuote(quoteDetail),
-                    style: compactIconStyle,
-                    child: const Icon(Icons.copy, size: 16),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Tooltip(
-                  message: 'Eliminar',
-                  child: OutlinedButton(
-                    onPressed: () => _deleteQuote(quoteDetail),
-                    style: compactDangerIconStyle,
-                    child: const Icon(Icons.delete_outline, size: 16),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: _closeSidePanels,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: ui_colors.AppColors.primaryBlue,
+                      minimumSize: const Size(0, 42),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(_brandRadius),
+                      ),
+                    ),
+                    child: const Text('Aplicar'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  InputDecoration _filterInputDecoration() {
+    return InputDecoration(
+      filled: true,
+      fillColor: const Color(0xFFF8FAFC),
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 13,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_brandRadius),
+        borderSide: const BorderSide(
+          color: ui_colors.AppColors.borderSoft,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(_brandRadius),
+        borderSide: const BorderSide(
+          color: ui_colors.AppColors.primaryBlue,
+          width: 1.2,
         ),
       ),
     );
   }
 
-  Widget _buildTotalsRow({
-    required String label,
-    required String value,
+  Widget _filterLabel(String label) {
+    return Text(
+      label,
+      style: const TextStyle(
+        color: Color(0xFF334155),
+        fontSize: 12.5,
+        fontWeight: FontWeight.w700,
+        fontFamily: 'Inter',
+      ),
+    );
+  }
+
+  Widget _buildDetailsSideSheet(QuoteDetailDto? quoteDetail) {
+    if (quoteDetail == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Material(
+      color: Colors.white,
+      elevation: 18,
+      shadowColor: Colors.black.withOpacity(0.15),
+      child: Column(
+        children: [
+          _buildSidePanelHeader(
+            icon: Icons.request_quote_outlined,
+            title: 'Detalle de cotización',
+            subtitle: 'Información, productos, totales y acciones.',
+            onClose: _closeSidePanels,
+          ),
+          Expanded(
+            child: _buildQuoteDetailsPanel(quoteDetail),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidePanelHeader({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onClose,
+  }) {
+    return Container(
+      height: 76,
+      padding: const EdgeInsets.fromLTRB(20, 14, 14, 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: ui_colors.AppColors.borderSoft),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF2FF),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(
+              icon,
+              color: ui_colors.AppColors.primaryBlue,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF172033),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 11.5,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onClose,
+            style: IconButton.styleFrom(
+              foregroundColor: const Color(0xFF475569),
+              backgroundColor: const Color(0xFFF8FAFC),
+              side: const BorderSide(
+                color: ui_colors.AppColors.borderSoft,
+              ),
+            ),
+            icon: const Icon(Icons.close_rounded, size: 19),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuoteDetailsPanel(QuoteDetailDto detail) {
+    final quote = detail.quote;
+    final DateTime createdAt =
+        DateTime.fromMillisecondsSinceEpoch(quote.createdAtMs);
+    final String createdLabel =
+        DateFormat('dd/MM/yyyy · HH:mm').format(createdAt);
+    final money = CurrencyDisplay.currency();
+
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _buildQuoteCodeChip(quote.id),
+                    const SizedBox(width: 8),
+                    _buildStatusChip(quote.status),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  detail.clientName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF172033),
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  createdLabel,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12.5,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                if ((detail.clientPhone ?? '').trim().isNotEmpty ||
+                    (detail.clientRnc ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if ((detail.clientPhone ?? '').trim().isNotEmpty)
+                        _buildInfoPill(
+                          Icons.phone_outlined,
+                          detail.clientPhone!.trim(),
+                        ),
+                      if ((detail.clientRnc ?? '').trim().isNotEmpty)
+                        _buildInfoPill(
+                          Icons.badge_outlined,
+                          detail.clientRnc!.trim(),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 20),
+                _sectionTitle('Productos (${detail.items.length})'),
+                const SizedBox(height: 10),
+                _buildProductsTable(detail),
+                if ((quote.notes ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 20),
+                  _sectionTitle('Notas'),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(13),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: ui_colors.AppColors.borderSoft,
+                      ),
+                    ),
+                    child: Text(
+                      quote.notes!.trim(),
+                      style: const TextStyle(
+                        color: Color(0xFF475569),
+                        fontSize: 13,
+                        height: 1.45,
+                        fontFamily: 'Inter',
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                _sectionTitle('Totales'),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(15),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: ui_colors.AppColors.borderSoft,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildTotalsRow(
+                        'Subtotal',
+                        money.format(quote.subtotal),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildTotalsRow(
+                        'Descuento',
+                        quote.discountTotal > 0
+                            ? '-${money.format(quote.discountTotal)}'
+                            : money.format(0),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildTotalsRow(
+                        quote.itbisEnabled ? 'ITBIS' : 'ITBIS (No aplica)',
+                        quote.itbisEnabled
+                            ? money.format(quote.itbisAmount)
+                            : '—',
+                        muted: !quote.itbisEnabled,
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Divider(
+                          height: 1,
+                          color: ui_colors.AppColors.borderSoft,
+                        ),
+                      ),
+                      _buildTotalsRow(
+                        'Total',
+                        money.format(quote.total),
+                        isTotal: true,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _buildDetailsActions(detail),
+      ],
+    );
+  }
+
+  Widget _buildQuoteCodeChip(int? quoteId) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: ui_colors.AppColors.borderSoft),
+      ),
+      child: Text(
+        quoteId == null
+            ? 'COT-—'
+            : 'COT-${quoteId.toString().padLeft(5, '0')}',
+        style: const TextStyle(
+          color: Color(0xFF475569),
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Inter',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusChip(String status) {
+    Color background;
+    Color foreground;
+
+    switch (status) {
+      case 'PASSED_TO_TICKET':
+      case 'TICKET':
+        background = const Color(0xFFFFF7E6);
+        foreground = const Color(0xFF9A5A00);
+        break;
+      case 'CONVERTED':
+        background = const Color(0xFFECFDF3);
+        foreground = const Color(0xFF027A48);
+        break;
+      case 'CANCELLED':
+        background = const Color(0xFFFEF3F2);
+        foreground = const Color(0xFFB42318);
+        break;
+      default:
+        background = const Color(0xFFF1F5F9);
+        foreground = const Color(0xFF475569);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Inter',
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoPill(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: ui_colors.AppColors.borderSoft),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF64748B)),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Color(0xFF475569),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'Inter',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: Color(0xFF334155),
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        fontFamily: 'Inter',
+      ),
+    );
+  }
+
+  Widget _buildProductsTable(QuoteDetailDto detail) {
+    if (detail.items.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: ui_colors.AppColors.borderSoft),
+        ),
+        child: const Text(
+          'Esta cotización no tiene productos.',
+          style: TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 13,
+            fontFamily: 'Inter',
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: ui_colors.AppColors.borderSoft),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(9),
+                topRight: Radius.circular(9),
+              ),
+              border: Border(
+                bottom: BorderSide(color: ui_colors.AppColors.borderSoft),
+              ),
+            ),
+            child: const Row(
+              children: [
+                SizedBox(
+                  width: 46,
+                  child: Text(
+                    'CANT.',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'PRODUCTO',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 108,
+                  child: Text(
+                    'IMPORTE',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 310),
+            child: Scrollbar(
+              controller: _quoteItemsScrollController,
+              thumbVisibility: detail.items.length > 5,
+              child: ListView.separated(
+                controller: _quoteItemsScrollController,
+                shrinkWrap: true,
+                primary: false,
+                itemCount: detail.items.length,
+                separatorBuilder: (_, __) => const Divider(
+                  height: 1,
+                  color: ui_colors.AppColors.borderSoft,
+                ),
+                itemBuilder: (context, index) {
+                  final item = detail.items[index];
+                  final String qty = item.qty.toStringAsFixed(
+                    item.qty % 1 == 0 ? 0 : 2,
+                  );
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 11,
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 46,
+                          child: Text(
+                            qty,
+                            style: const TextStyle(
+                              color: Color(0xFF475569),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            item.description,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF172033),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 108,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              CurrencyDisplay.format(item.totalLine),
+                              maxLines: 1,
+                              style: const TextStyle(
+                                color: ui_colors.AppColors.primaryBlue,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'Inter',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTotalsRow(
+    String label,
+    String value, {
     bool isTotal = false,
     bool muted = false,
   }) {
-    final theme = _theme;
-    final scheme = _scheme;
-    final baseColor = muted
-        ? scheme.onSurface.withOpacity(0.55)
-        : scheme.onSurface.withOpacity(0.9);
-    final valueColor = isTotal ? scheme.primary : baseColor;
+    final Color labelColor =
+        muted ? const Color(0xFF94A3B8) : const Color(0xFF475569);
 
     return Row(
       children: [
         Expanded(
           child: Text(
             label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style:
-                (isTotal
-                        ? theme.textTheme.titleSmall
-                        : theme.textTheme.bodySmall)
-                    ?.copyWith(
-                      fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-                      color: baseColor,
-                      fontFamily: 'Inter',
-                      fontSize: isTotal ? 15 : 14,
-                    ),
+            style: TextStyle(
+              color: labelColor,
+              fontSize: isTotal ? 14 : 12.5,
+              fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
+              fontFamily: 'Inter',
+            ),
           ),
         ),
-        const SizedBox(width: 12),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.right,
-          style:
-              (isTotal
-                      ? theme.textTheme.titleMedium
-                      : theme.textTheme.bodySmall)
-                  ?.copyWith(
-                    fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
-                    color: isTotal
-                        ? ui_colors.AppColors.primaryBlue
-                        : valueColor,
-                    fontFamily: 'Inter',
-                    fontSize: isTotal ? 23 : 14,
-                    letterSpacing: isTotal ? 0.2 : 0.0,
-                  ),
+        const SizedBox(width: 16),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerRight,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: TextStyle(
+                color: isTotal
+                    ? ui_colors.AppColors.primaryBlue
+                    : labelColor,
+                fontSize: isTotal ? 22 : 12.5,
+                fontWeight: isTotal ? FontWeight.w800 : FontWeight.w700,
+                fontFamily: 'Inter',
+              ),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  Color _statusTextColor(String status, ColorScheme scheme) {
-    switch (status) {
-      case 'OPEN':
-        return const Color(0xFF374151);
-      case 'TICKET':
-      case 'PASSED_TO_TICKET':
-        return const Color(0xFF92400E);
-      default:
-        return scheme.onSurface;
-    }
-  }
+  Widget _buildDetailsActions(QuoteDetailDto detail) {
+    final quote = detail.quote;
+    final bool cannotConvert =
+        quote.status == 'CONVERTED' || quote.status == 'CANCELLED';
 
-  Future<void> _showQuoteDetails(QuoteDetailDto quoteDetail) async {
-    final changed = await showDialog<bool>(
-      context: context,
-      builder: (context) => _QuoteDetailsDialog(quoteDetail: quoteDetail),
-    );
-
-    // Si algo cambió en el diálogo, recargar la lista
-    if (changed == true && mounted) {
-      await _loadQuotes();
-    }
-  }
-
-  Future<void> _shareWhatsApp(QuoteDetailDto quoteDetail) async {
-    try {
-      final business = await SettingsRepository.getBusinessInfo();
-
-      // Generar PDF
-      final pdfData = await QuotePrinter.generatePdf(
-        quote: quoteDetail.quote,
-        items: quoteDetail.items,
-        clientName: quoteDetail.clientName,
-        clientPhone: quoteDetail.clientPhone,
-        clientRnc: quoteDetail.clientRnc,
-        business: business,
-        validDays: 15,
-      );
-
-      // Compartir
-      await Printing.sharePdf(
-        bytes: pdfData,
-        filename: 'cotizacion_${quoteDetail.quote.id}.pdf',
-      );
-    } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: () => _shareWhatsApp(quoteDetail),
-          module: 'sales/quotes/share',
-        );
-      }
-    }
-  }
-
-  Future<void> _viewPDF(QuoteDetailDto quoteDetail) async {
-    try {
-      final business = await SettingsRepository.getBusinessInfo();
-
-      if (mounted) {
-        await QuotePrinter.showPreview(
-          context: context,
-          quote: quoteDetail.quote,
-          items: quoteDetail.items,
-          clientName: quoteDetail.clientName,
-          clientPhone: quoteDetail.clientPhone,
-          clientRnc: quoteDetail.clientRnc,
-          business: business,
-          validDays: 15,
-        );
-      }
-    } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: () => _viewPDF(quoteDetail),
-          module: 'sales/quotes/pdf_preview',
-        );
-      }
-    }
-  }
-
-  /// Descargar cotización como PDF a la carpeta de Descargas
-  Future<void> _downloadPDF(QuoteDetailDto quoteDetail) async {
-    try {
-      // Mostrar indicador de carga
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: ColorUtils.readableTextColor(_status.info),
-                  ),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 14, 22, 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: ui_colors.AppColors.borderSoft),
+        ),
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  cannotConvert ? null : () => _convertToTicket(detail),
+              style: FilledButton.styleFrom(
+                backgroundColor: ui_colors.AppColors.primaryBlue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 43),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(_brandRadius),
                 ),
-                SizedBox(width: 12),
-                Text('Generando PDF...'),
-              ],
-            ),
-            duration: Duration(seconds: 1),
-            backgroundColor: _status.info,
-          ),
-        );
-      }
-
-      final business = await SettingsRepository.getBusinessInfo();
-
-      // Generar PDF
-      final pdfData = await QuotePrinter.generatePdf(
-        quote: quoteDetail.quote,
-        items: quoteDetail.items,
-        clientName: quoteDetail.clientName,
-        clientPhone: quoteDetail.clientPhone,
-        clientRnc: quoteDetail.clientRnc,
-        business: business,
-        validDays: 15,
-      );
-
-      // Obtener carpeta de descargas
-      Directory? downloadDir;
-      if (Platform.isWindows) {
-        // En Windows, usar la carpeta de Descargas del usuario
-        final userProfile = Platform.environment['USERPROFILE'];
-        if (userProfile != null) {
-          downloadDir = Directory('$userProfile\\Downloads');
-        }
-      } else if (Platform.isAndroid) {
-        downloadDir = Directory('/storage/emulated/0/Download');
-      } else {
-        downloadDir = await getDownloadsDirectory();
-      }
-
-      // Fallback a documentos si no existe Descargas
-      downloadDir ??= await getApplicationDocumentsDirectory();
-
-      // Crear nombre de archivo único con fecha
-      final now = DateTime.now();
-      final dateStr = DateFormat('yyyyMMdd_HHmmss').format(now);
-      final quoteCode =
-          'COT-${quoteDetail.quote.id!.toString().padLeft(5, '0')}';
-      final fileName = '${quoteCode}_$dateStr.pdf';
-      final filePath = '${downloadDir.path}${Platform.pathSeparator}$fileName';
-
-      // Guardar archivo
-      final file = File(filePath);
-      await file.writeAsBytes(pdfData);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  color: ColorUtils.readableTextColor(_status.success),
+              ),
+              icon: const Icon(Icons.receipt_long_rounded, size: 18),
+              label: const Text(
+                'Pasar a ticket',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Inter',
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '✅ PDF descargado correctamente',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      Text(fileName, style: const TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: _status.success,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'ABRIR',
-              textColor: ColorUtils.readableTextColor(_status.success),
-              onPressed: () async {
-                // Intentar abrir el archivo
-                try {
-                  if (Platform.isWindows) {
-                    await Process.run('explorer.exe', [filePath]);
-                  }
-                } catch (_) {}
-              },
+              ),
             ),
           ),
-        );
-      }
-    } catch (e, st) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: () => _downloadPDF(quoteDetail),
-          module: 'sales/quotes/pdf_download',
-        );
-      }
-    }
-  }
-
-  /// Duplicar una cotización
-  Future<void> _duplicateQuote(QuoteDetailDto quoteDetail) async {
-    // Validación: Verificar que hay items en la cotización
-    if (quoteDetail.items.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '❌ No se puede duplicar una cotización sin productos',
+          const SizedBox(height: 9),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _shareWhatsApp(detail),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: ui_colors.AppColors.primaryBlue,
+                minimumSize: const Size(0, 41),
+                side: const BorderSide(
+                  color: ui_colors.AppColors.borderSoft,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(_brandRadius),
+                ),
+              ),
+              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 17),
+              label: const Text(
+                'Enviar por WhatsApp',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Inter',
+                ),
+              ),
             ),
-            backgroundColor: _status.error,
-            duration: Duration(seconds: 3),
           ),
-        );
-      }
-      return;
-    }
-
-    // Validación: Verificar que todos los items tengan precio válido
-    final hasInvalidPrices = quoteDetail.items.any((item) => item.price <= 0);
-    if (hasInvalidPrices) {
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: Icon(Icons.warning, color: _status.warning, size: 48),
-            title: const Text('ADVERTENCIA'),
-            content: const Text(
-              'Algunos productos en esta cotización tienen precio cero o inválido. Se duplicarán pero verifique los precios.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              Expanded(
+                child: _smallActionButton(
+                  icon: Icons.picture_as_pdf_outlined,
+                  label: 'Ver PDF',
+                  onPressed: () => _viewPDF(detail),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _smallActionButton(
+                  icon: Icons.download_rounded,
+                  label: 'Descargar',
+                  onPressed: () => _downloadPDF(detail),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _smallActionButton(
+                  icon: Icons.copy_rounded,
+                  label: 'Duplicar',
+                  onPressed: () => _duplicateQuote(detail),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _smallActionButton(
+                icon: Icons.delete_outline_rounded,
+                label: '',
+                danger: true,
+                onPressed: () => _deleteQuote(detail),
               ),
             ],
           ),
-        );
+        ],
+      ),
+    );
+  }
+
+  Widget _smallActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    bool danger = false,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor:
+            danger ? const Color(0xFFB42318) : const Color(0xFF475569),
+        backgroundColor:
+            danger ? const Color(0xFFFEF3F2) : Colors.white,
+        side: BorderSide(
+          color: danger
+              ? const Color(0xFFFECACA)
+              : ui_colors.AppColors.borderSoft,
+        ),
+        minimumSize: Size(label.isEmpty ? 42 : 0, 39),
+        padding: EdgeInsets.symmetric(
+          horizontal: label.isEmpty ? 11 : 10,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(_brandRadius),
+        ),
+      ),
+      icon: Icon(icon, size: 16),
+      label: label.isEmpty
+          ? const SizedBox.shrink()
+          : Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Inter',
+              ),
+            ),
+    );
+  }
+
+  Future<void> _shareWhatsApp(QuoteDetailDto detail) async {
+    try {
+      final business = await SettingsRepository.getBusinessInfo();
+
+      final pdfData = await QuotePrinter.generatePdf(
+        quote: detail.quote,
+        items: detail.items,
+        clientName: detail.clientName,
+        clientPhone: detail.clientPhone,
+        clientRnc: detail.clientRnc,
+        business: business,
+        validDays: 15,
+      );
+
+      await Printing.sharePdf(
+        bytes: pdfData,
+        filename: 'cotizacion_${detail.quote.id}.pdf',
+      );
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: context,
+        onRetry: () => _shareWhatsApp(detail),
+        module: 'sales/quotes/share',
+      );
+    }
+  }
+
+  Future<void> _viewPDF(QuoteDetailDto detail) async {
+    try {
+      final business = await SettingsRepository.getBusinessInfo();
+
+      if (!mounted) return;
+
+      await QuotePrinter.showPreview(
+        context: context,
+        quote: detail.quote,
+        items: detail.items,
+        clientName: detail.clientName,
+        clientPhone: detail.clientPhone,
+        clientRnc: detail.clientRnc,
+        business: business,
+        validDays: 15,
+      );
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: context,
+        onRetry: () => _viewPDF(detail),
+        module: 'sales/quotes/pdf_preview',
+      );
+    }
+  }
+
+  Future<void> _downloadPDF(QuoteDetailDto detail) async {
+    try {
+      final business = await SettingsRepository.getBusinessInfo();
+
+      final pdfData = await QuotePrinter.generatePdf(
+        quote: detail.quote,
+        items: detail.items,
+        clientName: detail.clientName,
+        clientPhone: detail.clientPhone,
+        clientRnc: detail.clientRnc,
+        business: business,
+        validDays: 15,
+      );
+
+      Directory? downloadDirectory;
+
+      if (Platform.isWindows) {
+        final String? userProfile = Platform.environment['USERPROFILE'];
+        if (userProfile != null) {
+          downloadDirectory = Directory('$userProfile\\Downloads');
+        }
+      } else if (Platform.isAndroid) {
+        downloadDirectory = Directory('/storage/emulated/0/Download');
+      } else {
+        downloadDirectory = await getDownloadsDirectory();
       }
+
+      downloadDirectory ??= await getApplicationDocumentsDirectory();
+
+      final String date =
+          DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final String quoteCode =
+          'COT-${detail.quote.id!.toString().padLeft(5, '0')}';
+      final String filename = '${quoteCode}_$date.pdf';
+      final String filePath =
+          '${downloadDirectory.path}${Platform.pathSeparator}$filename';
+
+      final file = File(filePath);
+      await file.writeAsBytes(pdfData);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('PDF descargado: $filename'),
+          backgroundColor: _status.success,
+          duration: const Duration(seconds: 4),
+          action: Platform.isWindows
+              ? SnackBarAction(
+                  label: 'ABRIR',
+                  textColor:
+                      ColorUtils.readableTextColor(_status.success),
+                  onPressed: () async {
+                    try {
+                      await Process.run('explorer.exe', <String>[filePath]);
+                    } catch (_) {}
+                  },
+                )
+              : null,
+        ),
+      );
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+
+      await ErrorHandler.instance.handle(
+        error,
+        stackTrace: stackTrace,
+        context: context,
+        onRetry: () => _downloadPDF(detail),
+        module: 'sales/quotes/pdf_download',
+      );
+    }
+  }
+
+  Future<void> _duplicateQuote(QuoteDetailDto detail) async {
+    if (detail.items.isEmpty) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'No se puede duplicar una cotización sin productos.',
+          ),
+          backgroundColor: _status.error,
+        ),
+      );
+      return;
     }
 
     try {
-      debugPrint('📋 Duplicando cotización ID: ${quoteDetail.quote.id}...');
       await DbHardening.instance.runDbSafe(
-        () => QuotesRepository().duplicateQuote(quoteDetail.quote.id!),
+        () => QuotesRepository().duplicateQuote(detail.quote.id!),
         stage: 'sales/quotes/duplicate',
       );
-      if (!mounted) return;
 
-      debugPrint('✅ Cotización duplicada. Recargando lista...');
-      // ✅ IMPORTANTE: Recargar la lista ANTES de cerrar
       await _loadQuotes();
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Cotización duplicada exitosamente'),
+          content: const Text('Cotización duplicada correctamente.'),
           backgroundColor: _status.success,
         ),
       );
-    } catch (e, stack) {
-      debugPrint('❌ Error al duplicar cotización: $e');
-      debugPrint('Stack trace: $stack');
+    } catch (error, stackTrace) {
       if (!mounted) return;
+
       await ErrorHandler.instance.handle(
-        e,
-        stackTrace: stack,
+        error,
+        stackTrace: stackTrace,
         context: context,
-        onRetry: () => _duplicateQuote(quoteDetail),
+        onRetry: () => _duplicateQuote(detail),
         module: 'sales/quotes/duplicate',
       );
     }
   }
 
-  /// Eliminar una cotización con confirmación
-  Future<void> _deleteQuote(QuoteDetailDto quoteDetail) async {
-    // Advertencia especial si la cotización fue convertida
-    final isConverted = quoteDetail.quote.status == 'CONVERTED';
-
-    final confirm = await showDialog<bool>(
+  Future<void> _deleteQuote(QuoteDetailDto detail) async {
+    final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar Cotización'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '¿Está seguro que desea eliminar la cotización #${quoteDetail.quote.id}?\n'
-              'Esta acción no se puede deshacer.',
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Eliminar cotización'),
+          content: Text(
+            '¿Deseas eliminar la cotización '
+            '#${detail.quote.id}? Esta acción no se puede deshacer.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
             ),
-            if (isConverted) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _status.error.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _status.error),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error, color: _status.error),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Esta cotización ya fue convertida a venta. Solo se eliminará el registro.',
-                        style: TextStyle(fontSize: 12, color: _status.error),
-                      ),
-                    ),
-                  ],
-                ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: _status.error,
               ),
-            ] else ...[
-              const SizedBox(height: 8),
-            ],
+              child: const Text('Eliminar'),
+            ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('Eliminar', style: TextStyle(color: _status.error)),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
-    if (confirm != true) return;
+    if (confirmed != true) return;
 
     try {
-      debugPrint('🗑️  Eliminando cotización ID: ${quoteDetail.quote.id}...');
       await DbHardening.instance.runDbSafe(
-        () => QuotesRepository().deleteQuote(quoteDetail.quote.id!),
+        () => QuotesRepository().deleteQuote(detail.quote.id!),
         stage: 'sales/quotes/delete',
       );
-      if (!mounted) return;
 
-      debugPrint('✅ Cotización eliminada. Recargando lista...');
-      // ✅ IMPORTANTE: Recargar la lista ANTES de cualquier navegación
+      _closeSidePanels();
       await _loadQuotes();
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Cotización eliminada'),
+          content: const Text('Cotización eliminada.'),
           backgroundColor: _status.error,
         ),
       );
-    } catch (e, stack) {
-      debugPrint('❌ Error al eliminar cotización: $e');
-      debugPrint('Stack trace: $stack');
+    } catch (error, stackTrace) {
       if (!mounted) return;
+
       await ErrorHandler.instance.handle(
-        e,
-        stackTrace: stack,
+        error,
+        stackTrace: stackTrace,
         context: context,
-        onRetry: () => _deleteQuote(quoteDetail),
+        onRetry: () => _deleteQuote(detail),
         module: 'sales/quotes/delete',
       );
     }
   }
 
-  /// Pasar cotización a ticket pendiente (caja)
-  Future<void> _convertToTicket(QuoteDetailDto quoteDetail) async {
+  Future<void> _convertToTicket(QuoteDetailDto detail) async {
     try {
-      final quote = quoteDetail.quote;
-
-      debugPrint(
-        '🎫 [UI] Iniciando conversión de cotización #${quote.id} a ticket pendiente',
-      );
+      final quote = detail.quote;
 
       if (quote.status == 'PASSED_TO_TICKET') {
         if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              '⚠️ Esta cotización ya fue convertida a ticket pendiente',
+            content: const Text(
+              'Esta cotización ya fue pasada a ticket pendiente.',
             ),
             backgroundColor: _status.warning,
           ),
@@ -1346,692 +1930,43 @@ class _QuotesPageState extends State<QuotesPage> {
         return;
       }
 
-      // Usar el nuevo conversor transaccional
-      final currentUserId = await SessionManager.userId();
-      final ticketId = await QuoteToTicketConverter.convertQuoteToTicket(
+      final int? currentUserId = await SessionManager.userId();
+
+      final int ticketId =
+          await QuoteToTicketConverter.convertQuoteToTicket(
         quoteId: quote.id!,
-        // Importante: Ventas lista tickets por el usuario en sesión.
-        // Si usamos quote.userId (dueño original), el ticket puede no aparecer.
         userId: currentUserId ?? quote.userId,
       );
 
-      if (!mounted) return;
-
-      debugPrint(
-        '🎉 [UI] Cotización convertida exitosamente a ticket #$ticketId',
-      );
-
-      // ✅ IMPORTANTE: Recargar la lista ANTES de mostrar mensajes
       await _loadQuotes();
 
       if (!mounted) return;
 
-      // Mostrar mensaje de éxito
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '✅ Cotización convertida a ticket pendiente #$ticketId',
+            'Cotización convertida a ticket pendiente #$ticketId.',
           ),
           backgroundColor: _status.success,
           duration: const Duration(seconds: 3),
         ),
       );
 
-      // Navegar a Ventas después de 1 segundo para que vea el mensaje
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return;
-      context.go('/sales?ticketId=$ticketId');
-    } catch (e, stack) {
-      debugPrint('❌ [UI] Error al convertir a ticket: $e');
-      debugPrint('Stack: $stack');
+      await Future<void>.delayed(const Duration(milliseconds: 700));
 
+      if (!mounted) return;
+
+      context.go('/sales?ticketId=$ticketId');
+    } catch (error, stackTrace) {
       if (!mounted) return;
 
       await ErrorHandler.instance.handle(
-        e,
-        stackTrace: stack,
+        error,
+        stackTrace: stackTrace,
         context: context,
-        onRetry: () => _convertToTicket(quoteDetail),
+        onRetry: () => _convertToTicket(detail),
         module: 'sales/quotes/convert_ticket',
       );
     }
-  }
-}
-
-// Dialog para mostrar detalles de cotización
-class _QuoteDetailsDialog extends StatefulWidget {
-  final QuoteDetailDto quoteDetail;
-
-  const _QuoteDetailsDialog({required this.quoteDetail});
-
-  @override
-  State<_QuoteDetailsDialog> createState() => _QuoteDetailsDialogState();
-}
-
-class _QuoteDetailsDialogState extends State<_QuoteDetailsDialog> {
-  bool _isLoading = false;
-
-  ThemeData get _theme => Theme.of(context);
-  ColorScheme get _scheme => _theme.colorScheme;
-  AppStatusTheme get _status =>
-      _theme.extension<AppStatusTheme>() ??
-      AppStatusTheme(
-        success: _scheme.primary,
-        warning: _scheme.tertiary,
-        error: _scheme.error,
-        info: _scheme.secondary,
-      );
-
-  void _safeSetState(VoidCallback fn) {
-    if (!mounted) return;
-    setState(fn);
-  }
-
-  /// Cierra el diálogo con un resultado (true = algo cambió)
-  void _closeDialog([bool changed = false]) {
-    Navigator.pop(context, changed);
-  }
-
-  Future<void> _viewPDF() async {
-    _safeSetState(() => _isLoading = true);
-    try {
-      final business = await SettingsRepository.getBusinessInfo();
-
-      if (mounted) {
-        await QuotePrinter.showPreview(
-          context: context,
-          quote: widget.quoteDetail.quote,
-          items: widget.quoteDetail.items,
-          clientName: widget.quoteDetail.clientName,
-          clientPhone: widget.quoteDetail.clientPhone,
-          clientRnc: widget.quoteDetail.clientRnc,
-          business: business,
-          validDays: 15,
-        );
-      }
-    } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: _viewPDF,
-          module: 'sales/quotes/dialog_pdf_preview',
-        );
-      }
-    } finally {
-      _safeSetState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _printQuote() async {
-    _safeSetState(() => _isLoading = true);
-    try {
-      final business = await SettingsRepository.getBusinessInfo();
-      final settings = await PrinterSettingsRepository.getOrCreate();
-
-      final success = await QuotePrinter.printQuote(
-        quote: widget.quoteDetail.quote,
-        items: widget.quoteDetail.items,
-        clientName: widget.quoteDetail.clientName,
-        clientPhone: widget.quoteDetail.clientPhone,
-        clientRnc: widget.quoteDetail.clientRnc,
-        business: business,
-        settings: settings,
-        validDays: 15,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success ? '✅ Cotización impresa' : '❌ Error al imprimir',
-            ),
-            backgroundColor: success ? _status.success : _status.error,
-          ),
-        );
-      }
-    } catch (e, st) {
-      if (mounted) {
-        await ErrorHandler.instance.handle(
-          e,
-          stackTrace: st,
-          context: context,
-          onRetry: _printQuote,
-          module: 'sales/quotes/dialog_print',
-        );
-      }
-    } finally {
-      _safeSetState(() => _isLoading = false);
-    }
-  }
-
-  /// Duplicar cotización desde el diálogo
-  Future<void> _duplicateQuoteFromDialog() async {
-    _safeSetState(() => _isLoading = true);
-    try {
-      // Validación: Verificar que hay items en la cotización
-      if (widget.quoteDetail.items.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '❌ No se puede duplicar una cotización sin productos',
-              ),
-              backgroundColor: _status.error,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-        return;
-      }
-
-      // Validación: Verificar que todos los items tengan precio válido
-      final hasInvalidPrices = widget.quoteDetail.items.any(
-        (item) => item.price <= 0,
-      );
-      if (hasInvalidPrices) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              icon: Icon(Icons.warning, color: _status.warning, size: 48),
-              title: const Text('ADVERTENCIA'),
-              content: const Text(
-                'Algunos productos en esta cotización tienen precio cero o inválido. Se duplicarán pero verifique los precios.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-
-      // Duplicar la cotización
-      await DbHardening.instance.runDbSafe(
-        () => QuotesRepository().duplicateQuote(widget.quoteDetail.quote.id!),
-        stage: 'sales/quotes/duplicate_dialog',
-      );
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ Cotización duplicada exitosamente'),
-          backgroundColor: _status.success,
-        ),
-      );
-
-      // Cerrar el diálogo indicando que hubo un cambio
-      _closeDialog(true);
-    } catch (e, st) {
-      if (!mounted) return;
-      await ErrorHandler.instance.handle(
-        e,
-        stackTrace: st,
-        context: context,
-        onRetry: _duplicateQuoteFromDialog,
-        module: 'sales/quotes/dialog_duplicate',
-      );
-    } finally {
-      _safeSetState(() => _isLoading = false);
-    }
-  }
-
-  /// Eliminar cotización desde el diálogo
-  Future<void> _deleteQuoteFromDialog() async {
-    // Advertencia especial si la cotización fue convertida
-    final isConverted = widget.quoteDetail.quote.status == 'CONVERTED';
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar Cotización'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '¿Está seguro que desea eliminar la cotización #${widget.quoteDetail.quote.id}?\n'
-              'Esta acción no se puede deshacer.',
-            ),
-            if (isConverted) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _status.error.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _status.error),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error, color: _status.error),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Esta cotización ya fue convertida a venta. Solo se eliminará el registro.',
-                        style: TextStyle(fontSize: 12, color: _status.error),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ] else ...[
-              const SizedBox(height: 8),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text('Eliminar', style: TextStyle(color: _status.error)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    try {
-      _safeSetState(() => _isLoading = true);
-      debugPrint(
-        '🗑️  Eliminando cotización ID: ${widget.quoteDetail.quote.id}...',
-      );
-      await DbHardening.instance.runDbSafe(
-        () => QuotesRepository().deleteQuote(widget.quoteDetail.quote.id!),
-        stage: 'sales/quotes/delete_dialog',
-      );
-
-      if (!mounted) return;
-
-      debugPrint('✅ Cotización eliminada');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ Cotización eliminada'),
-          backgroundColor: _status.error,
-        ),
-      );
-
-      // Cerrar el diálogo indicando que hubo un cambio
-      _closeDialog(true);
-    } catch (e, stack) {
-      debugPrint('❌ Error al eliminar cotización: $e');
-      debugPrint('Stack trace: $stack');
-      if (!mounted) return;
-      await ErrorHandler.instance.handle(
-        e,
-        stackTrace: stack,
-        context: context,
-        onRetry: _deleteQuoteFromDialog,
-        module: 'sales/quotes/dialog_delete',
-      );
-    } finally {
-      _safeSetState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = _scheme;
-    final status = _status;
-    final headerForeground = ColorUtils.readableTextColor(scheme.primary);
-    final scale = uiScale(context);
-    final mq = MediaQuery.of(context);
-    final maxWidth = (mq.size.width * 0.92).clamp(320.0, 720.0);
-    final maxHeight = (mq.size.height * 0.9).clamp(420.0, 860.0);
-    final footerBackground = scheme.surfaceContainerHighest;
-    final pdfColor = ColorUtils.ensureReadableColor(
-      scheme.secondary,
-      footerBackground,
-    );
-    final printColor = ColorUtils.ensureReadableColor(
-      scheme.primary,
-      footerBackground,
-    );
-    final duplicateColor = ColorUtils.ensureReadableColor(
-      scheme.tertiary,
-      footerBackground,
-    );
-    final deleteColor = ColorUtils.ensureReadableColor(
-      status.error,
-      footerBackground,
-    );
-    final quote = widget.quoteDetail.quote;
-    final dateFormatter = DateFormat('dd/MM/yyyy HH:mm');
-
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
-        child: Column(
-          children: [
-            // Header
-            Container(
-              padding: EdgeInsets.all(18 * scale),
-              decoration: BoxDecoration(
-                color: scheme.primary,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.description, color: headerForeground, size: 28),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'COT-${quote.id!.toString().padLeft(5, '0')}',
-                          style: TextStyle(
-                            color: headerForeground,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          dateFormatter.format(
-                            DateTime.fromMillisecondsSinceEpoch(
-                              quote.createdAtMs,
-                            ),
-                          ),
-                          style: TextStyle(
-                            color: headerForeground.withOpacity(0.8),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: headerForeground),
-                    onPressed: () => _closeDialog(false),
-                  ),
-                ],
-              ),
-            ),
-            // Body
-            Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.all(18 * scale),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Cliente
-                    _buildInfoSection('Cliente', [
-                      _buildInfoRow('Nombre', widget.quoteDetail.clientName),
-                      if ((widget.quoteDetail.clientPhone ?? '')
-                          .trim()
-                          .isNotEmpty)
-                        _buildInfoRow(
-                          'Teléfono',
-                          widget.quoteDetail.clientPhone!,
-                        ),
-                      if (widget.quoteDetail.clientRnc != null)
-                        _buildInfoRow('RNC', widget.quoteDetail.clientRnc!),
-                    ]),
-                    SizedBox(height: 16 * scale),
-                    // Items
-                    _buildInfoSection(
-                      'Productos (${widget.quoteDetail.items.length})',
-                      widget.quoteDetail.items
-                          .map((item) => _buildItemRow(item))
-                          .toList(),
-                    ),
-                    SizedBox(height: 16 * scale),
-                    // Totales
-                    _buildTotalsSection(quote),
-                  ],
-                ),
-              ),
-            ),
-            // Footer
-            Container(
-              padding: EdgeInsets.all(14 * scale),
-              decoration: BoxDecoration(
-                color: footerBackground,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
-                ),
-              ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    // Botón Ver PDF
-                    OutlinedButton.icon(
-                      onPressed: _isLoading ? null : _viewPDF,
-                      icon: const Icon(Icons.picture_as_pdf, size: 18),
-                      label: const Text('VER PDF'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: pdfColor,
-                        side: BorderSide(color: pdfColor),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Botón Imprimir
-                    OutlinedButton.icon(
-                      onPressed: _isLoading ? null : _printQuote,
-                      icon: const Icon(Icons.print, size: 18),
-                      label: const Text('IMPRIMIR'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: printColor,
-                        side: BorderSide(color: printColor),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Botón Duplicar
-                    OutlinedButton.icon(
-                      onPressed: _isLoading
-                          ? null
-                          : () => _duplicateQuoteFromDialog(),
-                      icon: const Icon(Icons.content_copy, size: 18),
-                      label: const Text('DUPLICAR'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: duplicateColor,
-                        side: BorderSide(color: duplicateColor),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Botón Eliminar
-                    OutlinedButton.icon(
-                      onPressed: _isLoading ? null : _deleteQuoteFromDialog,
-                      icon: const Icon(Icons.delete, size: 18),
-                      label: const Text('ELIMINAR'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: deleteColor,
-                        side: BorderSide(color: deleteColor),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () => _closeDialog(false),
-                      child: const Text('Cerrar'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoSection(String title, List<Widget> children) {
-    final scheme = _scheme;
-    final sectionBackground = scheme.surfaceContainerHighest;
-    final sectionForeground = ColorUtils.ensureReadableColor(
-      scheme.onSurface,
-      sectionBackground,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: scheme.primary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: sectionBackground,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: scheme.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: children
-                .map(
-                  (child) => DefaultTextStyle.merge(
-                    style: TextStyle(color: sectionForeground),
-                    child: child,
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    final scheme = _scheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Text(
-            '$label: ',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: scheme.onSurface.withOpacity(0.6),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(fontSize: 14, color: scheme.onSurface),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildItemRow(QuoteItemModel item) {
-    final scheme = _scheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 3,
-            child: Text(item.description, style: const TextStyle(fontSize: 14)),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '${item.qty.toStringAsFixed(0)} x ${CurrencyDisplay.format(item.price, symbol: r'$')}',
-            style: TextStyle(
-              fontSize: 13,
-              color: scheme.onSurface.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            CurrencyDisplay.format(item.totalLine, symbol: r'$'),
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTotalsSection(QuoteModel quote) {
-    final scheme = _scheme;
-    final background = scheme.primaryContainer;
-    final foreground = ColorUtils.readableTextColor(background);
-    final muted = foreground.withOpacity(0.85);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.primary, width: 2),
-      ),
-      child: Column(
-        children: [
-          _buildTotalRow('Subtotal', quote.subtotal, textColor: muted),
-          if (quote.discountTotal > 0)
-            _buildTotalRow('Descuento', -quote.discountTotal, textColor: muted),
-          if (quote.itbisEnabled)
-            _buildTotalRow(
-              'ITBIS (${(quote.itbisRate * 100).toStringAsFixed(0)}%)',
-              quote.itbisAmount,
-              textColor: muted,
-            ),
-          Divider(height: 20, color: foreground.withOpacity(0.35)),
-          _buildTotalRow(
-            'TOTAL',
-            quote.total,
-            bold: true,
-            large: true,
-            textColor: foreground,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTotalRow(
-    String label,
-    double amount, {
-    bool bold = false,
-    bool large = false,
-    Color? textColor,
-  }) {
-    final scheme = _scheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: large ? 18 : 15,
-              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-              color: textColor,
-            ),
-          ),
-          Text(
-            CurrencyDisplay.format(amount, symbol: r'$'),
-            style: TextStyle(
-              fontSize: large ? 20 : 15,
-              fontWeight: bold ? FontWeight.bold : FontWeight.w600,
-              color: large ? textColor : textColor ?? scheme.onSurface,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
