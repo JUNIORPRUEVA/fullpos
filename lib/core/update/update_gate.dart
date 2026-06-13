@@ -1,21 +1,32 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../config/app_config.dart';
+import '../errors/error_handler.dart';
+import '../logging/app_logger.dart';
 import 'app_update_coordinator.dart';
 
 class UpdateGate extends StatefulWidget {
-  const UpdateGate({super.key, required this.child});
+  const UpdateGate({super.key, required this.child, this.coordinator});
 
   final Widget child;
+  final AppUpdateCoordinator? coordinator;
 
   @override
   State<UpdateGate> createState() => _UpdateGateState();
 }
 
 class _UpdateGateState extends State<UpdateGate> {
-  final coordinator = AppUpdateCoordinator.instance;
+  late final AppUpdateCoordinator coordinator =
+      widget.coordinator ?? AppUpdateCoordinator.instance;
   int _shownPresentationToken = 0;
+  bool _optionalDialogScheduled = false;
+  bool _optionalDialogVisible = false;
+  Timer? _navigatorRetryTimer;
+  AppUpdatePhase? _lastLoggedPhase;
+  int _lastLoggedPresentationToken = -1;
 
   @override
   void initState() {
@@ -25,6 +36,7 @@ class _UpdateGateState extends State<UpdateGate> {
 
   @override
   void dispose() {
+    _navigatorRetryTimer?.cancel();
     coordinator.removeListener(_onStateChanged);
     super.dispose();
   }
@@ -32,86 +44,187 @@ class _UpdateGateState extends State<UpdateGate> {
   void _onStateChanged() {
     if (!mounted) return;
     final state = coordinator.state;
+    if (_lastLoggedPhase != state.phase ||
+        _lastLoggedPresentationToken != state.presentationToken) {
+      _lastLoggedPhase = state.phase;
+      _lastLoggedPresentationToken = state.presentationToken;
+      _log(
+        'Update state received phase=${state.phase.name} '
+        'presentationToken=${state.presentationToken}',
+      );
+    }
     if (state.phase == AppUpdatePhase.optional &&
         state.presentationToken > _shownPresentationToken) {
-      _shownPresentationToken = state.presentationToken;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(_showOptionalDialog());
-      });
+      _scheduleOptionalDialog(state.presentationToken);
     }
     setState(() {});
   }
 
-  Future<void> _showOptionalDialog() async {
+  void _scheduleOptionalDialog(int presentationToken) {
+    if (!mounted || presentationToken <= _shownPresentationToken) return;
+    if (_optionalDialogVisible) {
+      _log(
+        'Optional update dialog skipped because it is already visible '
+        'presentationToken=$presentationToken',
+      );
+      return;
+    }
+    if (_optionalDialogScheduled) {
+      _log(
+        'Optional update dialog skipped because presentation is already '
+        'scheduled presentationToken=$presentationToken',
+      );
+      return;
+    }
+
+    _optionalDialogScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _optionalDialogScheduled = false;
+      if (!mounted) return;
+      unawaited(_showOptionalDialog(presentationToken));
+    });
+  }
+
+  void _retryWhenNavigatorIsReady(int presentationToken) {
+    if (_navigatorRetryTimer?.isActive ?? false) return;
+    _navigatorRetryTimer = Timer(const Duration(milliseconds: 100), () {
+      _navigatorRetryTimer = null;
+      if (!mounted) return;
+      final state = coordinator.state;
+      if (state.phase != AppUpdatePhase.optional ||
+          state.presentationToken != presentationToken ||
+          presentationToken <= _shownPresentationToken) {
+        return;
+      }
+      _scheduleOptionalDialog(presentationToken);
+      WidgetsBinding.instance.scheduleFrame();
+    });
+  }
+
+  Future<void> _showOptionalDialog(int presentationToken) async {
     final state = coordinator.state;
     final policy = state.policy;
     final installed = state.installed;
     if (policy == null ||
         installed == null ||
-        state.phase != AppUpdatePhase.optional) {
+        state.phase != AppUpdatePhase.optional ||
+        state.presentationToken != presentationToken ||
+        presentationToken <= _shownPresentationToken) {
       return;
     }
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          title: const Text('Nueva versión disponible'),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Hay una nueva versión de FullPOS disponible con mejoras de estabilidad, seguridad y funcionamiento.',
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Versión instalada: ${installed.semantic}+${installed.build}',
-                ),
-                Text('Versión disponible: ${policy.latest}'),
-                const SizedBox(height: 12),
-                Text(
-                  policy.releaseTitle,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                ...policy.releaseNotes.map(
-                  (note) => Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text('• $note'),
+
+    final navigator = ErrorHandler.navigatorKey.currentState;
+    final navigatorContext = navigator?.overlay?.context;
+    if (!mounted ||
+        navigator == null ||
+        !navigator.mounted ||
+        navigatorContext == null ||
+        !navigatorContext.mounted) {
+      _log(
+        'Optional update navigator context unavailable; retry scheduled '
+        'presentationToken=$presentationToken',
+        warning: true,
+      );
+      _retryWhenNavigatorIsReady(presentationToken);
+      return;
+    }
+
+    if (_optionalDialogVisible) {
+      _log(
+        'Optional update dialog skipped because it is already visible '
+        'presentationToken=$presentationToken',
+      );
+      return;
+    }
+
+    _log(
+      'Root navigator ready for optional update '
+      'presentationToken=$presentationToken',
+    );
+    _optionalDialogVisible = true;
+    _shownPresentationToken = presentationToken;
+    _log('Optional update dialog shown presentationToken=$presentationToken');
+
+    try {
+      await showDialog<void>(
+        context: navigatorContext,
+        useRootNavigator: true,
+        barrierDismissible: false,
+        builder: (dialogContext) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('Nueva versión disponible'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Hay una nueva versión de FullPOS disponible con mejoras de estabilidad, seguridad y funcionamiento.',
                   ),
-                ),
-                if (policy.installerSizeBytes != null) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    'Versión instalada: ${installed.semantic}+${installed.build}',
+                  ),
+                  Text('Versión disponible: ${policy.latest}'),
                   const SizedBox(height: 12),
                   Text(
-                    'Descarga aproximada: ${_formatBytes(policy.installerSizeBytes!)}',
+                    policy.releaseTitle,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
+                  ...policy.releaseNotes.map(
+                    (note) => Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text('• $note'),
+                    ),
+                  ),
+                  if (policy.installerSizeBytes != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Descarga aproximada: ${_formatBytes(policy.installerSizeBytes!)}',
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext, rootNavigator: true).pop();
+                  coordinator.dismissOptional();
+                },
+                child: const Text('Más tarde'),
+              ),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogContext, rootNavigator: true).pop();
+                  unawaited(coordinator.downloadAndInstall());
+                },
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Actualizar ahora'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                coordinator.dismissOptional();
-              },
-              child: const Text('Más tarde'),
-            ),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                unawaited(coordinator.downloadAndInstall());
-              },
-              icon: const Icon(Icons.download_rounded),
-              label: const Text('Actualizar ahora'),
-            ),
-          ],
         ),
-      ),
-    );
+      );
+    } finally {
+      _optionalDialogVisible = false;
+      if (mounted) {
+        final latestState = coordinator.state;
+        if (latestState.phase == AppUpdatePhase.optional &&
+            latestState.presentationToken > _shownPresentationToken) {
+          _scheduleOptionalDialog(latestState.presentationToken);
+        }
+      }
+    }
+  }
+
+  void _log(String message, {bool warning = false}) {
+    final future = warning
+        ? AppLogger.instance.logWarn(message, module: 'app_update')
+        : AppLogger.instance.logInfo(message, module: 'app_update');
+    unawaited(future.catchError((_) {}));
   }
 
   @override
@@ -148,9 +261,24 @@ class _UpdateGateState extends State<UpdateGate> {
         onCancel: optionalProgress ? coordinator.cancelOptionalDownload : null,
         onClose: coordinator.closeFullPos,
         onOpenFolder: coordinator.openUpdateFolder,
+        onContactSupport: _contactSupport,
       );
     }
     return widget.child;
+  }
+
+  Future<void> _contactSupport() async {
+    final phone = AppConfig.supportWhatsappNumber.replaceAll(
+      RegExp(r'[^0-9]'),
+      '',
+    );
+    if (phone.isEmpty) return;
+    final uri = Uri.parse('${AppConfig.whatsappBaseUrl}/$phone').replace(
+      queryParameters: {
+        'text': 'Necesito ayuda para completar la actualización de FullPOS.',
+      },
+    );
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 }
 
@@ -164,6 +292,7 @@ class _UpdateScreen extends StatelessWidget {
     required this.onCancel,
     required this.onClose,
     required this.onOpenFolder,
+    required this.onContactSupport,
   });
 
   final AppUpdateState state;
@@ -174,6 +303,7 @@ class _UpdateScreen extends StatelessWidget {
   final VoidCallback? onCancel;
   final Future<void> Function() onClose;
   final Future<void> Function() onOpenFolder;
+  final Future<void> Function() onContactSupport;
 
   @override
   Widget build(BuildContext context) {
@@ -341,6 +471,11 @@ class _UpdateScreen extends StatelessWidget {
                           OutlinedButton(
                             onPressed: onOpenFolder,
                             child: const Text('Abrir carpeta de actualización'),
+                          ),
+                        if (incomplete)
+                          OutlinedButton(
+                            onPressed: onContactSupport,
+                            child: const Text('Contactar soporte'),
                           ),
                         if (onCancel != null && !isVerifying && !isLaunching)
                           TextButton(
