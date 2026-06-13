@@ -1,18 +1,31 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../network/api_client.dart';
 import 'app_update_policy.dart';
 
 class AppUpdateRepository {
-  AppUpdateRepository({ApiClient? api}) : _api = api ?? ApiClient();
+  AppUpdateRepository({ApiClient? api})
+    : _api =
+          api ??
+          ApiClient(
+            options: const ApiClientOptions(
+              timeout: Duration(seconds: 15),
+              retryDelays: [Duration(seconds: 1)],
+            ),
+          );
 
   static const _cacheKey = 'app_update_policy_cache_v1';
   static const _cacheSchema = 1;
   final ApiClient _api;
 
   Future<AppUpdatePolicy> fetchPolicy() async {
+    final endpoint = _api.uri('/api/app-updates/fullpos/windows');
+    if (!kDebugMode && endpoint.scheme != 'https') {
+      throw const FormatException('Update policy endpoint must use HTTPS');
+    }
     final json = await _api.getJsonMap(
       '/api/app-updates/fullpos/windows',
       timeout: const Duration(seconds: 15),

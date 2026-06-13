@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'app_update_coordinator.dart';
-import 'app_update_policy.dart';
 
 class UpdateGate extends StatefulWidget {
   const UpdateGate({super.key, required this.child});
@@ -343,10 +342,12 @@ class _UpdateScreen extends StatelessWidget {
                             onPressed: onOpenFolder,
                             child: const Text('Abrir carpeta de actualización'),
                           ),
-                        if (onCancel != null && isDownloading)
+                        if (onCancel != null && !isVerifying && !isLaunching)
                           TextButton(
                             onPressed: onCancel,
-                            child: const Text('Cancelar'),
+                            child: Text(
+                              isDownloading ? 'Cancelar' : 'Más tarde',
+                            ),
                           ),
                         if (mandatory)
                           TextButton(

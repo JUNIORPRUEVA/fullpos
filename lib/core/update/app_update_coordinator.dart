@@ -72,13 +72,39 @@ class AppUpdateState {
 }
 
 class AppUpdateCoordinator extends ChangeNotifier {
-  AppUpdateCoordinator._();
+  AppUpdateCoordinator._({
+    AppUpdateRepository? repository,
+    UpdateDownloader? downloader,
+    InstallerLauncher? launcher,
+    Future<AppVersion> Function()? installedVersionLoader,
+    bool loggingEnabled = true,
+  }) : _repository = repository ?? AppUpdateRepository(),
+       _downloader = downloader ?? UpdateDownloader(),
+       _launcher = launcher ?? InstallerLauncher(),
+       _installedVersionLoader = installedVersionLoader ?? AppVersion.installed,
+       _loggingEnabled = loggingEnabled;
 
   static final AppUpdateCoordinator instance = AppUpdateCoordinator._();
 
-  final AppUpdateRepository _repository = AppUpdateRepository();
-  final UpdateDownloader _downloader = UpdateDownloader();
-  final InstallerLauncher _launcher = InstallerLauncher();
+  @visibleForTesting
+  factory AppUpdateCoordinator.testing({
+    required AppUpdateRepository repository,
+    UpdateDownloader? downloader,
+    InstallerLauncher? launcher,
+    required Future<AppVersion> Function() installedVersionLoader,
+  }) => AppUpdateCoordinator._(
+    repository: repository,
+    downloader: downloader,
+    launcher: launcher,
+    installedVersionLoader: installedVersionLoader,
+    loggingEnabled: false,
+  );
+
+  final AppUpdateRepository _repository;
+  final UpdateDownloader _downloader;
+  final InstallerLauncher _launcher;
+  final Future<AppVersion> Function() _installedVersionLoader;
+  final bool _loggingEnabled;
 
   AppUpdateState _state = const AppUpdateState();
   AppUpdateState get state => _state;
@@ -110,7 +136,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
   }
 
   Future<void> _check({required bool manual}) async {
-    final installed = await AppVersion.installed();
+    final installed = await _installedVersionLoader();
     _setState(
       AppUpdateState(
         phase: AppUpdatePhase.checking,
@@ -118,10 +144,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
         presentationToken: _state.presentationToken,
       ),
     );
-    await AppLogger.instance.logInfo(
-      'Update check started installed=$installed',
-      module: 'app_update',
-    );
+    await _logInfo('Update check started installed=$installed');
 
     try {
       final policy = await _repository.fetchPolicy();
@@ -143,9 +166,8 @@ class AppUpdateCoordinator extends ChangeNotifier {
           presentationToken: _state.presentationToken,
         ),
       );
-      await AppLogger.instance.logWarn(
+      await _logWarn(
         'Update check unavailable; no cached mandatory policy: $error',
-        module: 'app_update',
       );
     }
   }
@@ -156,9 +178,8 @@ class AppUpdateCoordinator extends ChangeNotifier {
     required bool manual,
   }) async {
     final decision = policy.decide(installed);
-    await AppLogger.instance.logInfo(
+    await _logInfo(
       'Update policy latest=${policy.latest} minimum=${policy.minimumSupported} decision=${decision.name}',
-      module: 'app_update',
     );
     if (decision == UpdateDecision.none) {
       await _completePreviousInstallIfNeeded(installed, policy);
@@ -242,10 +263,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
               : 'No se pudo descargar la actualización. Verifica tu conexión y vuelve a intentarlo.',
         ),
       );
-      await AppLogger.instance.logWarn(
-        'Update download or verification failed: $error',
-        module: 'app_update',
-      );
+      await _logWarn('Update download or verification failed: $error');
     }
   }
 
@@ -270,10 +288,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
               'No se pudo abrir el instalador. FullPOS permanecerá abierto.',
         ),
       );
-      await AppLogger.instance.logWarn(
-        'Installer launch failed: $error',
-        module: 'app_update',
-      );
+      await _logWarn('Installer launch failed: $error');
     }
   }
 
@@ -330,5 +345,15 @@ class AppUpdateCoordinator extends ChangeNotifier {
   void _setState(AppUpdateState value) {
     _state = value;
     notifyListeners();
+  }
+
+  Future<void> _logInfo(String message) {
+    if (!_loggingEnabled) return Future<void>.value();
+    return AppLogger.instance.logInfo(message, module: 'app_update');
+  }
+
+  Future<void> _logWarn(String message) {
+    if (!_loggingEnabled) return Future<void>.value();
+    return AppLogger.instance.logWarn(message, module: 'app_update');
   }
 }

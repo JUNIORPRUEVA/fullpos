@@ -56,6 +56,11 @@ class AppVersion implements Comparable<AppVersion> {
     return 0;
   }
 
+  bool operator <(AppVersion other) => compareTo(other) < 0;
+  bool operator <=(AppVersion other) => compareTo(other) <= 0;
+  bool operator >(AppVersion other) => compareTo(other) > 0;
+  bool operator >=(AppVersion other) => compareTo(other) >= 0;
+
   @override
   String toString() => '$semantic+$build';
 

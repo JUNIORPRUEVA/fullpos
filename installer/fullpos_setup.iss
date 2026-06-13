@@ -44,7 +44,7 @@ CreateUninstallRegKey=yes
 UninstallDisplayName={#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion={#MyAppVersion}.{#MyAppBuild}
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Instalador oficial de FullPOS
 VersionInfoProductName={#MyAppName}

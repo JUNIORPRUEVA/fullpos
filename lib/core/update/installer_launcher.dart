@@ -49,13 +49,25 @@ class InstallerLauncher {
       await AppLogger.instance.flush();
       await WindowService.setPreventClose(false);
 
-      await Process.start(
-        installer.path,
-        const ['/SP-', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'],
-        mode: ProcessStartMode.detached,
-        runInShell: false,
-      );
-      exit(0);
+      try {
+        await Process.start(
+          installer.path,
+          const ['/SP-', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'],
+          mode: ProcessStartMode.detached,
+          runInShell: false,
+        );
+        exit(0);
+      } catch (_) {
+        await prefs.remove('update_install_target');
+        await prefs.remove('update_installer_path');
+        await prefs.remove('update_install_attempted_at');
+        await DatabaseManager.instance.reopen(
+          reason: 'app_update_launch_failed',
+        );
+        ProductSyncService.instance.start();
+        CloudSyncService.instance.startRealtimeSyncEngine();
+        rethrow;
+      }
     } finally {
       _launching = false;
     }

@@ -48,8 +48,8 @@ class InstallerVerifier {
         .decode(prefix, allowMalformed: true)
         .trimLeft()
         .toLowerCase();
-    if (textPrefix.startsWith('<!doctype html') ||
-        textPrefix.startsWith('<html') ||
+    if (textPrefix.contains('<!doctype html') ||
+        textPrefix.contains('<html') ||
         textPrefix.startsWith('{') ||
         textPrefix.startsWith('[')) {
       throw const InstallerVerificationException('web_error_document');
