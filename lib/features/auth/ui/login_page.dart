@@ -268,7 +268,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
               Future<void> resetPassword() async {
                 var canUpdateDialogState = true;
-                final token = tokenController.text.trim().toUpperCase();
+                final token = tokenController.text.trim();
                 final newPassword = newPasswordController.text.trim();
                 final confirmPassword = confirmPasswordController.text.trim();
 
@@ -1489,7 +1489,7 @@ class _PasswordRecoveryDialog extends StatelessWidget {
                       SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'El token de soporte dura 15 minutos y funciona una sola vez. No cierres esta ventana mientras realizas el cambio.',
+                          'Pega el token completo generado por el panel o por soporte. Funciona una sola vez y debe usarse antes de su fecha de expiración.',
                           style: TextStyle(
                             color: Color(0xFF1E40AF),
                             fontSize: 12.5,
@@ -1519,12 +1519,6 @@ class _PasswordRecoveryDialog extends StatelessWidget {
                     FilteringTextInputFormatter.allow(
                       RegExp(r'[A-Za-z0-9\-\s]'),
                     ),
-                    TextInputFormatter.withFunction((oldValue, newValue) {
-                      return newValue.copyWith(
-                        text: newValue.text.toUpperCase(),
-                        selection: newValue.selection,
-                      );
-                    }),
                   ],
                   decoration: fieldDecoration(
                     label: 'Token de soporte',

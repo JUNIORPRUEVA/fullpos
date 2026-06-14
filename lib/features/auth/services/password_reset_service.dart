@@ -52,14 +52,23 @@ class PasswordResetService {
     required String token,
   }) async {
     final businessId = await _requireBusinessId();
+    final rawToken = token.trim();
+    final compactToken = rawToken.replaceAll(RegExp(r'\s+'), '');
+    final isAdminPanelToken = RegExp(
+      r'^[a-fA-F0-9]{64}$',
+    ).hasMatch(compactToken);
     final payload = {
       'business_id': businessId,
-      'username': username.trim().toLowerCase(),
-      'token': token.trim().toUpperCase(),
+      if (!isAdminPanelToken) 'username': username.trim().toLowerCase(),
+      'token': isAdminPanelToken
+          ? compactToken.toLowerCase()
+          : rawToken.toUpperCase(),
     };
 
     final res = await _apiClient.postJson(
-      '/api/password-reset/support-token/confirm',
+      isAdminPanelToken
+          ? '/api/password-reset/admin-token/validate'
+          : '/api/password-reset/support-token/confirm',
       body: payload,
       timeout: const Duration(seconds: 12),
     );

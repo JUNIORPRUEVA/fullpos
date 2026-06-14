@@ -43,6 +43,43 @@ void main() {
       });
     });
 
+    test('uses the admin route for the 64-character panel token', () async {
+      late http.Request capturedRequest;
+      final client = MockClient((request) async {
+        capturedRequest = request;
+        return http.Response(
+          jsonEncode({'ok': true}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final service = PasswordResetService(
+        apiClient: ApiClient(
+          baseUrl: 'https://license.example.com',
+          client: client,
+        ),
+        businessIdLoader: () async => 'business-123',
+      );
+      const uppercaseToken =
+          'BCA0506D3202B9244729E2C00BCCA172FFCB046C6E6CDE4CED9A35CAE27B0FC1';
+
+      await service.confirmSupportToken(
+        username: 'admin',
+        token:
+            '${uppercaseToken.substring(0, 32)} '
+            '${uppercaseToken.substring(32)}',
+      );
+
+      expect(
+        capturedRequest.url.toString(),
+        'https://license.example.com/api/password-reset/admin-token/validate',
+      );
+      expect(jsonDecode(capturedRequest.body), {
+        'business_id': 'business-123',
+        'token': uppercaseToken.toLowerCase(),
+      });
+    });
+
     test(
       'surfaces the backend message without retrying another route',
       () async {
