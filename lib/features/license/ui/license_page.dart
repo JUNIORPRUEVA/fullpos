@@ -555,6 +555,11 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     required String title,
     required String subtitle,
   }) {
+    final canUseTrialTab = showOnboarding || showTrial;
+    final effectiveSelectedTab = !canUseTrialTab && _selectedTab == 0
+        ? 1
+        : _selectedTab;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
@@ -563,7 +568,10 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         children: [
           _buildCompactHeader(title: title, subtitle: subtitle),
           const SizedBox(height: 12),
-          _buildTabsHeader(),
+          _buildTabsHeader(
+            showTrialTab: canUseTrialTab,
+            effectiveSelectedTab: effectiveSelectedTab,
+          ),
           const SizedBox(height: 12),
           if (state.uiError != null) ...[
             _buildErrorBanner(state.uiError!.title, state.uiError!.message),
@@ -574,14 +582,14 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
             child: Container(
-              key: ValueKey(_selectedTab),
+              key: ValueKey(effectiveSelectedTab),
               decoration: BoxDecoration(
                 color: _panel,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: _line.withOpacity(0.95)),
               ),
               padding: const EdgeInsets.all(16),
-              child: switch (_selectedTab) {
+              child: switch (effectiveSelectedTab) {
                 0 => _buildTrialTabContent(
                   state: state,
                   controller: controller,
@@ -638,11 +646,15 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     );
   }
 
-  Widget _buildTabsHeader() {
-    const items = [
-      (icon: Icons.rocket_launch_rounded, label: 'Prueba'),
-      (icon: Icons.key_rounded, label: 'Activar'),
-      (icon: Icons.headset_mic_rounded, label: 'Soporte'),
+  Widget _buildTabsHeader({
+    required bool showTrialTab,
+    required int effectiveSelectedTab,
+  }) {
+    final items = [
+      if (showTrialTab)
+        (index: 0, icon: Icons.rocket_launch_rounded, label: 'Prueba'),
+      (index: 1, icon: Icons.key_rounded, label: 'Activar'),
+      (index: 2, icon: Icons.headset_mic_rounded, label: 'Soporte'),
     ];
     return Container(
       padding: const EdgeInsets.all(4),
@@ -654,7 +666,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
       child: Row(
         children: List.generate(items.length, (index) {
           final item = items[index];
-          final active = _selectedTab == index;
+          final active = effectiveSelectedTab == item.index;
           return Expanded(
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
@@ -675,7 +687,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: () => setState(() => _selectedTab = index),
+                onTap: () => setState(() => _selectedTab = item.index),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -889,7 +901,11 @@ class _LicensePageState extends ConsumerState<LicensePage> {
           children: [
             const Row(
               children: [
-                Icon(Icons.local_fire_department_rounded, color: _accent, size: 18),
+                Icon(
+                  Icons.local_fire_department_rounded,
+                  color: _accent,
+                  size: 18,
+                ),
                 SizedBox(width: 8),
                 Text(
                   'Comprar licencia',
@@ -904,11 +920,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
             const SizedBox(height: 6),
             const Text(
               'Activa o renueva con PayPal desde 3 meses en adelante.',
-              style: TextStyle(
-                color: _muted,
-                fontSize: 12.5,
-                height: 1.4,
-              ),
+              style: TextStyle(color: _muted, fontSize: 12.5, height: 1.4),
             ),
             const SizedBox(height: 10),
             TweenAnimationBuilder<double>(
@@ -921,7 +933,9 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0x33B96534).withOpacity(0.18 + (glow * 0.18)),
+                        color: const Color(
+                          0x33B96534,
+                        ).withOpacity(0.18 + (glow * 0.18)),
                         blurRadius: 18 + (glow * 10),
                         offset: const Offset(0, 8),
                       ),
@@ -1571,5 +1585,4 @@ class _LicensePageState extends ConsumerState<LicensePage> {
       ),
     );
   }
-
 }

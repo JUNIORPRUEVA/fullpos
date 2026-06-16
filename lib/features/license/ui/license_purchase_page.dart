@@ -9,6 +9,7 @@ import '../../registration/services/business_identity_storage.dart';
 import '../../settings/data/business_settings_model.dart';
 import '../../settings/data/business_settings_repository.dart';
 import '../license_config.dart';
+import '../services/bank_transfer_whatsapp.dart';
 import '../services/license_controller.dart';
 import '../services/license_payment_api.dart';
 import '../services/license_storage.dart';
@@ -25,6 +26,11 @@ const _purchasePrimary = Color(0xFF153E75);
 const _purchasePrimaryBright = Color(0xFF2563EB);
 const _purchasePrimaryTint = Color(0xFFEAF2FF);
 const _purchaseAccent = Color(0xFFB96534);
+const _purchaseDisabledBg = Color(0xFFE7EDF5);
+const _purchaseDisabledFg = Color(0xFF75839A);
+
+enum _LicensePaymentMethod { paypal, bankTransfer }
+
 class LicensePurchasePage extends ConsumerStatefulWidget {
   const LicensePurchasePage({super.key});
 
@@ -54,6 +60,10 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
   LicenseBillingInfo? _billingInfo;
   int _selectedMonths = 3;
   LicensePaymentOrder? _pendingOrder;
+  _LicensePaymentMethod _paymentMethod = _LicensePaymentMethod.paypal;
+  String _selectedBank = dominicanBanks.first;
+  bool _confirmedDominicanRepublic = false;
+  bool _businessDataExpanded = false;
 
   static const _nicheOptions = <String>[
     'Colmado',
@@ -118,7 +128,9 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
       final normalizedOrderId = (currentOrderId ?? '').trim();
       final normalizedPaypalOrderId = (currentPaypalOrderId ?? '').trim();
       setState(() {
-        _businessId = normalizedBusinessId.isEmpty ? null : normalizedBusinessId;
+        _businessId = normalizedBusinessId.isEmpty
+            ? null
+            : normalizedBusinessId;
         _deviceId = deviceId;
         _billingInfo = billing;
         _selectedMonths = [
@@ -163,18 +175,17 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
     final profileOwnerName = (profile?.ownerName ?? '').trim();
     final profilePhone = (profile?.phone ?? '').trim();
     final profileEmail = (profile?.email ?? '').trim();
+    final settingsBusinessName = settings.businessName.trim();
+    final settingsPhone = (settings.phone ?? '').trim();
+    final settingsEmail = (settings.email ?? '').trim();
 
     _businessNameCtrl.text = profileBusinessName.isNotEmpty
         ? profileBusinessName
-        : settings.businessName.trim();
+        : settingsBusinessName;
     _businessTypeCtrl.text = profileBusinessType;
     _ownerNameCtrl.text = profileOwnerName;
-    _phoneCtrl.text = profilePhone.isNotEmpty
-        ? profilePhone
-        : (settings.phone ?? '').trim();
-    _emailCtrl.text = profileEmail.isNotEmpty
-        ? profileEmail
-        : (settings.email ?? '').trim();
+    _phoneCtrl.text = profilePhone.isNotEmpty ? profilePhone : settingsPhone;
+    _emailCtrl.text = profileEmail.isNotEmpty ? profileEmail : settingsEmail;
     _selectedBusinessType = _nicheOptions.contains(profileBusinessType)
         ? profileBusinessType
         : null;
@@ -186,6 +197,20 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
       await WindowService.minimize();
       await Future<void>.delayed(const Duration(milliseconds: 150));
       await launchUrlString(checkoutUrl, mode: LaunchMode.externalApplication);
+    });
+  }
+
+  bool get _hasRequiredBusinessData {
+    return _businessNameCtrl.text.trim().isNotEmpty &&
+        _businessTypeCtrl.text.trim().isNotEmpty &&
+        _ownerNameCtrl.text.trim().isNotEmpty &&
+        _phoneCtrl.text.trim().isNotEmpty;
+  }
+
+  void _showRequiredBusinessDataError() {
+    setState(() {
+      _businessDataExpanded = true;
+      _error = 'Completa negocio, tipo, representante y WhatsApp.';
     });
   }
 
@@ -201,11 +226,15 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
     if (businessName.isEmpty ||
         businessType.isEmpty ||
         ownerName.isEmpty ||
-        phone.isEmpty ||
-        deviceId.isEmpty ||
-        billing == null) {
+        phone.isEmpty) {
+      _showRequiredBusinessDataError();
+      return;
+    }
+
+    if (deviceId.isEmpty || billing == null) {
       setState(() {
-        _error = 'Completa negocio, tipo, representante y WhatsApp.';
+        _error =
+            'No se pudo preparar la compra. Verifica la conexión e intenta de nuevo.';
       });
       return;
     }
@@ -307,6 +336,58 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
     });
   }
 
+  Future<void> _requestBankTransfer() async {
+    final businessName = _businessNameCtrl.text.trim();
+    final businessType = _businessTypeCtrl.text.trim();
+    final ownerName = _ownerNameCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    final deviceId = (_deviceId ?? '').trim();
+    final billing = _billingInfo;
+
+    if (!_confirmedDominicanRepublic) {
+      setState(() {
+        _error =
+            'La transferencia bancaria está disponible solo para clientes en República Dominicana.';
+      });
+      return;
+    }
+    if (businessName.isEmpty ||
+        businessType.isEmpty ||
+        ownerName.isEmpty ||
+        phone.isEmpty) {
+      _showRequiredBusinessDataError();
+      return;
+    }
+
+    if (deviceId.isEmpty || billing == null) {
+      setState(() {
+        _error =
+            'No se pudo preparar la solicitud. Verifica la conexión e intenta de nuevo.';
+      });
+      return;
+    }
+
+    await _saveOnboardingDataLocally();
+    final uri = buildBankTransferWhatsappUri(
+      programName: 'FullPOS',
+      bankName: _selectedBank,
+      months: _selectedMonths,
+      amount: billing.monthlyPrice * _selectedMonths,
+      currency: billing.currency,
+      businessName: businessName,
+      deviceId: deviceId,
+    );
+    final opened = await launchUrlString(
+      uri.toString(),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened && mounted) {
+      setState(() {
+        _error = 'No se pudo abrir WhatsApp. Comunícate al 1 849 431 4070.';
+      });
+    }
+  }
+
   Future<void> _saveOnboardingDataLocally() async {
     final businessName = _businessNameCtrl.text.trim();
     final businessType = _businessTypeCtrl.text.trim();
@@ -333,6 +414,22 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
       email: email.isEmpty ? null : email,
     );
     await _identityStorage.setOnboardingCompleted(true);
+
+    final currentSettings = await _settingsRepo.loadSettings();
+    final updatedSettings = currentSettings.copyWith(
+      businessName:
+          currentSettings.businessName.trim().isEmpty ||
+              currentSettings.businessName.trim() == 'FULLPOS'
+          ? businessName
+          : currentSettings.businessName,
+      phone: (currentSettings.phone ?? '').trim().isEmpty
+          ? phone
+          : currentSettings.phone,
+      email: (currentSettings.email ?? '').trim().isEmpty && email.isNotEmpty
+          ? email
+          : currentSettings.email,
+    );
+    await _settingsRepo.saveSettings(updatedSettings);
   }
 
   void _goBack() {
@@ -346,12 +443,7 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
   @override
   Widget build(BuildContext context) {
     final billing = _billingInfo;
-    final planOptions = const [3, 6, 9, 12];
     final pendingOrder = _pendingOrder;
-    final visiblePlans = planOptions
-        .where((months) => billing == null || months >= billing.minPurchaseMonths)
-        .toList();
-    final total = billing == null ? null : billing.monthlyPrice * _selectedMonths;
 
     return Scaffold(
       backgroundColor: _purchaseBgTop,
@@ -368,8 +460,6 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
               ? const Center(child: CircularProgressIndicator())
               : _buildLoadedContent(
                   billing: billing,
-                  visiblePlans: visiblePlans,
-                  total: total,
                   pendingOrder: pendingOrder,
                 ),
         ),
@@ -379,8 +469,6 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
 
   Widget _buildLoadedContent({
     required LicenseBillingInfo? billing,
-    required List<int> visiblePlans,
-    required double? total,
     required LicensePaymentOrder? pendingOrder,
   }) {
     return LayoutBuilder(
@@ -436,7 +524,7 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
                                 ),
                                 SizedBox(height: 4),
                                 Text(
-                                  'Elige el tiempo, paga y luego verifica tu activaci?n.',
+                                  'Elige PayPal o transferencia bancaria y completa tu compra.',
                                   style: TextStyle(
                                     color: _purchaseMuted,
                                     fontSize: 12.8,
@@ -453,46 +541,7 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
                         _buildErrorBanner(_error!),
                         const SizedBox(height: 12),
                       ],
-                      _buildCard(
-                        title: 'Datos obligatorios',
-                        subtitle:
-                            'Negocio, tipo de negocio, representante y WhatsApp.',
-                        child: Column(
-                          children: [
-                            _buildTextField(
-                              controller: _businessNameCtrl,
-                              label: 'Nombre del negocio',
-                              hint: 'Ej: Comercial N?cleo',
-                              icon: Icons.storefront_rounded,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildBusinessTypeDropdown(),
-                            const SizedBox(height: 10),
-                            _buildTextField(
-                              controller: _ownerNameCtrl,
-                              label: 'Representante',
-                              hint: 'Nombre del responsable',
-                              icon: Icons.person_outline_rounded,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildTextField(
-                              controller: _phoneCtrl,
-                              label: 'WhatsApp',
-                              hint: '809 555 5555',
-                              icon: Icons.phone_rounded,
-                              keyboardType: TextInputType.phone,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildTextField(
-                              controller: _emailCtrl,
-                              label: 'Correo electr?nico opcional',
-                              hint: 'Opcional',
-                              icon: Icons.email_outlined,
-                              keyboardType: TextInputType.emailAddress,
-                            ),
-                          ],
-                        ),
-                      ),
+                      _buildBusinessDataPanel(),
                       const SizedBox(height: 12),
                       _buildCard(
                         title: 'Identidad de compra',
@@ -500,7 +549,10 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            _dataChip('Business ID', _businessId ?? 'Pendiente'),
+                            _dataChip(
+                              'Business ID',
+                              _businessId ?? 'Pendiente',
+                            ),
                             _dataChip('Device ID', _deviceId ?? 'Pendiente'),
                             _dataChip(
                               'Proyecto',
@@ -511,66 +563,11 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
                       ),
                       const SizedBox(height: 12),
                       _buildCard(
-                        title: 'Planes disponibles',
+                        title: 'Tiempo de licencia',
                         subtitle: billing == null
-                            ? 'No se pudo consultar la configuraci?n del proyecto.'
-                            : 'Compra m?nima: ${billing.minPurchaseMonths} meses.',
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: visiblePlans
-                                  .map(
-                                    (months) => _buildPlanOption(
-                                      months: months,
-                                      selected: _selectedMonths == months,
-                                      monthlyPrice: billing?.monthlyPrice,
-                                      currency: billing?.currency ?? 'USD',
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedMonths = months;
-                                        });
-                                      },
-                                    ),
-                                  )
-                                  .toList(),
-                            ),
-                            if (billing != null) ...[
-                              const SizedBox(height: 14),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: _purchasePrimaryTint,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Precio mensual: ${billing.monthlyPrice.toStringAsFixed(2)} ${billing.currency}',
-                                        style: const TextStyle(
-                                          color: _purchaseMuted,
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    Text(
-                                      'Total: ${total!.toStringAsFixed(2)} ${billing.currency}',
-                                      style: const TextStyle(
-                                        color: _purchaseInk,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                            ? 'No se pudo consultar la configuración del proyecto.'
+                            : 'Mínimo ${billing.minPurchaseMonths} meses. Puedes elegir más según lo que necesites.',
+                        child: _buildDurationSelector(billing: billing),
                       ),
                       const SizedBox(height: 12),
                       _buildPurchaseCtaCard(pendingOrder),
@@ -610,13 +607,15 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'El pago se crea en línea y la licencia solo se activa cuando el backend la confirma.',
+            'PayPal activa automáticamente. Las transferencias se confirman por WhatsApp antes de activar la licencia.',
             style: TextStyle(
               color: _purchaseMuted,
               fontSize: 12.5,
               height: 1.4,
             ),
           ),
+          const SizedBox(height: 12),
+          _buildPaymentMethodSelector(),
           const SizedBox(height: 12),
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0.985, end: 1),
@@ -626,15 +625,25 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
               return Transform.scale(scale: scale, child: child);
             },
             child: FilledButton.icon(
-              onPressed: _submitting
+              onPressed:
+                  _submitting ||
+                      (_paymentMethod == _LicensePaymentMethod.bankTransfer &&
+                          !_confirmedDominicanRepublic)
                   ? null
                   : () async {
-                      await _saveOnboardingDataLocally();
-                      await _createOrder();
+                      if (_paymentMethod ==
+                          _LicensePaymentMethod.bankTransfer) {
+                        await _requestBankTransfer();
+                      } else {
+                        await _saveOnboardingDataLocally();
+                        await _createOrder();
+                      }
                     },
               style: FilledButton.styleFrom(
                 backgroundColor: _purchaseAccent,
                 foregroundColor: Colors.white,
+                disabledBackgroundColor: _purchaseDisabledBg,
+                disabledForegroundColor: _purchaseDisabledFg,
                 padding: const EdgeInsets.symmetric(
                   vertical: 16,
                   horizontal: 18,
@@ -657,8 +666,18 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.shopping_cart_checkout_rounded),
-              label: Text(_submitting ? 'Procesando...' : 'Comprar ahora'),
+                  : Icon(
+                      _paymentMethod == _LicensePaymentMethod.bankTransfer
+                          ? Icons.chat_rounded
+                          : Icons.shopping_cart_checkout_rounded,
+                    ),
+              label: Text(
+                _submitting
+                    ? 'Procesando...'
+                    : _paymentMethod == _LicensePaymentMethod.bankTransfer
+                    ? 'Solicitar transferencia por WhatsApp'
+                    : 'Pagar con PayPal',
+              ),
             ),
           ),
           if (pendingOrder != null) ...[
@@ -703,6 +722,434 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildPaymentMethodSelector() {
+    final transferSelected =
+        _paymentMethod == _LicensePaymentMethod.bankTransfer;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Método de pago',
+          style: TextStyle(
+            color: _purchaseInk,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<_LicensePaymentMethod>(
+          style: ButtonStyle(
+            backgroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return _purchasePrimary;
+              }
+              return Colors.white;
+            }),
+            foregroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              return _purchaseInk;
+            }),
+            iconColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return Colors.white;
+              }
+              return _purchasePrimaryBright;
+            }),
+            side: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return const BorderSide(color: _purchasePrimary);
+              }
+              return const BorderSide(color: _purchaseLine);
+            }),
+            textStyle: const WidgetStatePropertyAll(
+              TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+            ),
+          ),
+          segments: const [
+            ButtonSegment(
+              value: _LicensePaymentMethod.paypal,
+              icon: Icon(Icons.credit_card_rounded),
+              label: Text('PayPal'),
+            ),
+            ButtonSegment(
+              value: _LicensePaymentMethod.bankTransfer,
+              icon: Icon(Icons.account_balance_rounded),
+              label: Text('Transferencia'),
+            ),
+          ],
+          selected: {_paymentMethod},
+          onSelectionChanged: (selection) {
+            setState(() => _paymentMethod = selection.first);
+          },
+        ),
+        if (transferSelected) ...[
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _selectedBank,
+            dropdownColor: Colors.white,
+            style: const TextStyle(
+              color: _purchaseInk,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+            iconEnabledColor: _purchasePrimary,
+            decoration: InputDecoration(
+              labelText: 'Banco',
+              labelStyle: const TextStyle(color: _purchaseMuted),
+              prefixIcon: const Icon(
+                Icons.account_balance_outlined,
+                color: _purchasePrimaryBright,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: _purchaseLine),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(
+                  color: _purchasePrimaryBright,
+                  width: 1.5,
+                ),
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            items: dominicanBanks
+                .map(
+                  (bank) => DropdownMenuItem(
+                    value: bank,
+                    child: Text(
+                      bank,
+                      style: const TextStyle(
+                        color: _purchaseInk,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _selectedBank = value);
+            },
+          ),
+          CheckboxListTile(
+            value: _confirmedDominicanRepublic,
+            onChanged: (value) {
+              setState(() => _confirmedDominicanRepublic = value ?? false);
+            },
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            activeColor: _purchasePrimary,
+            title: const Text(
+              'Confirmo que estoy en República Dominicana',
+              style: TextStyle(
+                color: _purchaseInk,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            subtitle: const Text(
+              'Disponible para Banreservas, BHD y Popular.',
+              style: TextStyle(color: _purchaseMuted, fontSize: 12),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildBusinessDataPanel() {
+    final complete = _hasRequiredBusinessData;
+    final statusColor = complete ? const Color(0xFF059669) : _purchaseAccent;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _purchasePanelSoft,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: _businessDataExpanded ? _purchasePrimaryBright : _purchaseLine,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() => _businessDataExpanded = !_businessDataExpanded);
+            },
+            borderRadius: BorderRadius.circular(14),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    complete
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.edit_note_rounded,
+                    color: statusColor,
+                    size: 19,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Datos del negocio',
+                        style: TextStyle(
+                          color: _purchaseInk,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        complete
+                            ? 'Listos para comprar. Toca para revisar.'
+                            : 'Faltan datos obligatorios. Toca para completar.',
+                        style: const TextStyle(
+                          color: _purchaseMuted,
+                          fontSize: 12.5,
+                          height: 1.25,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AnimatedRotation(
+                  turns: _businessDataExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 180),
+                  child: const Icon(
+                    Icons.expand_more_rounded,
+                    color: _purchaseMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: Column(
+                children: [
+                  _buildTextField(
+                    controller: _businessNameCtrl,
+                    label: 'Nombre del negocio',
+                    hint: 'Ej: Comercial Núcleo',
+                    icon: Icons.storefront_rounded,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildBusinessTypeDropdown(),
+                  const SizedBox(height: 10),
+                  _buildTextField(
+                    controller: _ownerNameCtrl,
+                    label: 'Representante',
+                    hint: 'Nombre del responsable',
+                    icon: Icons.person_outline_rounded,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildTextField(
+                    controller: _phoneCtrl,
+                    label: 'WhatsApp',
+                    hint: '809 555 5555',
+                    icon: Icons.phone_rounded,
+                    keyboardType: TextInputType.phone,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildTextField(
+                    controller: _emailCtrl,
+                    label: 'Correo electrónico opcional',
+                    hint: 'Opcional',
+                    icon: Icons.email_outlined,
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                ],
+              ),
+            ),
+            crossFadeState: _businessDataExpanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 190),
+            firstCurve: Curves.easeOutCubic,
+            secondCurve: Curves.easeOutCubic,
+            sizeCurve: Curves.easeOutCubic,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDurationSelector({required LicenseBillingInfo? billing}) {
+    final minMonths = billing == null
+        ? 3
+        : (billing.minPurchaseMonths < 3 ? 3 : billing.minPurchaseMonths);
+    final maxMonths = minMonths > 36 ? minMonths : 36;
+    final selected = _selectedMonths.clamp(minMonths, maxMonths).toInt();
+    final monthlyPrice = billing?.monthlyPrice;
+    final currency = billing?.currency ?? 'USD';
+    final total = monthlyPrice == null ? null : monthlyPrice * selected;
+    final quickOptions = <int>{
+      minMonths,
+      6,
+      12,
+      24,
+    }.where((months) => months >= minMonths && months <= maxMonths).toList();
+
+    void selectMonths(int value) {
+      final next = value.clamp(minMonths, maxMonths).toInt();
+      setState(() => _selectedMonths = next);
+    }
+
+    if (_selectedMonths != selected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _selectedMonths = selected);
+      });
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: quickOptions
+              .map(
+                (months) => ChoiceChip(
+                  label: Text(
+                    months == 12 ? '12 meses recomendado' : '$months meses',
+                  ),
+                  selected: selected == months,
+                  onSelected: (_) => selectMonths(months),
+                  selectedColor: _purchasePrimary,
+                  backgroundColor: Colors.white,
+                  labelStyle: TextStyle(
+                    color: selected == months ? Colors.white : _purchaseInk,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  side: BorderSide(
+                    color: selected == months
+                        ? _purchasePrimary
+                        : _purchaseLine,
+                  ),
+                  showCheckmark: false,
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _purchaseLine),
+          ),
+          child: Row(
+            children: [
+              _monthStepButton(
+                icon: Icons.remove_rounded,
+                enabled: selected > minMonths,
+                onTap: () => selectMonths(selected - 1),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      '$selected meses',
+                      style: const TextStyle(
+                        color: _purchaseInk,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    const Text(
+                      'Más meses, menos renovaciones.',
+                      style: TextStyle(
+                        color: _purchaseMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _monthStepButton(
+                icon: Icons.add_rounded,
+                enabled: selected < maxMonths,
+                onTap: () => selectMonths(selected + 1),
+              ),
+            ],
+          ),
+        ),
+        if (billing != null) ...[
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _purchasePrimaryTint,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Precio mensual: ${billing.monthlyPrice.toStringAsFixed(2)} ${billing.currency}',
+                    style: const TextStyle(
+                      color: _purchaseMuted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Text(
+                  'Total: ${total!.toStringAsFixed(2)} $currency',
+                  style: const TextStyle(
+                    color: _purchaseInk,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _monthStepButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return IconButton(
+      onPressed: enabled ? onTap : null,
+      style: IconButton.styleFrom(
+        backgroundColor: enabled ? _purchasePrimary : _purchaseDisabledBg,
+        foregroundColor: enabled ? Colors.white : _purchaseDisabledFg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+      ),
+      icon: Icon(icon),
     );
   }
 
@@ -774,7 +1221,10 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
         prefixIconConstraints: const BoxConstraints(minWidth: 46),
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         labelStyle: const TextStyle(
           color: _purchaseMuted,
           fontSize: 13.5,
@@ -816,16 +1266,15 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
         hintText: 'Selecciona una categoría',
         prefixIcon: const Padding(
           padding: EdgeInsets.only(left: 4),
-          child: Icon(
-            Icons.category_outlined,
-            size: 18,
-            color: _purchaseSoft,
-          ),
+          child: Icon(Icons.category_outlined, size: 18, color: _purchaseSoft),
         ),
         prefixIconConstraints: const BoxConstraints(minWidth: 46),
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         labelStyle: const TextStyle(
           color: _purchaseMuted,
           fontSize: 13.5,
@@ -850,10 +1299,8 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
       ),
       items: _nicheOptions
           .map(
-            (niche) => DropdownMenuItem<String>(
-              value: niche,
-              child: Text(niche),
-            ),
+            (niche) =>
+                DropdownMenuItem<String>(value: niche, child: Text(niche)),
           )
           .toList(),
       onChanged: (value) {
@@ -862,63 +1309,6 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
           _businessTypeCtrl.text = value ?? '';
         });
       },
-    );
-  }
-
-  Widget _buildPlanOption({
-    required int months,
-    required bool selected,
-    required double? monthlyPrice,
-    required String currency,
-    required VoidCallback onTap,
-  }) {
-    final total = monthlyPrice == null ? null : monthlyPrice * months;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        width: 128,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: selected ? _purchasePrimary : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: selected ? _purchasePrimary : _purchaseLine,
-          ),
-          boxShadow: selected
-              ? const [
-                  BoxShadow(
-                    color: Color(0x22153E75),
-                    blurRadius: 14,
-                    offset: Offset(0, 8),
-                  ),
-                ]
-              : null,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '$months meses',
-              style: TextStyle(
-                color: selected ? Colors.white : _purchaseInk,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              total == null ? 'Seleccionar' : '${total.toStringAsFixed(2)} $currency',
-              style: TextStyle(
-                color: selected ? const Color(0xD9FFFFFF) : _purchaseMuted,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -934,13 +1324,8 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
         side: const BorderSide(color: _purchaseLine),
         backgroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-        textStyle: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
       ),
       icon: Icon(icon),
       label: Text(label),

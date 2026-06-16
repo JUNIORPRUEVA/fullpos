@@ -746,6 +746,47 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   // permitir acceso sin red y sin device_id.
   final businessSync = BusinessLicenseSync();
   final storage = LicenseStorage();
+
+  // Nuevo flujo por negocio: si existe businessId, Apyra/backend manda sobre
+  // cualquier token local. Esto evita que un license.dat viejo deje entrar
+  // cuando la licencia ya figura vencida/eliminada en Apyra.
+  final identityStorage = BusinessIdentityStorage();
+  final businessId = await identityStorage.getBusinessId();
+  final currentBusinessId = (businessId ?? '').trim();
+  if (currentBusinessId.isNotEmpty) {
+    await businessSync.tryPollFromCloudIfDue(
+      minInterval: Duration.zero,
+      ignoreMinInterval: true,
+      networkTimeout: const Duration(seconds: 4),
+    );
+
+    await businessSync.applyLocalLicenseIfValid();
+    final info = await storage.getLastInfo();
+
+    if (info?.isBlocked == true) {
+      return _LicenseGateDecision(
+        isActive: false,
+        isBlocked: true,
+        code: info?.code,
+      );
+    }
+
+    if (info?.isActive == true && info?.isExpired == false) {
+      _runCloudRevocationCheckInBackground(businessSync);
+      return const _LicenseGateDecision(
+        isActive: true,
+        isBlocked: false,
+        code: 'OK',
+      );
+    }
+
+    return _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: info?.code ?? 'NO_LICENSE',
+    );
+  }
+
   final hasValidLocalToken = await businessSync.applyLocalLicenseIfValid();
 
   // Si el token local representa un bloqueo, debe ganar sobre TRIAL.
@@ -832,10 +873,16 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
       code: cachedAfterPoll?.code,
     );
   }
+  if (cachedAfterPoll?.isExpired == true) {
+    return _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: cachedAfterPoll?.code ?? 'EXPIRED',
+    );
+  }
 
   // 3) TRIAL offline-first: permitir acceso durante 5 días desde el inicio.
   // Esto evita depender del endpoint legacy /start-demo (device_id).
-  final identityStorage = BusinessIdentityStorage();
   final cloudDeniedAt = await storage.getCloudDeniedAt();
   final trialStart = await identityStorage.getTrialStart();
   if (trialStart != null) {
@@ -859,7 +906,6 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   // Si ya existe business_id (nuevo flujo), NO debemos re-activar por device_id
   // ni por licenseKey legacy; eso haría que una licencia eliminada en la nube
   // vuelva a aparecer automáticamente.
-  final businessId = await identityStorage.getBusinessId();
   final cached = await storage.getLastInfo();
   var resolvedBusinessId = (businessId ?? '').trim();
   final cachedBusinessId = (cached?.businessId ?? '').trim();

@@ -77,7 +77,13 @@ class LicensePaymentOrder {
     return LicensePaymentOrder(
       paymentOrderId: (map['payment_order_id'] ?? '').toString().trim(),
       paypalOrderId: (map['paypal_order_id'] ?? '').toString().trim(),
-      checkoutUrl: (map['checkout_url'] ?? '').toString().trim(),
+      checkoutUrl:
+          (map['preferred_checkout_url'] ??
+                  map['card_checkout_url'] ??
+                  map['checkout_url'] ??
+                  '')
+              .toString()
+              .trim(),
       amount: (map['amount'] as num?)?.toDouble() ?? 0,
       currency: (map['currency'] ?? 'USD').toString().trim(),
       months: (map['months'] as num?)?.toInt() ?? 0,

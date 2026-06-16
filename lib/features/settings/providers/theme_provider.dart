@@ -723,6 +723,7 @@ ThemeData _buildThemeData(ThemeSettings settings) {
 
     scaffoldBackgroundColor: scaffoldBg,
     canvasColor: scaffoldBg,
+    splashFactory: InkRipple.splashFactory,
     hoverColor: hoverTint,
     focusColor: focusTint,
     splashColor: settings.primaryColor.withOpacity(0.08),

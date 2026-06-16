@@ -73,7 +73,7 @@ class AppConfig {
 
   static String get appVersion => const String.fromEnvironment(
     'FULLPOS_APP_VERSION',
-    defaultValue: '1.0.0+1',
+    defaultValue: '1.0.5+9',
   );
 
   static String get userAgent {

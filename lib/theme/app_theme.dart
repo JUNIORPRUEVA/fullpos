@@ -31,6 +31,7 @@ class AppTheme {
       textTheme: AppTypography.textTheme(),
       scaffoldBackgroundColor: AppColors.background,
       canvasColor: AppColors.background,
+      splashFactory: InkRipple.splashFactory,
       hoverColor: AppColors.primaryBlue.withOpacity(0.045),
       splashColor: AppColors.primaryBlue.withOpacity(0.08),
       disabledColor: AppColors.inactive,

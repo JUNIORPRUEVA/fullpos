@@ -40,7 +40,7 @@ class FullposBrandTheme {
       brightness: Brightness.dark,
       colorScheme: scheme,
       scaffoldBackgroundColor: background,
-      splashFactory: InkSparkle.splashFactory,
+      splashFactory: InkRipple.splashFactory,
       appBarTheme: const AppBarTheme(
         backgroundColor: background,
         foregroundColor: AppColors.textLight,

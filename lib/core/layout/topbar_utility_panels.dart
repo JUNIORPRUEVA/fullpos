@@ -944,7 +944,7 @@ class _LicenseUtilityPanelState extends State<_LicenseUtilityPanel> {
       await _licenseStorage.clearAll();
     } catch (_) {}
     try {
-      await BusinessIdentityStorage().clearProfile();
+      await BusinessIdentityStorage().clearTrialAccess();
     } catch (_) {}
     try {
       await PendingRegistrationQueue().clear();
@@ -1838,7 +1838,8 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
               height: 44,
               width: fullWidthButtons ? double.infinity : null,
               child: OutlinedButton.icon(
-                onPressed: () => setState(() => _showingQrCode = !_showingQrCode),
+                onPressed: () =>
+                    setState(() => _showingQrCode = !_showingQrCode),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF1A56DB),
                   side: const BorderSide(color: Color(0xFFBFDBFE)),
@@ -1848,14 +1849,10 @@ class _CloudUtilityPanelState extends State<_CloudUtilityPanel> {
                   ),
                 ),
                 icon: Icon(
-                  _showingQrCode
-                      ? Icons.close_rounded
-                      : Icons.qr_code_rounded,
+                  _showingQrCode ? Icons.close_rounded : Icons.qr_code_rounded,
                   size: 18,
                 ),
-                label: Text(
-                  _showingQrCode ? 'Cerrar QR' : 'Código QR',
-                ),
+                label: Text(_showingQrCode ? 'Cerrar QR' : 'Código QR'),
               ),
             ),
           ],

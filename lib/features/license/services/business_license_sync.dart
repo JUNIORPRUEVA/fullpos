@@ -191,8 +191,10 @@ class BusinessLicenseSync {
     if (payloadBusinessId.isNotEmpty) {
       final local = await _identity.getBusinessId();
       if (local == null || local.trim().isEmpty) {
-        await _identity.setBusinessId(payloadBusinessId);
-        resolvedBusinessId = payloadBusinessId;
+        // No establecer businessId desde un archivo local. Ese ID solo debe
+        // fijarse por activación/flujo admin explícito para evitar cambios
+        // automáticos o restauraciones accidentales.
+        return null;
       } else if (local.trim() != payloadBusinessId) {
         return null;
       } else {

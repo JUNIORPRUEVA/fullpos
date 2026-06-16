@@ -1128,12 +1128,13 @@ class LicenseController extends StateNotifier<LicenseState> {
         await storage.clearAll();
       } catch (_) {}
 
-      // 3) Identidad/TRIAL (prefs) - NO borrar businessId, solo perfil y trial
+      // 3) Demo/trial local. No borrar perfil del negocio, pero sí quitar
+      // el acceso temporal para que la app no entre sin licencia activa.
       try {
-        await BusinessIdentityStorage().clearProfile();
+        await BusinessIdentityStorage().clearTrialAccess();
       } catch (_) {}
 
-      // 4) Registro pendiente offline
+      // 4) Registro pendiente offline.
       try {
         await PendingRegistrationQueue().clear();
       } catch (_) {}

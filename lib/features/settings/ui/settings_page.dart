@@ -662,7 +662,7 @@ class _LicenseSummaryDialogContentState
     } catch (_) {}
 
     try {
-      await BusinessIdentityStorage().clearProfile();
+      await BusinessIdentityStorage().clearTrialAccess();
     } catch (_) {}
 
     try {

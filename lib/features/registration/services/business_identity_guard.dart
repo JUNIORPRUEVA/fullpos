@@ -84,12 +84,30 @@ class BusinessIdentityGuard {
 
     // Caso 3: Local existe, incoming existe, son DIFERENTES → BLOQUEAR
     if (local.isNotEmpty && incoming.isNotEmpty && local != incoming) {
+      if (allowOverwrite) {
+        _logEvent(
+          source: source,
+          currentBusinessId: local,
+          incomingBusinessId: incoming,
+          action: 'allowed_manual_overwrite',
+          reason: 'sobrescritura manual explícita desde $source',
+          severity: 'warn',
+        );
+        return BusinessIdentityValidationResult(
+          allowed: true,
+          resolvedBusinessId: incoming,
+          reason: 'businessId sobrescrito manualmente desde $source',
+          severity: 'warn',
+        );
+      }
+
       _logEvent(
         source: source,
         currentBusinessId: local,
         incomingBusinessId: incoming,
         action: 'blocked',
-        reason: 'CONFLICTO: businessId local ($local) ≠ incoming ($incoming) desde $source',
+        reason:
+            'CONFLICTO: businessId local ($local) ≠ incoming ($incoming) desde $source',
         severity: 'critical',
       );
       return BusinessIdentityValidationResult(
@@ -233,8 +251,12 @@ class BusinessIdentityGuard {
     final event = {
       'event': 'business_identity_check',
       'source': source,
-      'currentBusinessId': currentBusinessId.isNotEmpty ? currentBusinessId : '(empty)',
-      'incomingBusinessId': incomingBusinessId.isNotEmpty ? incomingBusinessId : '(empty)',
+      'currentBusinessId': currentBusinessId.isNotEmpty
+          ? currentBusinessId
+          : '(empty)',
+      'incomingBusinessId': incomingBusinessId.isNotEmpty
+          ? incomingBusinessId
+          : '(empty)',
       'action': action,
       'reason': reason,
       'severity': severity,

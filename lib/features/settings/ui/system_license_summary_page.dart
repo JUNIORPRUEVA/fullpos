@@ -90,7 +90,7 @@ class _SystemLicenseSummaryPageState extends State<SystemLicenseSummaryPage> {
       await _licenseStorage.clearAll();
     } catch (_) {}
     try {
-      await BusinessIdentityStorage().clearProfile();
+      await BusinessIdentityStorage().clearTrialAccess();
     } catch (_) {}
     try {
       await PendingRegistrationQueue().clear();
@@ -282,13 +282,14 @@ class _SystemLicenseSummaryPageState extends State<SystemLicenseSummaryPage> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surfaceVariant
-                                .withOpacity(0.4),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceVariant.withOpacity(0.4),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Theme.of(context).colorScheme.outlineVariant,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
                             ),
                           ),
                           child: const Text(
@@ -321,9 +322,18 @@ class _SystemLicenseSummaryPageState extends State<SystemLicenseSummaryPage> {
                           label: 'Clave',
                           value: _maskLicenseKey(_info?.licenseKey ?? ''),
                         ),
-                        _infoRow(label: 'Inicio', value: _formatDate(_info?.fechaInicio)),
-                        _infoRow(label: 'Vence', value: _formatDate(_info?.fechaFin)),
-                        _infoRow(label: 'Dispositivos', value: _devicesText(_info)),
+                        _infoRow(
+                          label: 'Inicio',
+                          value: _formatDate(_info?.fechaInicio),
+                        ),
+                        _infoRow(
+                          label: 'Vence',
+                          value: _formatDate(_info?.fechaFin),
+                        ),
+                        _infoRow(
+                          label: 'Dispositivos',
+                          value: _devicesText(_info),
+                        ),
                         _infoRow(label: 'Origen', value: _sourceText(_source)),
                         _infoRow(
                           label: 'Ubicacion archivo',
@@ -342,7 +352,9 @@ class _SystemLicenseSummaryPageState extends State<SystemLicenseSummaryPage> {
                               OutlinedButton.icon(
                                 onPressed: _debugResendRegistrationToCloud,
                                 icon: const Icon(Icons.cloud_upload_outlined),
-                                label: const Text('Reenviar registro nube (debug)'),
+                                label: const Text(
+                                  'Reenviar registro nube (debug)',
+                                ),
                               ),
                               OutlinedButton.icon(
                                 onPressed: _debugResetLicense,

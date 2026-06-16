@@ -46,6 +46,7 @@ class BusinessOnboardingProfile {
   bool get hasMinimumData =>
       businessName.trim().isNotEmpty &&
       role.trim().isNotEmpty &&
+      ownerName.trim().isNotEmpty &&
       phone.trim().isNotEmpty;
 }
 
@@ -72,6 +73,17 @@ class BusinessIdentityStorage {
     await sp.remove(_kTrialStartIso);
     await sp.remove(_kDemoConsumed);
     await sp.remove(_kOnboardingCompleted);
+  }
+
+  /// Limpia solo el acceso temporal de demo/trial.
+  ///
+  /// Mantiene los datos del cliente (negocio, tipo, representante, WhatsApp,
+  /// email y businessId), pero evita que el router deje entrar por una demo
+  /// local después de resetear la licencia.
+  Future<void> clearTrialAccess() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.remove(_kTrialStartIso);
+    await sp.setBool(_kDemoConsumed, true);
   }
 
   /// Limpia TODO incluyendo businessId.

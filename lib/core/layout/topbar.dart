@@ -10,6 +10,7 @@ import '../../features/cash/ui/cash_close_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
 import '../../features/auth/services/logout_flow_service.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
+import '../config/app_config.dart';
 import '../constants/app_sizes.dart';
 import '../session/session_manager.dart';
 import '../theme/app_tokens.dart';
@@ -296,11 +297,7 @@ class _TopbarState extends ConsumerState<Topbar> {
                         ],
                       ),
                       alignment: Alignment.center,
-                      child: Icon(
-                        icon,
-                        size: 17,
-                        color: itemColor,
-                      ),
+                      child: Icon(icon, size: 17, color: itemColor),
                     ),
                     const SizedBox(width: 11),
                     Expanded(
@@ -422,6 +419,7 @@ class _TopbarState extends ConsumerState<Topbar> {
     final businessName =
         _cleanText(businessSettings.businessName) ?? 'Mi negocio';
     final businessLogoPath = _cleanText(businessSettings.logoPath);
+    final appVersion = AppConfig.appVersion;
 
     const topbarBg = Colors.white;
 
@@ -450,7 +448,6 @@ class _TopbarState extends ConsumerState<Topbar> {
 
         final padM = AppSizes.paddingM * s;
         final padL = AppSizes.paddingL * s;
-        final spaceS = AppSizes.spaceS * s;
 
         final horizontalPad = ((isCompact ? padM : padL) * 0.55).clamp(
           8.0,
@@ -472,283 +469,267 @@ class _TopbarState extends ConsumerState<Topbar> {
         final showProductsButton = screenWidth >= 500;
         final showTurnLabel = screenWidth >= 690;
 
-       final topbarContent = Container(
-  width: screenWidth,
-  height: topbarHeight + topInset,
-  padding: EdgeInsets.fromLTRB(
-    horizontalPad,
-    topInset,
-    horizontalPad,
-    0,
-  ),
-decoration: BoxDecoration(
-  color: topbarBg,
-  border: widget.showBottomBorder
-      ? const Border(
-          bottom: BorderSide(
-            color: Color(0xFF7C8A99),
-            width: 1.15,
+        final topbarContent = Container(
+          width: screenWidth,
+          height: topbarHeight + topInset,
+          padding: EdgeInsets.fromLTRB(
+            horizontalPad,
+            topInset,
+            horizontalPad,
+            0,
           ),
-        )
-      : null,
-  boxShadow: [
-    BoxShadow(
-      color: Colors.black.withOpacity(0.045),
-      blurRadius: 5,
-      spreadRadius: -2,
-      offset: const Offset(0, 2),
-    ),
-  ],
-),
-  child: Row(
-    crossAxisAlignment: CrossAxisAlignment.center,
-    children: [
-      // ─────────────────────────────────────────────────────────────
-      // Menú lateral
-      // ─────────────────────────────────────────────────────────────
-      if (widget.showMenuButton) ...[
-        Tooltip(
-          message: widget.isMenuOpen ? 'Cerrar menú' : 'Abrir menú',
-          waitDuration: const Duration(milliseconds: 350),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: widget.onMenuPressed,
-              borderRadius: BorderRadius.circular(10),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 190),
-                curve: Curves.easeOutCubic,
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: widget.isMenuOpen
-                      ? brandAccent
-                      : brandAccent.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: widget.isMenuOpen
-                        ? brandAccent
-                        : brandAccent.withOpacity(0.18),
-                    width: 1,
-                  ),
-                  boxShadow: widget.isMenuOpen
-                      ? [
-                          BoxShadow(
-                            color: brandAccent.withOpacity(0.18),
-                            blurRadius: 12,
-                            spreadRadius: -4,
-                            offset: const Offset(0, 5),
+          decoration: BoxDecoration(
+            color: topbarBg,
+            border: widget.showBottomBorder
+                ? const Border(
+                    bottom: BorderSide(color: Color(0xFF7C8A99), width: 1.15),
+                  )
+                : null,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.045),
+                blurRadius: 5,
+                spreadRadius: -2,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // ─────────────────────────────────────────────────────────────
+              // Menú lateral
+              // ─────────────────────────────────────────────────────────────
+              if (widget.showMenuButton) ...[
+                Tooltip(
+                  message: widget.isMenuOpen ? 'Cerrar menú' : 'Abrir menú',
+                  waitDuration: const Duration(milliseconds: 350),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: widget.onMenuPressed,
+                      borderRadius: BorderRadius.circular(10),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 190),
+                        curve: Curves.easeOutCubic,
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: widget.isMenuOpen
+                              ? brandAccent
+                              : brandAccent.withOpacity(0.07),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: widget.isMenuOpen
+                                ? brandAccent
+                                : brandAccent.withOpacity(0.18),
+                            width: 1,
                           ),
-                        ]
-                      : const [],
-                ),
-                alignment: Alignment.center,
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 190),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: ScaleTransition(
-                        scale: Tween<double>(
-                          begin: 0.86,
-                          end: 1,
-                        ).animate(animation),
-                        child: child,
+                          boxShadow: widget.isMenuOpen
+                              ? [
+                                  BoxShadow(
+                                    color: brandAccent.withOpacity(0.18),
+                                    blurRadius: 12,
+                                    spreadRadius: -4,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ]
+                              : const [],
+                        ),
+                        alignment: Alignment.center,
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 190),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, animation) {
+                            return FadeTransition(
+                              opacity: animation,
+                              child: ScaleTransition(
+                                scale: Tween<double>(
+                                  begin: 0.86,
+                                  end: 1,
+                                ).animate(animation),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Icon(
+                            widget.isMenuOpen
+                                ? Icons.close_rounded
+                                : Icons.menu_rounded,
+                            key: ValueKey<bool>(widget.isMenuOpen),
+                            size: 21,
+                            color: widget.isMenuOpen
+                                ? Colors.white
+                                : brandAccent,
+                          ),
+                        ),
                       ),
-                    );
-                  },
-                  child: Icon(
-                    widget.isMenuOpen
-                        ? Icons.close_rounded
-                        : Icons.menu_rounded,
-                    key: ValueKey<bool>(widget.isMenuOpen),
-                    size: 21,
-                    color: widget.isMenuOpen
-                        ? Colors.white
-                        : brandAccent,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
+
+              // ─────────────────────────────────────────────────────────────
+              // Identidad visual de la sección
+              // ─────────────────────────────────────────────────────────────
+              Icon(
+                Icons.receipt_long_rounded,
+                size: (21 * s).clamp(19.0, 23.0).toDouble(),
+                color: brandAccent,
+              ),
+
+              SizedBox(width: (9 * s).clamp(7.0, 11.0).toDouble()),
+
+              Flexible(
+                flex: 0,
+                child: Text(
+                  'Facturación',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: appBarFg,
+                    fontSize: ((isCompact ? 16.0 : 18.0) * s)
+                        .clamp(15.5, 19.0)
+                        .toDouble(),
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.18,
+                    height: 1.1,
+                    fontFamilyFallback: const [
+                      'Poppins',
+                      'Segoe UI',
+                      'Roboto',
+                      'Arial',
+                    ],
                   ),
                 ),
               ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-      ],
 
-      // ─────────────────────────────────────────────────────────────
-      // Identidad visual de la sección
-      // ─────────────────────────────────────────────────────────────
-      Icon(
-  Icons.receipt_long_rounded,
-  size: (21 * s).clamp(19.0, 23.0).toDouble(),
-  color: brandAccent,
-),
+              const SizedBox(width: 10),
 
-SizedBox(
-  width: (9 * s).clamp(7.0, 11.0).toDouble(),
-),
+              const SizedBox(width: 14),
 
-Flexible(
-  flex: 0,
-  child: Text(
-    'Facturación',
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-    style: TextStyle(
-      color: appBarFg,
-      fontSize: ((isCompact ? 16.0 : 18.0) * s)
-          .clamp(15.5, 19.0)
-          .toDouble(),
-      fontWeight: FontWeight.w700,
-      letterSpacing: -0.18,
-      height: 1.1,
-      fontFamilyFallback: const [
-        'Poppins',
-        'Segoe UI',
-        'Roboto',
-        'Arial',
-      ],
-    ),
-  ),
-),
-
-      const SizedBox(width: 10),
-
-      const SizedBox(width: 14),
-
-      Container(
-        width: 1,
-        height: 28,
-        color: chromeBorderColor.withOpacity(0.75),
-      ),
-
-      const Spacer(),
-
-      // ─────────────────────────────────────────────────────────────
-      // Acciones de la derecha
-      // ─────────────────────────────────────────────────────────────
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showProductsButton) ...[
-            _TopbarIconAction(
-              scale: s,
-              icon: Icons.apps_rounded,
-              tooltip: 'Productos de la empresa',
-              color: _softTextColor,
-              borderColor: chromeBorderColor,
-              onTap: () {
-                unawaited(_showCompanyProductsDialog());
-              },
-            ),
-            SizedBox(
-              width: (7 * s).clamp(5.0, 8.0).toDouble(),
-            ),
-          ],
-
-          PopupMenuButton<_TopbarMenuAction>(
-            tooltip: 'Turnos',
-            position: PopupMenuPosition.under,
-            offset: const Offset(0, 8),
-            constraints: BoxConstraints(
-              minWidth: turnMenuWidth,
-              maxWidth: turnMenuWidth,
-            ),
-            elevation: 10,
-            color: topbarBg,
-            surfaceTintColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(7),
-                bottomLeft: Radius.circular(7),
-                bottomRight: Radius.circular(16),
+              Container(
+                width: 1,
+                height: 28,
+                color: chromeBorderColor.withOpacity(0.75),
               ),
-              side: BorderSide(
-                color: brandAccent.withOpacity(0.14),
-                width: 0.9,
-              ),
-            ),
-            onSelected: _handleMenuAction,
-            itemBuilder: (_) {
-              return _turnMenuItems(
-                context,
-                turnMenuWidth,
-              );
-            },
-            child: _TurnMenuButton(
-              scale: s,
-              visibleLabel: showTurnLabel,
-              accentColor: brandAccent,
-              borderColor: chromeBorderColor,
-              isOpen: _openCashSessionId != null,
-            ),
-          ),
 
-          SizedBox(
-            width: (7 * s).clamp(5.0, 8.0).toDouble(),
-          ),
+              const Spacer(),
 
-          _ActiveCashierChip(
-            scale: s,
-            name: activeUser,
-            borderColor: chromeBorderColor,
-          ),
+              // ─────────────────────────────────────────────────────────────
+              // Acciones de la derecha
+              // ─────────────────────────────────────────────────────────────
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showProductsButton) ...[
+                    _TopbarIconAction(
+                      scale: s,
+                      icon: Icons.apps_rounded,
+                      tooltip: 'Productos de la empresa',
+                      color: _softTextColor,
+                      borderColor: chromeBorderColor,
+                      onTap: () {
+                        unawaited(_showCompanyProductsDialog());
+                      },
+                    ),
+                    SizedBox(width: (7 * s).clamp(5.0, 8.0).toDouble()),
+                  ],
 
-          SizedBox(
-            width: (7 * s).clamp(5.0, 8.0).toDouble(),
-          ),
+                  PopupMenuButton<_TopbarMenuAction>(
+                    tooltip: 'Turnos',
+                    position: PopupMenuPosition.under,
+                    offset: const Offset(0, 8),
+                    constraints: BoxConstraints(
+                      minWidth: turnMenuWidth,
+                      maxWidth: turnMenuWidth,
+                    ),
+                    elevation: 10,
+                    color: topbarBg,
+                    surfaceTintColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(7),
+                        bottomLeft: Radius.circular(7),
+                        bottomRight: Radius.circular(16),
+                      ),
+                      side: BorderSide(
+                        color: brandAccent.withOpacity(0.14),
+                        width: 0.9,
+                      ),
+                    ),
+                    onSelected: _handleMenuAction,
+                    itemBuilder: (_) {
+                      return _turnMenuItems(context, turnMenuWidth);
+                    },
+                    child: _TurnMenuButton(
+                      scale: s,
+                      visibleLabel: showTurnLabel,
+                      accentColor: brandAccent,
+                      borderColor: chromeBorderColor,
+                      isOpen: _openCashSessionId != null,
+                    ),
+                  ),
 
-          PopupMenuButton<_TopbarMenuAction>(
-            tooltip: 'Negocio y cuenta',
-            position: PopupMenuPosition.under,
-            offset: const Offset(0, 8),
-            constraints: BoxConstraints(
-              minWidth: businessMenuWidth,
-              maxWidth: businessMenuWidth,
-            ),
-            elevation: 10,
-            color: topbarBg,
-            surfaceTintColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(7),
-                bottomLeft: Radius.circular(7),
-                bottomRight: Radius.circular(16),
+                  SizedBox(width: (7 * s).clamp(5.0, 8.0).toDouble()),
+
+                  _ActiveCashierChip(
+                    scale: s,
+                    name: activeUser,
+                    borderColor: chromeBorderColor,
+                  ),
+
+                  SizedBox(width: (7 * s).clamp(5.0, 8.0).toDouble()),
+
+                  PopupMenuButton<_TopbarMenuAction>(
+                    tooltip: 'Negocio y cuenta',
+                    position: PopupMenuPosition.under,
+                    offset: const Offset(0, 8),
+                    constraints: BoxConstraints(
+                      minWidth: businessMenuWidth,
+                      maxWidth: businessMenuWidth,
+                    ),
+                    elevation: 10,
+                    color: topbarBg,
+                    surfaceTintColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        topRight: Radius.circular(7),
+                        bottomLeft: Radius.circular(7),
+                        bottomRight: Radius.circular(16),
+                      ),
+                      side: BorderSide(
+                        color: brandAccent.withOpacity(0.14),
+                        width: 0.9,
+                      ),
+                    ),
+                    onSelected: _handleMenuAction,
+                    itemBuilder: (_) {
+                      return _businessMenuItems(context, businessMenuWidth);
+                    },
+                    child: Tooltip(
+                      message: '$businessName v$appVersion',
+                      waitDuration: const Duration(milliseconds: 350),
+                      child: _BusinessMenuButton(
+                        scale: s,
+                        businessName: businessName,
+                        appVersion: appVersion,
+                        logoPath: businessLogoPath,
+                        showText: showBusinessText,
+                        accentColor: brandAccent,
+                        borderColor: chromeBorderColor,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              side: BorderSide(
-                color: brandAccent.withOpacity(0.14),
-                width: 0.9,
-              ),
-            ),
-            onSelected: _handleMenuAction,
-            itemBuilder: (_) {
-              return _businessMenuItems(
-                context,
-                businessMenuWidth,
-              );
-            },
-            child: Tooltip(
-              message: businessName,
-              waitDuration: const Duration(milliseconds: 350),
-              child: _BusinessMenuButton(
-                scale: s,
-                businessName: businessName,
-                logoPath: businessLogoPath,
-                showText: showBusinessText,
-                accentColor: brandAccent,
-                borderColor: chromeBorderColor,
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
-    ],
-  ),
-);
+        );
 
         return SizedBox(
           width: constraints.maxWidth,
@@ -771,6 +752,7 @@ class _BusinessMenuButton extends StatelessWidget {
   const _BusinessMenuButton({
     required this.scale,
     required this.businessName,
+    required this.appVersion,
     required this.logoPath,
     required this.showText,
     required this.accentColor,
@@ -779,6 +761,7 @@ class _BusinessMenuButton extends StatelessWidget {
 
   final double scale;
   final String businessName;
+  final String appVersion;
   final String? logoPath;
   final bool showText;
   final Color accentColor;
@@ -791,6 +774,9 @@ class _BusinessMenuButton extends StatelessWidget {
     final cleanName = businessName.trim().isEmpty
         ? 'Mi negocio'
         : businessName.trim();
+    final cleanVersion = appVersion.trim().isEmpty
+        ? '1.0.0+1'
+        : appVersion.trim();
 
     const buttonRadius = BorderRadius.only(
       topLeft: Radius.circular(12),
@@ -805,19 +791,12 @@ class _BusinessMenuButton extends StatelessWidget {
       height: height,
       padding: EdgeInsets.only(
         left: (6 * scale).clamp(5.0, 7.0).toDouble(),
-        right: showText
-            ? (12 * scale).clamp(10.0, 14.0).toDouble()
-            : 6,
+        right: showText ? (12 * scale).clamp(10.0, 14.0).toDouble() : 6,
       ),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          accentColor.withOpacity(0.035),
-          Colors.white,
-        ),
+        color: Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white),
         borderRadius: buttonRadius,
-        border: Border.all(
-          color: borderColor.withOpacity(0.85),
-        ),
+        border: Border.all(color: borderColor.withOpacity(0.85)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.025),
@@ -837,23 +816,31 @@ class _BusinessMenuButton extends StatelessWidget {
           ),
 
           if (showText) ...[
-            SizedBox(
-              width: (8 * scale).clamp(6.0, 9.0).toDouble(),
-            ),
+            SizedBox(width: (8 * scale).clamp(6.0, 9.0).toDouble()),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 190),
-              child: Text(
-                cleanName,
+              child: RichText(
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: _TopbarState._strongTextColor,
-                  fontSize: (13.2 * scale)
-                      .clamp(12.4, 14.2)
-                      .toDouble(),
-                  fontWeight: FontWeight.w900,
-                  height: 1.05,
-                  letterSpacing: 0.05,
+                text: TextSpan(
+                  text: cleanName,
+                  style: TextStyle(
+                    color: _TopbarState._strongTextColor,
+                    fontSize: (13.2 * scale).clamp(12.4, 14.2).toDouble(),
+                    fontWeight: FontWeight.w900,
+                    height: 1.05,
+                    letterSpacing: 0.05,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: '  v$cleanVersion',
+                      style: TextStyle(
+                        color: _TopbarState._softTextColor,
+                        fontSize: (11.2 * scale).clamp(10.6, 12.0).toDouble(),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -902,15 +889,10 @@ class _BusinessLogoMark extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             accentColor,
-            Color.alphaBlend(
-              Colors.black.withOpacity(0.16),
-              accentColor,
-            ),
+            Color.alphaBlend(Colors.black.withOpacity(0.16), accentColor),
           ],
         ),
-        border: Border.all(
-          color: accentColor.withOpacity(0.16),
-        ),
+        border: Border.all(color: accentColor.withOpacity(0.16)),
         boxShadow: [
           BoxShadow(
             color: accentColor.withOpacity(0.18),
@@ -922,18 +904,13 @@ class _BusinessLogoMark extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: hasLogo
-          ? Image.file(
-              File(normalizedPath),
-              fit: BoxFit.cover,
-            )
+          ? Image.file(File(normalizedPath), fit: BoxFit.cover)
           : Center(
               child: Text(
                 initials,
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: (10.8 * (size / 26))
-                      .clamp(9.5, 12.0)
-                      .toDouble(),
+                  fontSize: (10.8 * (size / 26)).clamp(9.5, 12.0).toDouble(),
                   fontWeight: FontWeight.w900,
                   height: 1,
                 ),
@@ -979,10 +956,7 @@ class _TurnMenuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final height = (34 * scale).clamp(32.0, 38.0).toDouble();
 
-    final bg = Color.alphaBlend(
-      accentColor.withOpacity(0.08),
-      Colors.white,
-    );
+    final bg = Color.alphaBlend(accentColor.withOpacity(0.08), Colors.white);
 
     const buttonRadius = BorderRadius.only(
       topLeft: Radius.circular(11),
@@ -1011,9 +985,7 @@ class _TurnMenuButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: buttonRadius,
-          border: Border.all(
-            color: accentColor.withOpacity(0.30),
-          ),
+          border: Border.all(color: accentColor.withOpacity(0.30)),
           boxShadow: [
             BoxShadow(
               color: accentColor.withOpacity(0.06),
@@ -1032,43 +1004,31 @@ class _TurnMenuButton extends StatelessWidget {
               decoration: BoxDecoration(
                 color: accentColor.withOpacity(0.13),
                 borderRadius: iconRadius,
-                border: Border.all(
-                  color: accentColor.withOpacity(0.14),
-                ),
+                border: Border.all(color: accentColor.withOpacity(0.14)),
               ),
               alignment: Alignment.center,
               child: Icon(
                 Icons.point_of_sale_rounded,
-                size: (14.5 * scale)
-                    .clamp(13.0, 16.0)
-                    .toDouble(),
+                size: (14.5 * scale).clamp(13.0, 16.0).toDouble(),
                 color: accentColor,
               ),
             ),
 
             if (visibleLabel) ...[
-              SizedBox(
-                width: (7 * scale).clamp(5.0, 8.0).toDouble(),
-              ),
+              SizedBox(width: (7 * scale).clamp(5.0, 8.0).toDouble()),
               Text(
                 'Turno',
                 style: TextStyle(
                   color: accentColor,
-                  fontSize: (12 * scale)
-                      .clamp(11.2, 12.8)
-                      .toDouble(),
+                  fontSize: (12 * scale).clamp(11.2, 12.8).toDouble(),
                   fontWeight: FontWeight.w900,
                   height: 1,
                 ),
               ),
-              SizedBox(
-                width: (3 * scale).clamp(2.0, 4.0).toDouble(),
-              ),
+              SizedBox(width: (3 * scale).clamp(2.0, 4.0).toDouble()),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
-                size: (17 * scale)
-                    .clamp(15.0, 18.0)
-                    .toDouble(),
+                size: (17 * scale).clamp(15.0, 18.0).toDouble(),
                 color: accentColor.withOpacity(0.72),
               ),
             ],
@@ -1078,6 +1038,7 @@ class _TurnMenuButton extends StatelessWidget {
     );
   }
 }
+
 class _ActiveCashierChip extends StatelessWidget {
   const _ActiveCashierChip({
     required this.scale,
@@ -1119,9 +1080,7 @@ class _ActiveCashierChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: chipRadius,
-          border: Border.all(
-            color: borderColor.withOpacity(0.75),
-          ),
+          border: Border.all(color: borderColor.withOpacity(0.75)),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.025),
@@ -1139,9 +1098,7 @@ class _ActiveCashierChip extends StatelessWidget {
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
                 borderRadius: iconRadius,
-                border: Border.all(
-                  color: borderColor.withOpacity(0.55),
-                ),
+                border: Border.all(color: borderColor.withOpacity(0.55)),
               ),
               alignment: Alignment.center,
               child: Icon(
@@ -1151,9 +1108,7 @@ class _ActiveCashierChip extends StatelessWidget {
               ),
             ),
 
-            SizedBox(
-              width: (7 * scale).clamp(6.0, 8.0).toDouble(),
-            ),
+            SizedBox(width: (7 * scale).clamp(6.0, 8.0).toDouble()),
 
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 136),
@@ -1163,9 +1118,7 @@ class _ActiveCashierChip extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: _TopbarState._strongTextColor,
-                  fontSize: (12.5 * scale)
-                      .clamp(11.6, 13.2)
-                      .toDouble(),
+                  fontSize: (12.5 * scale).clamp(11.6, 13.2).toDouble(),
                   fontWeight: FontWeight.w800,
                   height: 1,
                 ),
@@ -1220,9 +1173,7 @@ class _TopbarIconAction extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: actionRadius,
-              border: Border.all(
-                color: borderColor.withOpacity(0.70),
-              ),
+              border: Border.all(color: borderColor.withOpacity(0.70)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.025),
