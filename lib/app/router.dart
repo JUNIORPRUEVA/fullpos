@@ -59,6 +59,7 @@ import '../features/license/services/license_gate_refresh.dart';
 import '../features/license/data/license_models.dart';
 import '../features/license/license_config.dart';
 import '../core/session/session_manager.dart';
+import '../core/identity/identity_recovery_bundle.dart';
 import '../features/settings/data/user_model.dart';
 import '../features/registration/services/business_identity_guard.dart';
 import '../features/registration/services/business_identity_storage.dart';
@@ -751,8 +752,19 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   // cualquier token local. Esto evita que un license.dat viejo deje entrar
   // cuando la licencia ya figura vencida/eliminada en Apyra.
   final identityStorage = BusinessIdentityStorage();
-  final businessId = await identityStorage.getBusinessId();
-  final currentBusinessId = (businessId ?? '').trim();
+  var businessId = await identityStorage.getBusinessId();
+  var currentBusinessId = (businessId ?? '').trim();
+  if (currentBusinessId.isEmpty) {
+    final restored = await IdentityRecoveryBundle.instance
+        .recoverToSharedPreferences('router_initial_business_id_missing');
+    if (restored) {
+      businessId = await identityStorage.getBusinessId();
+      currentBusinessId = (businessId ?? '').trim();
+      await IdentityRecoveryBundle.instance.log(
+        'router_restored_business_id_from_bundle',
+      );
+    }
+  }
   if (currentBusinessId.isNotEmpty) {
     await businessSync.tryPollFromCloudIfDue(
       minInterval: Duration.zero,
@@ -787,7 +799,25 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
     );
   }
 
-  final hasValidLocalToken = await businessSync.applyLocalLicenseIfValid();
+  var hasValidLocalToken = await businessSync.applyLocalLicenseIfValid();
+  if (!hasValidLocalToken && currentBusinessId.isEmpty) {
+    final recoveredFromFile = await businessSync
+        .recoverIdentityFromLocalLicenseFile(
+          reason: 'router_missing_business_id',
+        );
+    if (recoveredFromFile) {
+      businessId = await identityStorage.getBusinessId();
+      currentBusinessId = (businessId ?? '').trim();
+      hasValidLocalToken = await businessSync.applyLocalLicenseIfValid();
+      if (currentBusinessId.isNotEmpty && hasValidLocalToken) {
+        return const _LicenseGateDecision(
+          isActive: true,
+          isBlocked: false,
+          code: 'OK',
+        );
+      }
+    }
+  }
 
   // Si el token local representa un bloqueo, debe ganar sobre TRIAL.
   final cachedAfterLocal = await storage.getLastInfo();
@@ -958,8 +988,39 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
     );
   }
 
-  final deviceId =
-      (await storage.getDeviceId()) ?? await SessionManager.ensureTerminalId();
+  final recoveryRequired = await IdentityRecoveryBundle.instance
+      .isRecoveryRequired();
+  final priorInstallation = await IdentityRecoveryBundle.instance
+      .hasPriorInstallationEvidence();
+  if (recoveryRequired || priorInstallation) {
+    await IdentityRecoveryBundle.instance.markRecoveryRequired(
+      recoveryRequired
+          ? 'router_recovery_required'
+          : 'router_prevented_legacy_prior_installation',
+    );
+    await IdentityRecoveryBundle.instance.log(
+      'router_legacy_device_flow_blocked '
+      'recoveryRequired=$recoveryRequired priorInstallation=$priorInstallation',
+    );
+    return const _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: 'RECOVERY_REQUIRED',
+    );
+  }
+
+  String deviceId;
+  try {
+    deviceId =
+        (await storage.getDeviceId()) ??
+        await SessionManager.ensureTerminalId();
+  } on IdentityRecoveryException {
+    return const _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: 'RECOVERY_REQUIRED',
+    );
+  }
   await storage.setDeviceId(deviceId);
 
   Future<_LicenseGateDecision?> tryAutoActivate() async {

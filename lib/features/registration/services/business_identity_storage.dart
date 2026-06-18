@@ -1,5 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/identity/identity_recovery_bundle.dart';
+import '../../../core/storage/prefs_safe.dart';
+
 class BusinessIdentity {
   final String businessId;
   final String businessName;
@@ -64,7 +67,7 @@ class BusinessIdentityStorage {
   /// Limpia datos de identidad NO críticos (nombre, rol, teléfono, email, trial).
   /// NO borra el businessId. Para borrar businessId usar [clearBusinessIdentity].
   Future<void> clearProfile() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     await sp.remove(_kBusinessName);
     await sp.remove(_kRole);
     await sp.remove(_kOwnerName);
@@ -81,7 +84,7 @@ class BusinessIdentityStorage {
   /// email y businessId), pero evita que el router deje entrar por una demo
   /// local después de resetear la licencia.
   Future<void> clearTrialAccess() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     await sp.remove(_kTrialStartIso);
     await sp.setBool(_kDemoConsumed, true);
   }
@@ -89,7 +92,7 @@ class BusinessIdentityStorage {
   /// Limpia TODO incluyendo businessId.
   /// Solo debe llamarse desde [unlinkBusinessIdentity] o flujo admin explícito.
   Future<void> clearAll() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     await sp.remove(_kBusinessId);
     await sp.remove(_kBusinessName);
     await sp.remove(_kRole);
@@ -102,22 +105,22 @@ class BusinessIdentityStorage {
   }
 
   Future<bool> isDemoConsumed() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     return sp.getBool(_kDemoConsumed) == true;
   }
 
   Future<void> markDemoConsumed() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     await sp.setBool(_kDemoConsumed, true);
   }
 
   Future<bool> isOnboardingCompleted() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     return sp.getBool(_kOnboardingCompleted) == true;
   }
 
   Future<void> setOnboardingCompleted(bool value) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     await sp.setBool(_kOnboardingCompleted, value);
   }
 
@@ -129,9 +132,20 @@ class BusinessIdentityStorage {
   /// Obtiene el businessId actual.
   /// Si no existe, retorna null. NO genera UUID automáticamente.
   Future<String?> getBusinessId() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     final v = (sp.getString(_kBusinessId) ?? '').trim();
-    return v.isEmpty ? null : v;
+    if (v.isNotEmpty) return v;
+
+    final bundle = await IdentityRecoveryBundle.instance.loadBestAvailable();
+    final bundleBusinessId = (bundle?.businessId ?? '').trim();
+    if (bundleBusinessId.isEmpty) return null;
+
+    final restored = await IdentityRecoveryBundle.instance
+        .restoreBundleToSharedPreferences(
+          bundle!,
+          reason: 'business_identity_get_missing',
+        );
+    return restored ? bundleBusinessId : null;
   }
 
   /// Guarda un businessId.
@@ -141,7 +155,7 @@ class BusinessIdentityStorage {
     String businessId, {
     bool overwrite = false,
   }) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     final v = businessId.trim();
     if (v.isEmpty) return;
 
@@ -151,6 +165,9 @@ class BusinessIdentityStorage {
     }
 
     await sp.setString(_kBusinessId, v);
+    await IdentityRecoveryBundle.instance.saveFromCurrentState(
+      'business_identity_set_business_id',
+    );
   }
 
   /// Versión segura de ensureBusinessId: NO genera UUID.
@@ -164,14 +181,14 @@ class BusinessIdentityStorage {
   }
 
   Future<DateTime?> getTrialStart() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     final raw = (sp.getString(_kTrialStartIso) ?? '').trim();
     if (raw.isEmpty) return null;
     return DateTime.tryParse(raw);
   }
 
   Future<DateTime> ensureTrialStartNowIfMissing() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     final existing = (sp.getString(_kTrialStartIso) ?? '').trim();
     final parsed = DateTime.tryParse(existing);
     if (parsed != null) return parsed;
@@ -182,7 +199,7 @@ class BusinessIdentityStorage {
   }
 
   Future<void> setTrialStart(DateTime trialStart) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     await sp.setString(_kTrialStartIso, trialStart.toUtc().toIso8601String());
   }
 
@@ -193,7 +210,7 @@ class BusinessIdentityStorage {
     required String phone,
     String? email,
   }) async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     await sp.setString(_kBusinessName, businessName.trim());
     await sp.setString(_kRole, role.trim());
     await sp.setString(_kOwnerName, ownerName.trim());
@@ -206,7 +223,7 @@ class BusinessIdentityStorage {
   }
 
   Future<BusinessOnboardingProfile?> getOnboardingProfile() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     final businessId = (sp.getString(_kBusinessId) ?? '').trim();
     final businessName = (sp.getString(_kBusinessName) ?? '').trim();
     final role = (sp.getString(_kRole) ?? '').trim();
@@ -244,7 +261,7 @@ class BusinessIdentityStorage {
   }
 
   Future<BusinessIdentity?> getIdentity() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
 
     final businessId = (sp.getString(_kBusinessId) ?? '').trim();
     if (businessId.isEmpty) return null;
@@ -275,5 +292,11 @@ class BusinessIdentityStorage {
       email: email.isEmpty ? null : email,
       trialStart: trialStart,
     );
+  }
+
+  Future<SharedPreferences> _prefs() async {
+    final prefs = await PrefsSafe.getInstance();
+    if (prefs != null) return prefs;
+    return SharedPreferences.getInstance();
   }
 }

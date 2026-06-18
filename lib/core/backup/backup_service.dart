@@ -14,6 +14,7 @@ import '../db/database_manager.dart';
 import '../db/db_init.dart';
 import '../errors/error_handler.dart';
 import '../errors/error_mapper.dart';
+import '../identity/identity_recovery_bundle.dart';
 import '../logging/app_logger.dart';
 import '../session/session_manager.dart';
 import '../utils/id_utils.dart';
@@ -177,6 +178,24 @@ class BackupService {
       }
 
       final dbChecksum = await _sha256OfFile(dbFile);
+      await IdentityRecoveryBundle.instance.saveFromCurrentState(
+        'backup_create',
+      );
+      final identityFiles = <File>[
+        await IdentityRecoveryBundle.instance.primaryFile(),
+        await IdentityRecoveryBundle.instance.backupFile(),
+      ];
+      for (final identityFile in identityFiles) {
+        if (!await identityFile.exists()) continue;
+        final name = identityFile.path.endsWith('.bak.json')
+            ? 'identity_bundle.bak.json'
+            : 'identity_bundle.json';
+        included.add('identity/$name');
+        entries.add({
+          'sourcePath': identityFile.path,
+          'zipPath': 'identity/$name',
+        });
+      }
 
       final meta = BackupMeta(
         createdAtIso: startedAt.toIso8601String(),
@@ -431,6 +450,38 @@ class BackupService {
           ok: false,
           messageUser: 'El backup no contiene la base de datos.',
           messageDev: 'No existe db/${AppDb.dbFileName} en el ZIP',
+        );
+      }
+
+      final extractedIdentity = File(
+        p.join(extractDir.path, 'identity', 'identity_bundle.json'),
+      );
+      if (await extractedIdentity.exists()) {
+        final identityBundle = await IdentityRecoveryBundle.instance
+            .loadFromFile(extractedIdentity);
+        if (identityBundle == null) {
+          return const BackupResult(
+            ok: false,
+            messageUser: 'El backup contiene identidad local inválida.',
+            messageDev: 'identity bundle inválido',
+          );
+        }
+        final restoredIdentity = await IdentityRecoveryBundle.instance
+            .restoreBundleToSharedPreferences(
+              identityBundle,
+              reason: 'backup_restore',
+            );
+        if (!restoredIdentity) {
+          return const BackupResult(
+            ok: false,
+            messageUser:
+                'El backup pertenece a otra identidad local. Contacta soporte.',
+            messageDev: 'identity bundle conflict',
+          );
+        }
+        await IdentityRecoveryBundle.instance.saveBundle(
+          identityBundle,
+          reason: 'backup_restore_install_bundle',
         );
       }
 

@@ -249,7 +249,10 @@ class _LicensePurchasePageState extends ConsumerState<LicensePurchasePage> {
         projectCode: kFullposProjectCode,
         deviceId: deviceId,
         months: _selectedMonths,
+        businessId: _businessId,
         businessName: businessName,
+        businessType: businessType,
+        ownerName: ownerName,
         phone: phone,
         email: email.isEmpty ? null : email,
       );

@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../identity/identity_recovery_bundle.dart';
+
 /// Acceso resiliente a SharedPreferences.
 ///
 /// En desktop (especialmente Windows), un corte de luz puede dejar el archivo
@@ -26,7 +28,21 @@ class PrefsSafe {
       final repaired = await _repairCorruptedPrefsFiles();
       if (!repaired) return null;
       try {
-        return await SharedPreferences.getInstance();
+        final prefs = await SharedPreferences.getInstance();
+        final recovered = await IdentityRecoveryBundle.instance
+            .recoverToSharedPreferences('shared_preferences_corrupted');
+        if (recovered) {
+          await IdentityRecoveryBundle.instance.log(
+            'shared_preferences_corrupt_recovered_from_bundle',
+          );
+        } else {
+          await prefs.setBool(IdentityRecoveryBundle.recoveryRequiredKey, true);
+          await prefs.setString(
+            IdentityRecoveryBundle.recoveryReasonKey,
+            'shared_preferences_corrupted_no_bundle',
+          );
+        }
+        return prefs;
       } catch (_) {
         return null;
       }

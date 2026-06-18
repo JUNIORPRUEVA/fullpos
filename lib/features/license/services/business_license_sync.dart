@@ -4,6 +4,9 @@ import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/identity/identity_recovery_bundle.dart';
+import '../../../core/storage/prefs_safe.dart';
+import '../../registration/services/business_identity_guard.dart';
 import '../../registration/services/business_identity_storage.dart';
 import '../data/license_models.dart';
 import '../license_config.dart';
@@ -42,6 +45,9 @@ class BusinessLicenseSync {
       await _storage.setLicenseKey(info.licenseKey);
       await _storage.setLastInfo(info);
       await _storage.setLastInfoSource(_kCloudSource);
+      await IdentityRecoveryBundle.instance.saveFromCurrentState(
+        'business_license_apply_local_valid',
+      );
       return info.isActive && !info.isExpired;
     } catch (_) {
       return false;
@@ -59,7 +65,8 @@ class BusinessLicenseSync {
     final businessId = await _identity.getBusinessId();
     if (businessId == null || businessId.trim().isEmpty) return false;
 
-    final sp = await SharedPreferences.getInstance();
+    final sp =
+        await PrefsSafe.getInstance() ?? await SharedPreferences.getInstance();
     if (!ignoreMinInterval) {
       final lastIso = (sp.getString(_kLastPollIso) ?? '').trim();
       final last = DateTime.tryParse(lastIso);
@@ -127,7 +134,42 @@ class BusinessLicenseSync {
     await _storage.setLastInfo(info);
     await _storage.setLastInfoSource(_kCloudSource);
     await _storage.clearCloudDenied();
+    await IdentityRecoveryBundle.instance.saveFromCurrentState(
+      'business_license_cloud_poll_valid',
+    );
     return true;
+  }
+
+  Future<bool> recoverIdentityFromLocalLicenseFile({
+    required String reason,
+  }) async {
+    final token = await _file.readToken();
+    if (token == null) return false;
+
+    try {
+      final decoded = _decodeTokenToLicenseFile(token);
+      final info = await _verifyLicenseFile(
+        decoded,
+        allowRestoreBusinessIdFromFile: true,
+      );
+      if (info == null || !info.isActive || info.isExpired) return false;
+
+      await _storage.setLicenseKey(info.licenseKey);
+      await _storage.setLastInfo(info);
+      await _storage.setLastInfoSource(_kCloudSource);
+      await IdentityRecoveryBundle.instance.saveFromCurrentState(
+        'license_dat_recovery_$reason',
+      );
+      await IdentityRecoveryBundle.instance.log(
+        'identity_recovered_from_license_dat reason=$reason',
+      );
+      return true;
+    } catch (e) {
+      await IdentityRecoveryBundle.instance.log(
+        'identity_recovery_from_license_dat_failed reason=$reason error=$e',
+      );
+      return false;
+    }
   }
 
   Map<String, dynamic> _decodeTokenToLicenseFile(String token) {
@@ -149,8 +191,9 @@ class BusinessLicenseSync {
   }
 
   Future<LicenseInfo?> _verifyLicenseFile(
-    Map<String, dynamic> licenseFile,
-  ) async {
+    Map<String, dynamic> licenseFile, {
+    bool allowRestoreBusinessIdFromFile = false,
+  }) async {
     final payload = (licenseFile['payload'] is Map)
         ? (licenseFile['payload'] as Map).cast<String, dynamic>()
         : <String, dynamic>{};
@@ -191,10 +234,22 @@ class BusinessLicenseSync {
     if (payloadBusinessId.isNotEmpty) {
       final local = await _identity.getBusinessId();
       if (local == null || local.trim().isEmpty) {
-        // No establecer businessId desde un archivo local. Ese ID solo debe
-        // fijarse por activación/flujo admin explícito para evitar cambios
-        // automáticos o restauraciones accidentales.
-        return null;
+        if (!allowRestoreBusinessIdFromFile) {
+          // No establecer businessId desde un archivo local en el flujo normal.
+          return null;
+        }
+        try {
+          resolvedBusinessId = await BusinessIdentityGuard.resolveAndApply(
+            storage: _identity,
+            incomingBusinessId: payloadBusinessId,
+            source: 'license_dat_recovery',
+            allowInitialSet: false,
+            allowRestoreWhenLocalMissing: true,
+            allowOverwrite: false,
+          );
+        } on BusinessIdentityConflictException {
+          return null;
+        }
       } else if (local.trim() != payloadBusinessId) {
         return null;
       } else {

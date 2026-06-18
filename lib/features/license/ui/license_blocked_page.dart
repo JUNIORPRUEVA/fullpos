@@ -274,15 +274,12 @@ class _LicenseBlockedPageState extends ConsumerState<LicenseBlockedPage> {
     return null;
   }
 
-  static const String _supportPhoneDisplay = '8295319442';
-  static const String _supportPhoneWhatsapp = '18295319442';
-
   Future<void> _openWhatsapp(
     BuildContext context, {
     required String message,
   }) async {
     final uri = Uri.parse(
-      '${AppConfig.whatsappBaseUrl}/$_supportPhoneWhatsapp',
+      '${AppConfig.whatsappBaseUrl}/${AppConfig.supportWhatsappNumber}',
     ).replace(queryParameters: {'text': message});
     final url = uri.toString();
 
@@ -533,7 +530,7 @@ class _LicenseBlockedPageState extends ConsumerState<LicenseBlockedPage> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'WhatsApp: $_supportPhoneDisplay',
+                                  'WhatsApp: ${AppConfig.supportWhatsappDisplay}',
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: mutedText,
                                   ),

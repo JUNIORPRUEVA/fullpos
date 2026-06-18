@@ -12,6 +12,7 @@ import '../db/app_db.dart';
 import '../db/auto_repair.dart';
 import '../db_hardening/db_hardening.dart';
 import '../errors/error_mapper.dart';
+import '../identity/identity_recovery_bundle.dart';
 import '../logging/app_logger.dart';
 import '../database/recovery/database_recovery_service.dart';
 import '../debug/loader_watchdog.dart';
@@ -163,6 +164,9 @@ class AppBootstrapController extends ChangeNotifier {
       }
 
       _setMessage('Cargando sesión...');
+      await IdentityRecoveryBundle.instance.saveFromCurrentState(
+        'bootstrap_existing_installation',
+      );
       await _reloadAuthSnapshot().timeout(const Duration(seconds: 20));
       _log('session loaded');
       if (token != _runToken) return;

@@ -27,9 +27,11 @@ class AppConfig {
   /// (solo dígitos, con código de país; sin + ni espacios).
   static String get supportWhatsappNumber => const String.fromEnvironment(
     'FULLPOS_SUPPORT_WHATSAPP',
-    // Default: Rep. Dominicana (+1) / 829 534 4286
-    defaultValue: '18295344286',
+    // Default: Rep. Dominicana (+1) / 849 431 4070
+    defaultValue: '18494314070',
   );
+
+  static String get supportWhatsappDisplay => '849-431-4070';
 
   /// URLs de imágenes demo (semillas).
   ///

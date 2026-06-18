@@ -206,7 +206,10 @@ class LicensePaymentApi {
     required String projectCode,
     required String deviceId,
     required int months,
+    String? businessId,
     required String businessName,
+    required String businessType,
+    required String ownerName,
     required String phone,
     String? email,
   }) async {
@@ -214,7 +217,11 @@ class LicensePaymentApi {
       'project_code': projectCode,
       'device_id': deviceId,
       'months': months,
+      if ((businessId ?? '').trim().isNotEmpty)
+        'business_id': businessId!.trim(),
       'business_name': businessName.trim(),
+      'business_type': businessType.trim(),
+      'owner_name': ownerName.trim(),
       'phone': phone.trim(),
       if ((email ?? '').trim().isNotEmpty) 'email': email!.trim(),
     };

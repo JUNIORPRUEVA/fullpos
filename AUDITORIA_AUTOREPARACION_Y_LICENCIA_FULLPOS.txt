@@ -1,0 +1,756 @@
+AUDITORIA FULLPOS - AUTORREPARACION, BACKUPS, BUSINESS_ID Y LICENCIA LOCAL
+Fecha: 2026-06-17
+Modo de auditoria: solo lectura del proyecto. No se modifico codigo, no se abrio ni se migro la base de datos, no se genero business_id y no se cambio la logica de licencias.
+
+================================================================================
+RESUMEN EJECUTIVO
+================================================================================
+
+FullPOS tiene una estrategia real de autorreparacion para SQLite:
+- al iniciar la app abre la base de datos;
+- si falla por corrupcion, intenta restaurar el ultimo backup ZIP;
+- si no hay backup valido, pone la base actual en cuarentena y crea una base nueva;
+- despues del open ejecuta AutoRepair, borra WAL/SHM, corre PRAGMA quick_check/integrity_check y restaura backup si falla;
+- DbHardening valida tablas/columnas criticas y reintenta operaciones ante locks o DB cerrada;
+- DatabaseRecoveryService limpia tickets POS abandonados.
+
+El sistema de autorreparacion protege principalmente la base SQLite principal y la carpeta Documents/product_images cuando se usan backups ZIP completos.
+
+No protege de forma directa:
+- business_id;
+- license.lastInfo;
+- license.licenseKey;
+- license.deviceId;
+- licencia local %APPDATA%/FullPOS/license.dat;
+- cola pending_registration_queue_v1.json;
+- archivo JSON de SharedPreferences.
+
+El business_id vive en SharedPreferences, clave business.business_id_v1. La licencia cacheada vive tambien en SharedPreferences. El token local vive en %APPDATA%/FullPOS/license.dat. Los backups ZIP no incluyen estos archivos. Por eso, despues de un apagon, la base puede restaurarse y la app puede volver a abrir, pero la identidad/licencia local puede quedar perdida o inconsistente si se corrompio SharedPreferences o license.dat.
+
+================================================================================
+AUDITORIA ACTUAL - AUTORREPARACION ANTE APAGONES / CORRUPCION
+================================================================================
+
+ARCHIVO:
+lib/core/bootstrap/app_bootstrap_controller.dart
+METODO / CLASE:
+AppBootstrapController.retry()
+LINEA APROXIMADA:
+100-175
+QUE HACE:
+Controla el arranque. Carga configuracion, abre AppDb.database, si falla intenta AutoRepair.ensureDbHealthy(reason: 'bootstrap_open_failed'), vuelve a abrir, ejecuta AutoRepair.ensureDbHealthy(reason: 'bootstrap'), luego DbHardening.preflight() y DatabaseRecoveryService.run().
+CUANDO SE EJECUTA:
+Al iniciar la app, via appBootstrapProvider.ensureStarted().
+QUE DATOS PROTEGE:
+Indirectamente protege datos dentro de SQLite: productos, ventas, clientes, caja, turnos, cotizaciones, compras, usuarios, configuracion de negocio dentro de tablas, etc., siempre que exista backup/restauracion o reparacion de esquema.
+QUE DATOS NO PROTEGE:
+business_id en SharedPreferences, licencia cacheada en SharedPreferences, license.dat, pending_registration_queue_v1.json, token/estado offline de licencia.
+RIESGO:
+La app puede declararse lista despues de reparar/recrear SQLite, pero sin haber restaurado identidad/licencia local.
+RECOMENDACION:
+Agregar una fase explicita de health-check de identidad/licencia antes/despues de la reparacion DB: verificar business_id, license.lastInfo, device_id y license.dat, sin generar valores nuevos automaticamente.
+
+ARCHIVO:
+lib/core/db/app_db.dart
+METODO / CLASE:
+AppDb._initDatabase()
+LINEA APROXIMADA:
+109-205
+QUE HACE:
+Resuelve ruta de base, lee PRAGMA user_version, crea backup pre-migracion si version vieja, abre la DB. Si falla por read-only usa fallback en Application Support. Si falla por corrupcion intenta restaurar ultimo ZIP; si no puede, mueve DB/WAL/SHM a cuarentena y abre una DB nueva.
+CUANDO SE EJECUTA:
+Cada vez que se pide AppDb.database y no hay handle abierto.
+QUE DATOS PROTEGE:
+Archivo fullpos.db, fullpos.db-wal y fullpos.db-shm durante backup/restauracion de DB.
+QUE DATOS NO PROTEGE:
+SharedPreferences, license.dat, business_id, device_id de licencia, pending queue.
+RIESGO:
+Si no hay ZIP valido, la base corrupta se pone en cuarentena y se crea una nueva. Esto permite que la app abra, pero con datos de negocio en SQLite vacios/default. Puede dar apariencia de "negocio nuevo" aunque no cambie business_id por si solo.
+RECOMENDACION:
+Antes de recrear DB por cuarentena, bloquear con pantalla de recuperacion si no se puede confirmar business_id/licencia local, y ofrecer restauracion manual.
+
+ARCHIVO:
+lib/core/db/app_db.dart
+METODO / CLASE:
+AppDb._tryRestoreFromLatestBackupZip()
+LINEA APROXIMADA:
+254-331
+QUE HACE:
+Busca ZIPs en Documents/FULLPOS_BACKUPS, toma el mas reciente, extrae db/fullpos.db, mueve la DB actual a cuarentena, copia DB/WAL/SHM del backup y valida integridad con PRAGMA integrity_check.
+CUANDO SE EJECUTA:
+Al abrir la DB cuando AppDb detecta error de corrupcion.
+QUE DATOS PROTEGE:
+Contenido SQLite incluido en el ZIP y WAL/SHM si fueron incluidos.
+QUE DATOS NO PROTEGE:
+SharedPreferences, license.dat, business_id/licencia local.
+RIESGO:
+Solo prueba el ZIP mas reciente. Si el mas reciente esta malo y uno anterior esta sano, AppDb no intenta los anteriores. Ademas _verifyDbIntegrity devuelve null por timeout/error y el metodo lo trata como exito (ok ?? true).
+RECOMENDACION:
+Intentar varios ZIPs en orden descendente y exigir integridad true antes de restaurar automaticamente.
+
+ARCHIVO:
+lib/core/db/app_db.dart
+METODO / CLASE:
+AppDb._quarantineDbFiles()
+LINEA APROXIMADA:
+335-377
+QUE HACE:
+Mueve fullpos.db, fullpos.db-wal y fullpos.db-shm a Documents/FULLPOS_BACKUPS/quarantine/db_TIMESTAMP.
+CUANDO SE EJECUTA:
+Cuando falla restauracion desde backup ZIP o antes de sobrescribir la DB con una restaurada.
+QUE DATOS PROTEGE:
+Conserva copia forense de la DB corrupta y sus WAL/SHM.
+QUE DATOS NO PROTEGE:
+No conserva preferencias/licencia/identity.
+RIESGO:
+Si despues de cuarentena AppDb abre una DB nueva, se recrean tablas y datos iniciales.
+RECOMENDACION:
+Registrar este evento como condicion critica visible al usuario y no continuar como si fuera recuperacion completa.
+
+ARCHIVO:
+lib/core/db/app_db.dart
+METODO / CLASE:
+AppDb._openMainDatabase(), _onCreate(), _ensureSchemaIntegrity(), _syncDemoCatalog()
+LINEA APROXIMADA:
+237-249, 815-822, 2310-2488, 4419-5263
+QUE HACE:
+Abre SQLite con onCreate/onUpgrade/onOpen. onOpen asegura esquema y sincroniza catalogo demo. onCreate crea esquema completo y catalogo demo. _ensureSchemaIntegrity crea tablas/columnas criticas faltantes. _syncDemoCatalog inserta/reactiva 10 categorias y 50 productos demo si no hay productos/categorias reales.
+CUANDO SE EJECUTA:
+Al crear DB nueva y en cada apertura.
+QUE DATOS PROTEGE:
+Protege continuidad funcional del esquema SQLite.
+QUE DATOS NO PROTEGE:
+No protege identidad/licencia; tampoco restaura datos reales si la DB fue recreada.
+RIESGO:
+Si la DB real se pierde/cuarentena y no se restaura backup, la app puede quedar con DB nueva + catalogo demo, aparentando inicializacion de negocio nuevo.
+RECOMENDACION:
+Distinguir claramente "DB nueva por primera instalacion" vs "DB recreada despues de corrupcion"; en el segundo caso bloquear flujo normal hasta revisar backup/identidad.
+
+ARCHIVO:
+lib/core/db/auto_repair.dart
+METODO / CLASE:
+AutoRepair.ensureDbHealthy()
+LINEA APROXIMADA:
+21-150
+QUE HACE:
+Evita reparaciones concurrentes. Crea copia inmediata de seguridad, borra WAL/SHM, corre PRAGMA quick_check y PRAGMA integrity_check. Si ambos fallan, renombra DB/WAL/SHM como corruptos y restaura desde backups ZIP.
+CUANDO SE EJECUTA:
+En bootstrap despues de abrir DB, al fallar apertura en bootstrap, y desde DbRepair ante integridad/malformed.
+QUE DATOS PROTEGE:
+fullpos.db, fullpos.db-wal, fullpos.db-shm; datos dentro de SQLite si el backup/restore funciona.
+QUE DATOS NO PROTEGE:
+SharedPreferences, license.dat, business_id, licencia local, pending queue.
+RIESGO:
+La copia inmediata auto_repair_before_* no es ZIP y no es usada automaticamente por restoreLatestBackup(), que solo mira backups ZIP. Sirve mas como copia forense/manual.
+RECOMENDACION:
+Convertir la copia inmediata en backup restaurable o incluirla en la lista de candidatos de restore.
+
+ARCHIVO:
+lib/core/db/auto_repair.dart
+METODO / CLASE:
+AutoRepair.resetWalShmIfNeeded()
+LINEA APROXIMADA:
+31-55
+QUE HACE:
+Cierra la DB, elimina fullpos.db-wal y fullpos.db-shm, y opcionalmente reabre.
+CUANDO SE EJECUTA:
+Dentro de AutoRepair.ensureDbHealthy().
+QUE DATOS PROTEGE:
+Intenta limpiar estado WAL/SHM dañado que bloquee o corrompa lectura.
+QUE DATOS NO PROTEGE:
+No toca rollback journal, SharedPreferences, license.dat.
+RIESGO:
+Si hay transacciones confirmadas solo en WAL y no checkpointed, borrar WAL puede perder cambios recientes. BackupService hace checkpoint antes de backup, pero AutoRepair borra WAL durante reparacion.
+RECOMENDACION:
+Antes de borrar WAL/SHM, intentar checkpoint o backup byte-a-byte y registrar si WAL existia/tamano.
+
+ARCHIVO:
+lib/core/db/auto_repair.dart
+METODO / CLASE:
+AutoRepair.restoreLatestBackup()
+LINEA APROXIMADA:
+57-92
+QUE HACE:
+Lista backups ZIP via BackupService.listBackups(), intenta restaurarlos en orden descendente hasta que uno funcione.
+CUANDO SE EJECUTA:
+Cuando quick_check/integrity_check fallan tras renombrar la DB corrupta.
+QUE DATOS PROTEGE:
+Datos incluidos en backup ZIP.
+QUE DATOS NO PROTEGE:
+business_id/licencia local porque no estan en ZIP.
+RIESGO:
+Mejor que AppDb porque prueba multiples ZIP, pero delega en BackupService.restoreBackup() cuya validacion puede quedar en null por timeout/error y tratarse como exito.
+RECOMENDACION:
+Exigir verificacion positiva de integridad para restauracion automatica.
+
+ARCHIVO:
+lib/core/backup/backup_service.dart
+METODO / CLASE:
+BackupService.createBackup()
+LINEA APROXIMADA:
+62-285
+QUE HACE:
+Crea ZIP backup_TIMESTAMP_trigger.zip en Documents/FULLPOS_BACKUPS. Hace wal_checkpoint(FULL), cierra DB, incluye db/fullpos.db, opcionalmente db/fullpos.db-wal y db/fullpos.db-shm, incluye meta/backup.json y archivos opcionales.
+CUANDO SE EJECUTA:
+Manual desde UI, automatico desde BackupLifecycle/BackupOrchestrator, y otras llamadas explicitas.
+QUE DATOS PROTEGE:
+SQLite principal completo: productos, ventas, clientes, compras, caja, turnos, cotizaciones, usuarios, configuracion en DB, historial de backups, facturacion electronica en DB; tambien Documents/product_images si existe.
+QUE DATOS NO PROTEGE:
+SharedPreferences, business_id, licencia cacheada, license.dat, pending_registration_queue_v1.json.
+RIESGO:
+Si verifyIntegrity=true y la verificacion devuelve false, el codigo igualmente finaliza backup y solo marca integrityCheckOk=false en resultado; no bloquea el backup malo. Si verifyIntegrity=false en auto backup, no valida.
+RECOMENDACION:
+No considerar exitoso un backup con integrityCheckOk=false; para backups automaticos criticos, validar integridad o marcar como no restaurable.
+
+ARCHIVO:
+lib/core/backup/backup_service.dart
+METODO / CLASE:
+BackupService.restoreBackup()
+LINEA APROXIMADA:
+317-535
+QUE HACE:
+Cierra DB, crea safety copy backup_before_restore_TIMESTAMP.db, extrae ZIP, copia DB, restaura WAL/SHM si existen o elimina destinos, restaura archivos opcionales, valida integridad y reabre DB.
+CUANDO SE EJECUTA:
+Restauracion manual, RestoreService, AutoRepair.restoreLatestBackup().
+QUE DATOS PROTEGE:
+Restaura contenido SQLite y product_images del ZIP.
+QUE DATOS NO PROTEGE:
+No restaura SharedPreferences ni license.dat.
+RIESGO:
+El safety copy previa al restore solo copia el archivo DB, no WAL/SHM. Si integrityOk es null, no revierte. Solo verifica checksum del ZIP si expectedChecksumSha256 fue suministrado.
+RECOMENDACION:
+Safety copy debe incluir DB/WAL/SHM y la restauracion automatica debe fallar si integridad es null/false.
+
+ARCHIVO:
+lib/core/backup/backup_service.dart
+METODO / CLASE:
+BackupService.triggerAutoBackupIfAllowed(), _applyRetention()
+LINEA APROXIMADA:
+554-592
+QUE HACE:
+Si auto backup esta habilitado y no se ejecuto otro en los ultimos 30 segundos, dispara createBackup(trigger, verifyIntegrity:false). La retencion conserva los N ZIP mas recientes, default 15, configurable por SharedPreferences backup_retention_count entre 1 y 60.
+CUANDO SE EJECUTA:
+Cuando BackupLifecycle u Orchestrator lo llaman.
+QUE DATOS PROTEGE:
+SQLite y product_images segun backup ZIP.
+QUE DATOS NO PROTEGE:
+Identidad/licencia fuera de DB.
+RIESGO:
+Auto backups se crean sin verificacion de integridad y pueden sobrescribir retencion historica si N es bajo.
+RECOMENDACION:
+Retener minimo varias copias verificadas y separar backups verificados/no verificados.
+
+ARCHIVO:
+lib/core/backup/backup_lifecycle.dart
+METODO / CLASE:
+BackupLifecycle.didChangeAppLifecycleState()
+LINEA APROXIMADA:
+31-75
+QUE HACE:
+Observa ciclo de vida Flutter. Si enableAutoBackup esta activo, agenda backup 12 segundos despues de paused/inactive y dispara backup inmediato en detached.
+CUANDO SE EJECUTA:
+Cuando la app pasa a segundo plano, inactiva o se desprende/cierra.
+QUE DATOS PROTEGE:
+SQLite/product_images mediante BackupOrchestrator.
+QUE DATOS NO PROTEGE:
+business_id/licencia/prefs/license.dat.
+RIESGO:
+Un corte electrico brusco no garantiza que Flutter emita paused/detached ni que haya 12 segundos para terminar backup.
+RECOMENDACION:
+No depender solo de lifecycle para apagones; considerar backups periodicos y despues de transacciones criticas.
+
+ARCHIVO:
+lib/core/backup/backup_orchestrator.dart
+METODO / CLASE:
+BackupOrchestrator.createBackup(), triggerAutoBackupIfAllowed()
+LINEA APROXIMADA:
+28-224
+QUE HACE:
+Decide entre backup local y/o nube segun configuracion cloud. Puede crear local temporal, subir, conservar o eliminar local segun keepLocalCopy.
+CUANDO SE EJECUTA:
+Manual/automatico desde UI y BackupLifecycle.
+QUE DATOS PROTEGE:
+Mismo alcance que BackupService, mas posibilidad de nube.
+QUE DATOS NO PROTEGE:
+Identidad/licencia/prefs/license.dat.
+RIESGO:
+Si cloud esta habilitado y keepLocalCopy=false, puede quedar dependencia de disponibilidad/validacion cloud para recuperar.
+RECOMENDACION:
+Para POS offline, conservar siempre varias copias locales verificadas aunque exista nube.
+
+ARCHIVO:
+lib/core/db_hardening/db_hardening.dart
+METODO / CLASE:
+DbHardening.runDbSafe()
+LINEA APROXIMADA:
+19-85
+QUE HACE:
+Envuelve operaciones de DB. Ante "database is locked"/busy reintenta hasta 3 veces; ante no such table/column/integrity/malformed llama DbRepair; ante DB cerrada reabre y reintenta.
+CUANDO SE EJECUTA:
+Repositorios que usan DbHardening, por ejemplo business_settings, users, ventas/caja en algunos flujos.
+QUE DATOS PROTEGE:
+Disponibilidad de operaciones SQLite y continuidad ante locks/cierre de handle.
+QUE DATOS NO PROTEGE:
+No repara prefs/licencia.
+RIESGO:
+No todos los repositorios necesariamente usan runDbSafe. Las reparaciones pueden ocultar perdida de esquema recreando tablas vacias.
+RECOMENDACION:
+Auditar cobertura de runDbSafe y registrar cuando se crea una tabla faltante en una DB que ya existia.
+
+ARCHIVO:
+lib/core/db_hardening/db_preflight.dart
+METODO / CLASE:
+DbPreflight.run()
+LINEA APROXIMADA:
+14-79
+QUE HACE:
+Abre DB, aplica PRAGMA busy_timeout=5000, llama AppDb.ensureSchema, valida tablas/columnas criticas con DbValidator, corre PRAGMA integrity_check y llama DbRepair si falla.
+CUANDO SE EJECUTA:
+En bootstrap, despues de AutoRepair.
+QUE DATOS PROTEGE:
+Esquema minimo para ventas, productos, clientes, caja, usuarios y autorizaciones.
+QUE DATOS NO PROTEGE:
+No valida business_id/licencia ni todas las tablas funcionales.
+RIESGO:
+La validacion de tablas es parcial; puede pasar como sana una DB con tablas no validadas corruptas/faltantes.
+RECOMENDACION:
+Ampliar DbValidator a tablas criticas reales: purchases, quotes, business_settings, license/identity si se migran a SQLite.
+
+ARCHIVO:
+lib/core/db_hardening/db_repair.dart
+METODO / CLASE:
+DbRepair.tryFix(), handleIntegrityFailure(), recoverFromValidation(), _repairSchema()
+LINEA APROXIMADA:
+18-87
+QUE HACE:
+Detecta errores "no such table", "no such column", "integrity", "malformed". Crea backup rapido en Application Support/backups y repara esquema o llama AutoRepair.
+CUANDO SE EJECUTA:
+Desde DbHardening.runDbSafe y DbPreflight.
+QUE DATOS PROTEGE:
+DB SQLite ante fallos de esquema/integridad.
+QUE DATOS NO PROTEGE:
+No toca SharedPreferences/licencia.
+RIESGO:
+El backup rapido DbBackup copia solo fullpos.db, no WAL/SHM; puede ser incompleto si habia cambios en WAL.
+RECOMENDACION:
+Incluir WAL/SHM o hacer checkpoint antes de DbBackup.
+
+ARCHIVO:
+lib/core/db_hardening/db_validator.dart
+METODO / CLASE:
+DbValidator.validate()
+LINEA APROXIMADA:
+14-44
+QUE HACE:
+Exige tablas y columnas minimas: sales, sale_items, products, clients, cash_sessions, cash_movements, users, override_tokens.
+CUANDO SE EJECUTA:
+Durante DbPreflight.
+QUE DATOS PROTEGE:
+Esquema minimo operacional.
+QUE DATOS NO PROTEGE:
+business_settings, purchases, quotes, backup_history, electronic tables, business_id/licencia.
+RIESGO:
+Una DB puede estar "validada" aunque falten modulos completos.
+RECOMENDACION:
+Expandir validacion por modulos y severidades.
+
+ARCHIVO:
+lib/core/db_hardening/db_backup.dart
+METODO / CLASE:
+DbBackup.createBackup()
+LINEA APROXIMADA:
+17-55
+QUE HACE:
+Copia fullpos.db a Application Support/backups/fullpos_db_TIMESTAMP_reason.sqlite. Mantiene maximo 10.
+CUANDO SE EJECUTA:
+Antes de reparar esquema/validacion/integridad desde DbRepair.
+QUE DATOS PROTEGE:
+Solo archivo SQLite principal.
+QUE DATOS NO PROTEGE:
+WAL/SHM, SharedPreferences, license.dat.
+RIESGO:
+Puede dejar backup incompleto en modo WAL.
+RECOMENDACION:
+Checkpoint + copiar WAL/SHM o usar backup ZIP.
+
+ARCHIVO:
+lib/core/database/migrations/migration_safety.dart
+METODO / CLASE:
+MigrationSafety.createPreMigrationBackup(), restorePreMigrationBackup()
+LINEA APROXIMADA:
+29-70
+QUE HACE:
+Antes de migrar, copia DB/WAL/SHM a Documents/FULLPOS_BACKUPS/pre_migration/backup_before_migration_TIMESTAMP_vOLD_to_vNEW. Si falla open/migracion, AppDb intenta restaurarlo.
+CUANDO SE EJECUTA:
+Cuando AppDb detecta user_version menor que _dbVersion antes de openDatabase.
+QUE DATOS PROTEGE:
+SQLite pre-migracion.
+QUE DATOS NO PROTEGE:
+business_id/licencia/prefs/license.dat.
+RIESGO:
+No valida backup antes/despues de restaurar; si la copia pre-migracion ya estaba corrupta, se restaura igual.
+RECOMENDACION:
+Validar integridad del backup pre-migracion y conservar mas metadata.
+
+ARCHIVO:
+lib/core/database/recovery/database_recovery_service.dart
+METODO / CLASE:
+DatabaseRecoveryService.run()
+LINEA APROXIMADA:
+6-32
+QUE HACE:
+Elimina registros de pos_tickets con updated_at_ms anterior a 10 minutos para limpiar tickets/drafts abandonados tras cierre inesperado.
+CUANDO SE EJECUTA:
+En bootstrap despues de DbHardening.preflight().
+QUE DATOS PROTEGE:
+Consistencia del flujo POS evitando tickets abandonados.
+QUE DATOS NO PROTEGE:
+No repara DB, no restaura datos, no protege licencia/business_id.
+RIESGO:
+Puede borrar tickets pendientes viejos despues de reinicio.
+RECOMENDACION:
+Registrar ids eliminados y considerar mover a tabla/estado de recuperacion antes de borrar.
+
+ARCHIVO:
+lib/core/backup/backup_paths.dart
+METODO / CLASE:
+BackupPaths.backupsBaseDir(), optionalDataDirs(), databaseFilePath()
+LINEA APROXIMADA:
+11-48
+QUE HACE:
+Define ubicacion Documents/FULLPOS_BACKUPS, temp backup_work, ruta DB via AppDb.databasePath y opcionales Documents/product_images.
+CUANDO SE EJECUTA:
+Backups/restores/reparacion.
+QUE DATOS PROTEGE:
+fullpos.db y product_images.
+QUE DATOS NO PROTEGE:
+Application Support/shared_preferences.json, %APPDATA%/FullPOS/license.dat, pending queue.
+RIESGO:
+La identidad critica vive fuera del set de backup.
+RECOMENDACION:
+Agregar un paquete de identidad/licencia firmado o al menos backup separado de esos archivos.
+
+ARCHIVO:
+lib/core/storage/prefs_safe.dart
+METODO / CLASE:
+PrefsSafe.getInstance(), _repairCorruptedPrefsFiles()
+LINEA APROXIMADA:
+19-73
+QUE HACE:
+Si SharedPreferences.getInstance() lanza FormatException, renombra archivos JSON de preferencias corruptos y reintenta.
+CUANDO SE EJECUTA:
+Donde se use PrefsSafe, especialmente SessionManager y algunos servicios cloud. Tambien desde BootstrapRecoveryDialog manual.
+QUE DATOS PROTEGE:
+Arranque de la app ante prefs corrupto.
+QUE DATOS NO PROTEGE:
+No recupera los valores anteriores; al renombrar el JSON, business_id/licencia/session/terminal_id pueden desaparecer para el runtime.
+RIESGO:
+Muy alto para el caso de apagon: si el JSON de SharedPreferences queda truncado, la reparacion permite arrancar pero puede perder business.business_id_v1, license.lastInfo, license.deviceId y terminal_id.
+RECOMENDACION:
+No tratar prefs corrupto como "reset silencioso". Extraer/recuperar claves criticas desde copia previa o bloquear pidiendo restauracion. BusinessIdentityStorage y LicenseStorage deberian usar un storage resiliente con backup atomico.
+
+ARCHIVO:
+lib/features/settings/data/business_settings_repository.dart
+METODO / CLASE:
+BusinessSettingsRepository._ensureTable(), loadSettings()
+LINEA APROXIMADA:
+95-180
+QUE HACE:
+Crea tabla business_settings si falta e inserta id=1 con business_name='FULLPOS'. Si loadSettings no encuentra fila, inserta default.
+CUANDO SE EJECUTA:
+Al cargar configuracion en bootstrap y pantallas/settings.
+QUE DATOS PROTEGE:
+Permite que configuracion de empresa exista en SQLite.
+QUE DATOS NO PROTEGE:
+No es business_id de licencia; no protege identidad vinculada al backend.
+RIESGO:
+Si la DB fue recreada, genera configuracion por defecto "FULLPOS", reforzando apariencia de instalacion/negocio nuevo.
+RECOMENDACION:
+Separar "configuracion visual local" de "identidad legal/licencia" y mostrar alerta si settings default aparece despues de una reparacion/cuarentena.
+
+================================================================================
+AUDITORIA PREVIA - BUSINESS_ID, DEVICE_ID Y LICENCIA LOCAL
+================================================================================
+
+ARCHIVO:
+lib/features/registration/services/business_identity_storage.dart
+METODO / CLASE:
+BusinessIdentityStorage
+LINEA APROXIMADA:
+53-153
+QUE HACE:
+Define clave SharedPreferences business.business_id_v1. getBusinessId() lee y retorna null si falta. setBusinessId() guarda sin sobrescribir un valor diferente salvo overwrite=true. ensureBusinessId() esta deprecado y ya no genera UUID.
+CUANDO SE EJECUTA:
+Router, license controller, business registration y guardias de identidad.
+QUE DATOS PROTEGE:
+business_id local mientras SharedPreferences este sano.
+QUE DATOS NO PROTEGE:
+No tiene backup propio, no usa escritura atomica separada, no se incluye en backup ZIP.
+RIESGO:
+Si SharedPreferences se pierde/corrompe/renombra, business_id desaparece. No se genera automaticamente aqui, pero puede restaurarse desde cache licencia si existe.
+RECOMENDACION:
+Mover business_id a storage critico redundante: SQLite + archivo atomico + SharedPreferences, con comparacion y recovery controlado.
+
+ARCHIVO:
+lib/features/registration/services/business_identity_guard.dart
+METODO / CLASE:
+BusinessIdentityGuard.validateIncomingBusinessId(), resolveAndApply()
+LINEA APROXIMADA:
+27-239
+QUE HACE:
+Reglas: no generar UUID, no sobrescribir local diferente, permitir initial set solo si caller lo autoriza, permitir restore si local missing y fuente confiable lo autoriza.
+CUANDO SE EJECUTA:
+Registro backend, licencia offline manual, router/license cache.
+QUE DATOS PROTEGE:
+Evita cambio silencioso de business_id cuando existe uno local.
+QUE DATOS NO PROTEGE:
+No protege contra perdida del storage local.
+RIESGO:
+Si local se pierde y cache licencia tambien se pierde, no hay forma automatica de recuperar. Si local se pierde pero cache licencia queda, puede restaurar desde cache.
+RECOMENDACION:
+Agregar journal/auditoria persistente de identidad fuera de SharedPreferences.
+
+ARCHIVO:
+lib/features/registration/services/business_registration_service.dart
+METODO / CLASE:
+_resolveCanonicalBusinessId(), _registerWithBusinessIdReconcile()
+LINEA APROXIMADA:
+25-58, 140-181
+QUE HACE:
+Si local y cache vacios, retorna null; no genera UUID. Al registrar, si backend devuelve business_id, lo aplica con allowInitialSet=true. Si backend reporta conflicto, bloquea.
+CUANDO SE EJECUTA:
+Registro/onboarding y retry de registro pendiente en bootstrap.
+QUE DATOS PROTEGE:
+Evita sobrescritura automatica por conflicto.
+QUE DATOS NO PROTEGE:
+No protege storage local de corrupcion.
+RIESGO:
+Si tras apagon se pierde business_id y la app entra a flujo de registro/onboarding, el backend podria devolver un business_id para un nuevo registro si el payload no lleva el anterior.
+RECOMENDACION:
+No permitir registro nuevo si hay evidencia de instalacion reparada sin identidad; pedir recuperacion/manual.
+
+ARCHIVO:
+lib/features/license/services/license_storage.dart
+METODO / CLASE:
+LicenseStorage
+LINEA APROXIMADA:
+7-176
+QUE HACE:
+Guarda en SharedPreferences: license.licenseKey, license.deviceId, license.lastInfo, license.lastInfoSource, cloudDenied, signing key y ordenes.
+CUANDO SE EJECUTA:
+Router, controller de licencia, sync local/cloud.
+QUE DATOS PROTEGE:
+Cache offline de licencia mientras prefs este sano.
+QUE DATOS NO PROTEGE:
+No hay backup en sistema de backups, no usa PrefsSafe.
+RIESGO:
+FormatException o perdida de shared_preferences.json puede borrar/ocultar cache de licencia.
+RECOMENDACION:
+Usar storage atomico/redudante para licencia y recovery explicito.
+
+ARCHIVO:
+lib/features/license/services/license_file_storage.dart
+METODO / CLASE:
+LicenseFileStorage.file(), readToken(), writeToken()
+LINEA APROXIMADA:
+7-49
+QUE HACE:
+Guarda token local en %APPDATA%/FullPOS/license.dat en Windows. writeToken escribe .tmp, borra license.dat anterior y renombra tmp.
+CUANDO SE EJECUTA:
+Sync de licencia cloud/offline y lectura offline-first.
+QUE DATOS PROTEGE:
+Token local firmado si el archivo existe.
+QUE DATOS NO PROTEGE:
+No entra al backup ZIP. La escritura no usa flush explicito y borra el archivo viejo antes del rename.
+RIESGO:
+Apagon entre delete y rename puede dejar sin license.dat. Apagon durante write tmp puede dejar tmp incompleto.
+RECOMENDACION:
+Usar reemplazo atomico con fsync/flush, conservar license.dat.bak y validar antes de borrar anterior.
+
+ARCHIVO:
+lib/features/license/services/business_license_sync.dart
+METODO / CLASE:
+BusinessLicenseSync.applyLocalLicenseIfValid(), _verifyLicenseFile()
+LINEA APROXIMADA:
+32-43, 152-247
+QUE HACE:
+Lee license.dat, valida firma Ed25519, project_code, fechas, license_key. Si payload trae business_id, exige que coincida con el business_id local; si local falta, retorna null y no restaura desde archivo local.
+CUANDO SE EJECUTA:
+Router gate, sync cloud y controlador licencia.
+QUE DATOS PROTEGE:
+Evita que un license.dat viejo o ajeno cambie business_id local.
+QUE DATOS NO PROTEGE:
+No restaura business_id desde license.dat si local falta.
+RIESGO:
+Si SharedPreferences pierde business_id pero license.dat esta sano, el router no puede usar ese token para restaurar business_id automaticamente; puede quedar sin licencia activa.
+RECOMENDACION:
+Crear flujo de recuperacion admin/soporte que lea license.dat y permita restaurar business_id solo con verificacion explicita.
+
+ARCHIVO:
+lib/features/license/services/license_controller.dart
+METODO / CLASE:
+LicenseController.load(), applyOfflineLicenseFile(), syncBusinessLicenseNow(), repairAndRetrySync()
+LINEA APROXIMADA:
+245-315, 860-985, 1000-1120
+QUE HACE:
+load() puede restaurar business_id desde license.lastInfo si local falta. applyOfflineLicenseFile() valida archivo offline manual y puede hacer initial set/restauracion desde payload business_id. syncBusinessLicenseNow descarga license.dat desde nube usando business_id. repairAndRetrySync pone license.dat malo en cuarentena y reintenta.
+CUANDO SE EJECUTA:
+Pantalla/licencia, carga de estado, accion manual.
+QUE DATOS PROTEGE:
+Cache de licencia y validacion de conflictos.
+QUE DATOS NO PROTEGE:
+No respalda business_id/licencia ante apagon.
+RIESGO:
+La recuperacion desde lastInfo depende de que SharedPreferences conserve lastInfo. Si se perdio todo prefs, no hay restauracion.
+RECOMENDACION:
+Persistir lastInfo/business_id en un segundo canal atomico.
+
+ARCHIVO:
+lib/app/router.dart
+METODO / CLASE:
+_getLicenseGateDecisionImpl()
+LINEA APROXIMADA:
+745-990
+QUE HACE:
+Lee business_id desde BusinessIdentityStorage. Si existe, prioriza sync por negocio y aplica license.dat/cache. Si no existe, intenta aplicar license.dat; luego cache; luego trial; luego restaura business_id desde license.lastInfo si existe; si no, usa flujo legacy device_id/terminal_id.
+CUANDO SE EJECUTA:
+En decisiones de navegacion/licencia al entrar a rutas protegidas.
+QUE DATOS PROTEGE:
+Evita que license.dat viejo gane cuando hay business_id.
+QUE DATOS NO PROTEGE:
+No recupera business_id si prefs y lastInfo faltan.
+RIESGO:
+Si business_id desaparece, el router puede caer al camino legacy device_id. SessionManager.ensureTerminalId puede crear terminal_id nuevo si falta.
+RECOMENDACION:
+Si antes hubo licencia/business_id y ahora faltan por reparacion, bloquear camino legacy y pedir recuperacion.
+
+ARCHIVO:
+lib/core/session/session_manager.dart
+METODO / CLASE:
+SessionManager.ensureTerminalId()
+LINEA APROXIMADA:
+113-121
+QUE HACE:
+Lee SharedPreferences terminal_id. Si falta, genera terminal-XXXXXX aleatorio y lo guarda.
+CUANDO SE EJECUTA:
+Router legacy, backups metadata, seguridad/autorizaciones.
+QUE DATOS PROTEGE:
+Identificador local de terminal para sesion/metadata.
+QUE DATOS NO PROTEGE:
+No es estable si SharedPreferences se pierde.
+RIESGO:
+Tras apagon y perdida de prefs, se genera otro terminal/device legacy. Esto no cambia business_id directamente, pero puede afectar licencia por device_id en flujo legacy.
+RECOMENDACION:
+Persistir terminal_id junto con identity bundle redundante.
+
+ARCHIVO:
+lib/features/settings/data/business_settings_repository.dart
+METODO / CLASE:
+BusinessSettingsRepository._ensureTable()
+LINEA APROXIMADA:
+95-112
+QUE HACE:
+Crea/asegura tabla business_settings y fila id=1 FULLPOS.
+CUANDO SE EJECUTA:
+Bootstrap/settings.
+QUE DATOS PROTEGE:
+Configuracion local visual/operativa.
+QUE DATOS NO PROTEGE:
+No es business_id de licencia.
+RIESGO:
+Puede confundirse con "empresa activa" pero no valida licencia ni negocio backend.
+RECOMENDACION:
+No usar business_settings como fuente de identidad licenciada.
+
+================================================================================
+RESPUESTAS DIRECTAS A PREGUNTAS CLAVE
+================================================================================
+
+1. Que mecanismo de recuperacion existe actualmente:
+   - Restauracion automatica de SQLite desde ZIP.
+   - Cuarentena y recreacion de DB si no hay backup.
+   - Limpieza WAL/SHM.
+   - PRAGMA quick_check/integrity_check.
+   - Reparacion de esquema con CREATE TABLE/ALTER.
+   - Backup pre-migracion.
+   - Backups automaticos por ciclo de vida.
+   - Limpieza de POS tickets abandonados.
+   - Reparacion de SharedPreferences solo por renombrado del JSON corrupto, sin recuperar valores.
+   - Cuarentena manual de license.dat invalido.
+
+2. Fallos detectados:
+   - DB corrupta/malformed/not a database.
+   - WAL/SHM potencialmente danado por eliminacion.
+   - DB locked/busy por reintentos.
+   - DB cerrada por reopen.
+   - Tablas/columnas faltantes parciales.
+   - integrity_check fallido.
+   - Migracion fallida mediante backup pre-migracion.
+   - Archivo DB faltante se trata como primera creacion.
+   - SharedPreferences corrupto solo si se usa PrefsSafe.
+   - license.dat invalido en flujo de licencia.
+
+3. Fallos no cubiertos completamente:
+   - Journal rollback .db-journal no se limpia/copia explicitamente.
+   - SharedPreferences no se respalda/restaura.
+   - license.dat no entra al backup.
+   - pending_registration_queue no entra al backup.
+   - Verificacion de backup puede ser best-effort y aceptar null.
+
+4. Carpetas/archivos usados:
+   - DB principal: Documents/fullpos.db, fullpos.db-wal, fullpos.db-shm; fallback Application Support/fullpos.db.
+   - ZIP backups: Documents/FULLPOS_BACKUPS/backup_TIMESTAMP_TRIGGER.zip.
+   - Cuarentena DB: Documents/FULLPOS_BACKUPS/quarantine/db_TIMESTAMP/.
+   - Pre-migration: Documents/FULLPOS_BACKUPS/pre_migration/backup_before_migration_*.
+   - AutoRepair raw backup: Documents/FULLPOS_BACKUPS/auto_repair_before_*.
+   - DbBackup rapido: Application Support/backups/fullpos_db_*.sqlite.
+   - Logs AutoRepair: Documents/FULLPOS_LOGS/auto_repair.log.
+   - Logs DbHardening: Application Support/logs/db_hardening.log.
+   - business_id/licencia cache: Application Support shared_preferences JSON.
+   - token local licencia Windows: %APPDATA%/FullPOS/license.dat.
+
+5. Cada cuanto crea backups:
+   - Automatico al pasar a paused/inactive tras 12 segundos si enable_auto_backup=true.
+   - Automatico inmediato en detached.
+   - Anti-spam minimo 30 segundos entre auto backups.
+   - Manual desde pantallas de backup/settings.
+   - No se encontro scheduler periodico por hora/dia.
+
+6. Retencion:
+   - ZIP: default 15, configurable 1..60 con backup_retention_count.
+   - DbBackup interno: maximo 10 .sqlite.
+   - Pre-migration/quarantine/auto_repair raw no tienen retencion clara en los archivos auditados.
+
+7. Datos protegidos por backup ZIP:
+   - Todo lo que vive dentro de SQLite: productos, ventas, clientes, compras, caja, turnos, cotizaciones, usuarios, configuracion de negocio en tablas, facturacion electronica, backup_history, etc.
+   - Documents/product_images si existe.
+
+8. Datos criticos no protegidos:
+   - business_id.
+   - license.lastInfo / license.licenseKey / license.deviceId.
+   - license.dat.
+   - datos de activacion fuera de DB.
+   - pending_registration_queue_v1.json.
+   - terminal_id/session prefs.
+
+9. Dependencias inestables:
+   - No encontre que business_id dependa de MAC, nombre PC, usuario Windows, MachineGuid, disco, volumen o BIOS UUID.
+   - device_id/terminal_id local se genera aleatorio en SharedPreferences; no es hardware, pero es inestable si prefs se pierden.
+
+================================================================================
+CONCLUSION FINAL
+================================================================================
+
+1. La autorreparacion actual NO protege el business_id. Lo puede conservar solo si SharedPreferences sobrevive o si license.lastInfo tambien sobrevive y el guardia lo restaura.
+
+2. La autorreparacion actual NO protege completamente la licencia local. El backup SQLite no incluye license.dat ni license.* de SharedPreferences.
+
+3. Si hay un apagon, si solo se corrompe SQLite y hay backup sano, el business_id no deberia cambiar porque esta fuera de SQLite. Pero si el apagon corrompe SharedPreferences o license.dat, si puede perderse el business_id/licencia local. El codigo actual no genera business_id nuevo automaticamente en BusinessIdentityStorage, pero puede caer a flujos de restauracion/cache o legacy device_id.
+
+4. Si existe riesgo de que la app regenere un "negocio local" en sentido operativo: si la DB se pone en cuarentena y no se restaura backup, AppDb crea DB nueva, crea tablas, inserta catalogo demo y business_settings default FULLPOS. Eso no genera business_id licenciado por si solo, pero si crea una instalacion operativa vacia/default.
+
+5. Lo primero a revisar/corregir:
+   - Crear un "identity recovery bundle" atomico y redundante para business_id + license.lastInfo + license.dat metadata + terminal_id.
+   - Incluirlo en backup/restore o crear backup separado firmado.
+   - Cambiar PrefsSafe para no convertir corrupcion de SharedPreferences en perdida silenciosa de business_id/licencia.
+   - Endurecer AppDb/BackupService para exigir integridad true al restaurar y para no recrear DB nueva sin alertar cuando hubo corrupcion.

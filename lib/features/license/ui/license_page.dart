@@ -41,8 +41,6 @@ class LicensePage extends ConsumerStatefulWidget {
 }
 
 class _LicensePageState extends ConsumerState<LicensePage> {
-  static const String _supportPhoneWhatsapp = '18295319442';
-
   final _businessNameCtrl = TextEditingController();
   final _businessNicheCtrl = TextEditingController();
   final _ownerNameCtrl = TextEditingController();
@@ -390,7 +388,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
 
     final fullMessage = extra.isEmpty ? message : '$message\n$extra';
     final uri = Uri.parse(
-      '${AppConfig.whatsappBaseUrl}/$_supportPhoneWhatsapp',
+      '${AppConfig.whatsappBaseUrl}/${AppConfig.supportWhatsappNumber}',
     ).replace(queryParameters: {'text': fullMessage});
 
     await WindowService.runWithExternalApplication(() async {
@@ -421,6 +419,21 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Business ID copiado.')));
+  }
+
+  Future<void> _copyBusinessName() async {
+    final businessName = _businessNameCtrl.text.trim();
+    if (businessName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nombre del negocio no disponible.')),
+      );
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: businessName));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Nombre del negocio copiado.')),
+    );
   }
 
   bool _hasActiveLicense(LicenseInfo? info) =>
@@ -969,6 +982,7 @@ class _LicensePageState extends ConsumerState<LicensePage> {
     required LicenseInfo? info,
     required String businessId,
   }) {
+    final businessName = _businessNameCtrl.text.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1003,8 +1017,8 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                 ],
               ),
               const SizedBox(height: 10),
-              const Text(
-                'WhatsApp: 829-531-9442',
+              Text(
+                'WhatsApp: ${AppConfig.supportWhatsappDisplay}',
                 style: TextStyle(
                   color: _primary,
                   fontSize: 14,
@@ -1020,16 +1034,15 @@ class _LicensePageState extends ConsumerState<LicensePage> {
                     icon: Icons.badge_rounded,
                     label: 'Business ID',
                     value: businessId.isEmpty ? '-' : businessId,
+                    onCopy: businessId.isEmpty ? null : _copyBusinessId,
                   ),
                   _metaTile(
-                    icon: Icons.computer_rounded,
-                    label: 'Device ID',
-                    value: info?.deviceId ?? '-',
-                  ),
-                  _metaTile(
-                    icon: Icons.vpn_key_rounded,
-                    label: 'Proyecto',
-                    value: info?.projectCode ?? kFullposProjectCode,
+                    icon: Icons.storefront_rounded,
+                    label: 'Negocio',
+                    value: businessName.isEmpty
+                        ? 'No configurado'
+                        : businessName,
+                    onCopy: businessName.isEmpty ? null : _copyBusinessName,
                   ),
                 ],
               ),
@@ -1039,17 +1052,9 @@ class _LicensePageState extends ConsumerState<LicensePage> {
         const SizedBox(height: 12),
         _buildWideButton(
           icon: Icons.chat_rounded,
-          label: 'Abrir WhatsApp',
+          label: 'Contactar soporte',
           onPressed: () => _openSupportWhatsapp(info),
           primary: true,
-        ),
-        const SizedBox(height: 8),
-        _buildWideButton(
-          icon: Icons.info_outline_rounded,
-          label: 'Solicitar código de soporte',
-          onPressed: () =>
-              _openSupportWhatsapp(info, supportCode: 'LIC-HELP-01'),
-          primary: false,
         ),
       ],
     );

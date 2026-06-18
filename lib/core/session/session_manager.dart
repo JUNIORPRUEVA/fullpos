@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
+import '../identity/identity_recovery_bundle.dart';
 import '../storage/prefs_safe.dart';
 
 /// Maneja la sesión del usuario usando SharedPreferences
@@ -107,16 +108,72 @@ class SessionManager {
 
   static Future<String?> terminalId() async {
     final prefs = await _prefs();
-    return prefs?.getString(_keyTerminalId);
+    final existing = prefs?.getString(_keyTerminalId);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final bundle = await IdentityRecoveryBundle.instance.loadBestAvailable();
+    final restored = (bundle?.terminalId ?? '').trim();
+    if (restored.isEmpty || prefs == null) return null;
+    final ok = await IdentityRecoveryBundle.instance
+        .restoreBundleToSharedPreferences(
+          bundle!,
+          reason: 'session_terminal_id_missing',
+        );
+    return ok ? restored : null;
   }
 
   static Future<String> ensureTerminalId() async {
     final prefs = await _prefs();
-    if (prefs == null) return 'terminal-${_randomToken(6)}';
+    if (prefs == null) {
+      if (await IdentityRecoveryBundle.instance
+          .hasPriorInstallationEvidence()) {
+        await IdentityRecoveryBundle.instance.markRecoveryRequired(
+          'terminal_id_missing_prefs_unavailable',
+        );
+        await IdentityRecoveryBundle.instance.log(
+          'terminal_id_generation_blocked_prefs_unavailable',
+        );
+        throw const IdentityRecoveryException(
+          'No se pudo recuperar terminal_id local',
+        );
+      }
+      return 'terminal-${_randomToken(6)}';
+    }
     final existing = prefs.getString(_keyTerminalId);
-    if (existing != null && existing.isNotEmpty) return existing;
+    if (existing != null && existing.isNotEmpty) {
+      await IdentityRecoveryBundle.instance.saveFromCurrentState(
+        'session_terminal_id_confirmed',
+      );
+      return existing;
+    }
+
+    final bundle = await IdentityRecoveryBundle.instance.loadBestAvailable();
+    final restored = (bundle?.terminalId ?? '').trim();
+    if (restored.isNotEmpty) {
+      final ok = await IdentityRecoveryBundle.instance
+          .restoreBundleToSharedPreferences(
+            bundle!,
+            reason: 'session_ensure_terminal_id',
+          );
+      if (ok) return restored;
+    }
+
+    if (await IdentityRecoveryBundle.instance.hasPriorInstallationEvidence()) {
+      await IdentityRecoveryBundle.instance.markRecoveryRequired(
+        'terminal_id_missing_prior_installation',
+      );
+      await IdentityRecoveryBundle.instance.log(
+        'terminal_id_generation_blocked_prior_installation',
+      );
+      throw const IdentityRecoveryException(
+        'No se puede generar terminal_id nuevo en una instalacion previa',
+      );
+    }
+
     final generated = 'terminal-${_randomToken(6)}';
     await prefs.setString(_keyTerminalId, generated);
+    await IdentityRecoveryBundle.instance.saveFromCurrentState(
+      'session_terminal_id_generated_first_install',
+    );
     return generated;
   }
 
