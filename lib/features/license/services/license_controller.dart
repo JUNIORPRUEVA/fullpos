@@ -238,6 +238,46 @@ class LicenseController extends StateNotifier<LicenseState> {
     return secondary.isEmpty ? null : secondary;
   }
 
+  String? _businessIdFromMap(Map<String, dynamic> map) {
+    final direct = _resolveBusinessIdValue(map['business_id']);
+    if (direct != null) return direct;
+
+    final camel = _resolveBusinessIdValue(map['businessId']);
+    if (camel != null) return camel;
+
+    final business = map['business'];
+    if (business is Map) {
+      final nested = business.cast<dynamic, dynamic>();
+      return _resolveBusinessIdValue(
+        nested['business_id'],
+        _resolveBusinessIdValue(nested['businessId'], nested['id']?.toString()),
+      );
+    }
+    return null;
+  }
+
+  Future<String?> _resolveAndApplyRemoteBusinessId(
+    Map<String, dynamic> map, {
+    required String source,
+    required bool allowInitialSet,
+  }) async {
+    final identity = BusinessIdentityStorage();
+    final localBusinessId = _resolveBusinessIdValue(
+      await identity.getBusinessId(),
+    );
+    final incomingBusinessId = _businessIdFromMap(map);
+    if (incomingBusinessId == null) return localBusinessId;
+
+    return BusinessIdentityGuard.resolveAndApply(
+      storage: identity,
+      incomingBusinessId: incomingBusinessId,
+      source: source,
+      allowInitialSet: allowInitialSet,
+      allowRestoreWhenLocalMissing: true,
+      allowOverwrite: false,
+    );
+  }
+
   Future<void> load() async {
     _ensureCloudAutoSyncStarted();
     unawaited(_ensureCloudRealtimeStarted());
@@ -411,9 +451,6 @@ class LicenseController extends StateNotifier<LicenseState> {
   Future<void> activate() async {
     final licenseKey = await storage.getLicenseKey();
     final deviceId = await _ensureDeviceId();
-    final localBusinessId = _resolveBusinessIdValue(
-      await BusinessIdentityStorage().getBusinessId(),
-    );
     if (licenseKey == null || licenseKey.isEmpty) {
       state = state.copyWith(
         error: 'Ingresa la clave de licencia',
@@ -436,15 +473,18 @@ class LicenseController extends StateNotifier<LicenseState> {
         projectCode: kFullposProjectCode,
       );
 
+      final resolvedBusinessId = await _resolveAndApplyRemoteBusinessId(
+        map,
+        source: 'license_activate',
+        allowInitialSet: true,
+      );
+
       final info = LicenseInfo(
         backendBaseUrl: kLicenseBackendBaseUrl,
         licenseKey: licenseKey,
         deviceId: deviceId,
         projectCode: kFullposProjectCode,
-        businessId: _resolveBusinessIdValue(
-          map['business_id'],
-          localBusinessId,
-        ),
+        businessId: resolvedBusinessId,
         ok: map['ok'] == true,
         code: map['code']?.toString(),
         tipo: map['tipo']?.toString(),
@@ -495,9 +535,6 @@ class LicenseController extends StateNotifier<LicenseState> {
   Future<void> check() async {
     final licenseKey = await storage.getLicenseKey();
     final deviceId = await _ensureDeviceId();
-    final localBusinessId = _resolveBusinessIdValue(
-      await BusinessIdentityStorage().getBusinessId(),
-    );
     if (licenseKey == null || licenseKey.isEmpty) {
       state = state.copyWith(
         error: 'Ingresa la clave de licencia',
@@ -520,15 +557,18 @@ class LicenseController extends StateNotifier<LicenseState> {
         projectCode: kFullposProjectCode,
       );
 
+      final resolvedBusinessId = await _resolveAndApplyRemoteBusinessId(
+        map,
+        source: 'license_check',
+        allowInitialSet: false,
+      );
+
       final info = LicenseInfo(
         backendBaseUrl: kLicenseBackendBaseUrl,
         licenseKey: licenseKey,
         deviceId: deviceId,
         projectCode: kFullposProjectCode,
-        businessId: _resolveBusinessIdValue(
-          map['business_id'],
-          localBusinessId,
-        ),
+        businessId: resolvedBusinessId,
         ok: map['ok'] == true,
         code: map['code']?.toString(),
         tipo: map['tipo']?.toString(),

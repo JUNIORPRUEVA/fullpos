@@ -340,8 +340,7 @@ class IdentityRecoveryBundle {
   Future<bool> hasPriorInstallationEvidence() async {
     final bundle = await loadBestAvailable();
     if (bundle != null &&
-        (_notBlank(bundle.businessId) ||
-            _notBlank(bundle.licenseKey) ||
+        (bundle.hasReliableIdentity ||
             _notBlank(bundle.licenseDeviceId) ||
             _notBlank(bundle.licenseLastInfo))) {
       return true;
@@ -354,8 +353,12 @@ class IdentityRecoveryBundle {
     if (await licenseFallback.exists()) return true;
     final appData = Platform.isWindows ? Platform.environment['APPDATA'] : null;
     if (appData != null && appData.trim().isNotEmpty) {
-      final license = File(p.join(appData.trim(), 'FullPOS', 'license.dat'));
-      if (await license.exists()) return true;
+      final appDataDir = Directory(appData.trim());
+      if (p.equals(support.path, appDataDir.path) ||
+          p.isWithin(appDataDir.path, support.path)) {
+        final license = File(p.join(appDataDir.path, 'FullPOS', 'license.dat'));
+        if (await license.exists()) return true;
+      }
     }
     return false;
   }

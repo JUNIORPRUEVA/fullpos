@@ -157,6 +157,159 @@ class OperationFlowService {
     return getDailyCashbox(shiftBusinessDate);
   }
 
+  static Future<CashboxDailyModel> _repairCashboxForOpenShift(
+    Transaction txn, {
+    required CashSessionModel shift,
+    required String fallbackBusinessDate,
+    required int actorUserId,
+    required int nowMs,
+  }) async {
+    final shiftId = shift.id;
+    if (shiftId == null) {
+      throw StateError('El turno abierto no tiene un identificador válido.');
+    }
+
+    final shiftBusinessDate = (shift.businessDate ?? '').trim();
+    final cashboxBusinessDate = shiftBusinessDate.isNotEmpty
+        ? shiftBusinessDate
+        : fallbackBusinessDate.trim();
+    if (cashboxBusinessDate.isEmpty) {
+      throw StateError(
+        'El turno abierto no tiene una fecha de negocio válida.',
+      );
+    }
+
+    var cashboxRows = await txn.query(
+      DbTables.cashboxDaily,
+      where: 'business_date = ?',
+      whereArgs: [cashboxBusinessDate],
+      limit: 1,
+    );
+
+    Map<String, dynamic> repairedCashboxRow;
+    if (cashboxRows.isEmpty) {
+      final cashboxId = await txn.insert(DbTables.cashboxDaily, {
+        'business_date': cashboxBusinessDate,
+        'opened_at_ms': shift.openedAtMs,
+        'opened_by_user_id': shift.userId,
+        'initial_amount': shift.openingAmount,
+        'current_amount': shift.openingAmount,
+        'status': 'OPEN',
+        'note':
+            'Autorreparada desde turno abierto #$shiftId (${DateTime.now().toLocal()})',
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+      cashboxRows = await txn.query(
+        DbTables.cashboxDaily,
+        where: 'id = ?',
+        whereArgs: [cashboxId],
+        limit: 1,
+      );
+      repairedCashboxRow = cashboxRows.first;
+    } else {
+      repairedCashboxRow = cashboxRows.first;
+      final status = (repairedCashboxRow['status'] as String? ?? 'OPEN')
+          .toUpperCase();
+      if (status != 'OPEN') {
+        final previousNote = (repairedCashboxRow['note'] as String? ?? '')
+            .trim();
+        final repairNote = [
+          if (previousNote.isNotEmpty) previousNote,
+          'Reabierta por turno abierto #$shiftId (${DateTime.now().toLocal()})',
+        ].join('\n');
+
+        await txn.update(
+          DbTables.cashboxDaily,
+          {
+            'opened_at_ms': nowMs,
+            'opened_by_user_id': actorUserId,
+            'status': 'OPEN',
+            'closed_at_ms': null,
+            'closed_by_user_id': null,
+            'note': repairNote,
+          },
+          where: 'id = ?',
+          whereArgs: [repairedCashboxRow['id']],
+        );
+        cashboxRows = await txn.query(
+          DbTables.cashboxDaily,
+          where: 'id = ?',
+          whereArgs: [repairedCashboxRow['id']],
+          limit: 1,
+        );
+        repairedCashboxRow = cashboxRows.first;
+      }
+    }
+
+    final repairedCashbox = CashboxDailyModel.fromMap(repairedCashboxRow);
+    final repairedCashboxId = repairedCashbox.id;
+    if (repairedCashboxId == null) {
+      throw StateError(
+        'No fue posible reparar la caja diaria del turno abierto.',
+      );
+    }
+
+    await txn.update(
+      DbTables.cashSessions,
+      {
+        'cashbox_daily_id': repairedCashboxId,
+        'business_date': repairedCashbox.businessDate,
+      },
+      where: 'id = ?',
+      whereArgs: [shiftId],
+    );
+
+    return repairedCashbox;
+  }
+
+  static Future<CashSessionModel> _claimOpenShiftForCurrentUser(
+    Transaction txn, {
+    required Map<String, dynamic> row,
+    required CashboxDailyModel cashbox,
+    required int userId,
+    required String userName,
+  }) async {
+    final shift = CashSessionModel.fromMap(row);
+    final shiftId = shift.id;
+    final cashboxId = cashbox.id;
+    if (shiftId == null || cashboxId == null) {
+      throw StateError('La sesión abierta no tiene identificadores válidos.');
+    }
+
+    final updates = <String, Object?>{};
+    if (shift.userId != userId) {
+      updates['opened_by_user_id'] = userId;
+    }
+    if (shift.userName.trim() != userName.trim()) {
+      updates['user_name'] = userName;
+    }
+    if (shift.cashboxDailyId != cashboxId) {
+      updates['cashbox_daily_id'] = cashboxId;
+    }
+    if ((shift.businessDate ?? '').trim() != cashbox.businessDate) {
+      updates['business_date'] = cashbox.businessDate;
+    }
+
+    if (updates.isNotEmpty) {
+      await txn.update(
+        DbTables.cashSessions,
+        updates,
+        where: 'id = ? AND status = ? AND closed_at_ms IS NULL',
+        whereArgs: [shiftId, CashSessionStatus.open],
+      );
+      final repairedRows = await txn.query(
+        DbTables.cashSessions,
+        where: 'id = ?',
+        whereArgs: [shiftId],
+        limit: 1,
+      );
+      if (repairedRows.isNotEmpty) {
+        return CashSessionModel.fromMap(repairedRows.first);
+      }
+    }
+
+    return shift;
+  }
+
   static void queueRestoredSessionNotice(ActiveSession session) {
     _pendingRestoredSessionNotice = session;
   }
@@ -465,12 +618,15 @@ class OperationFlowService {
         limit: 1,
       );
       if (otherOpenRows.isNotEmpty) {
-        final row = otherOpenRows.first;
-        final ownerId = row['opened_by_user_id'];
-        final ownerName = row['user_name'] ?? 'otro usuario';
-        throw Exception(
-          'La caja ya tiene una sesión activa (#${row['id']}) de $ownerName (usuario $ownerId).',
+        final shift = await _claimOpenShiftForCurrentUser(
+          txn,
+          row: otherOpenRows.first,
+          cashbox: cashbox,
+          userId: userId,
+          userName: userName,
         );
+        id = shift.id;
+        return;
       }
 
       id = await txn.insert(DbTables.cashSessions, {
@@ -525,6 +681,79 @@ class OperationFlowService {
       Map<String, dynamic>? cashboxRow = currentCashboxRows.isEmpty
           ? null
           : currentCashboxRows.first;
+
+      final currentUserRows = await txn.query(
+        DbTables.cashSessions,
+        where: '''
+          status = 'OPEN'
+          AND closed_at_ms IS NULL
+          AND opened_by_user_id = ?
+        ''',
+        whereArgs: [userId],
+        orderBy: 'opened_at_ms DESC',
+      );
+
+      if (currentUserRows.isNotEmpty) {
+        if (currentUserRows.length > 1) {
+          throw StateError(
+            'Se detectaron varios turnos abiertos para este usuario.',
+          );
+        }
+        final shift = CashSessionModel.fromMap(currentUserRows.first);
+        final linkedCashboxRows = shift.cashboxDailyId == null
+            ? await txn.query(
+                DbTables.cashboxDaily,
+                where: 'business_date = ?',
+                whereArgs: [shift.businessDate],
+                limit: 1,
+              )
+            : await txn.query(
+                DbTables.cashboxDaily,
+                where: 'id = ?',
+                whereArgs: [shift.cashboxDailyId],
+                limit: 1,
+              );
+        if (linkedCashboxRows.isEmpty) {
+          final repairedCashbox = await _repairCashboxForOpenShift(
+            txn,
+            shift: shift,
+            fallbackBusinessDate: businessDate,
+            actorUserId: userId,
+            nowMs: now,
+          );
+          result = ActiveSession.fromModels(
+            cashbox: repairedCashbox,
+            shift: shift.copyWith(
+              cashboxDailyId: repairedCashbox.id,
+              businessDate: repairedCashbox.businessDate,
+            ),
+          );
+          return;
+        }
+        final linkedCashbox = CashboxDailyModel.fromMap(
+          linkedCashboxRows.first,
+        );
+        if (!linkedCashbox.isOpen) {
+          final repairedCashbox = await _repairCashboxForOpenShift(
+            txn,
+            shift: shift,
+            fallbackBusinessDate: businessDate,
+            actorUserId: userId,
+            nowMs: now,
+          );
+          result = ActiveSession.fromModels(
+            cashbox: repairedCashbox,
+            shift: shift.copyWith(
+              cashboxDailyId: repairedCashbox.id,
+              businessDate: repairedCashbox.businessDate,
+            ),
+          );
+          return;
+        }
+        result = ActiveSession.fromModels(cashbox: linkedCashbox, shift: shift);
+        return;
+      }
+
       if (cashboxRow == null) {
         final cashboxId = await txn.insert(DbTables.cashboxDaily, {
           'business_date': businessDate,
@@ -569,70 +798,28 @@ class OperationFlowService {
       }
 
       final cashbox = CashboxDailyModel.fromMap(cashboxRow);
-      final currentUserRows = await txn.query(
-        DbTables.cashSessions,
-        where: '''
-          status = 'OPEN'
-          AND closed_at_ms IS NULL
-          AND opened_by_user_id = ?
-        ''',
-        whereArgs: [userId],
-        orderBy: 'opened_at_ms DESC',
-      );
-
-      if (currentUserRows.isNotEmpty) {
-        if (currentUserRows.length > 1) {
-          throw StateError(
-            'Se detectaron varios turnos abiertos para este usuario.',
-          );
-        }
-        final shift = CashSessionModel.fromMap(currentUserRows.first);
-        final linkedCashboxRows = shift.cashboxDailyId == null
-            ? await txn.query(
-                DbTables.cashboxDaily,
-                where: 'business_date = ?',
-                whereArgs: [shift.businessDate],
-                limit: 1,
-              )
-            : await txn.query(
-                DbTables.cashboxDaily,
-                where: 'id = ?',
-                whereArgs: [shift.cashboxDailyId],
-                limit: 1,
-              );
-        if (linkedCashboxRows.isEmpty) {
-          throw StateError(
-            'El turno abierto no tiene una caja diaria asociada válida.',
-          );
-        }
-        final linkedCashbox = CashboxDailyModel.fromMap(
-          linkedCashboxRows.first,
-        );
-        if (!linkedCashbox.isOpen) {
-          throw StateError(
-            'El turno está abierto, pero su caja diaria ya está cerrada.',
-          );
-        }
-        result = ActiveSession.fromModels(cashbox: linkedCashbox, shift: shift);
-        return;
-      }
 
       final otherOpenRows = await txn.query(
         DbTables.cashSessions,
-        columns: ['id', 'opened_by_user_id', 'user_name'],
         where: '''
           status = 'OPEN'
           AND closed_at_ms IS NULL
           AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
         ''',
         whereArgs: [cashbox.id, businessDate],
+        orderBy: 'opened_at_ms DESC',
         limit: 1,
       );
       if (otherOpenRows.isNotEmpty) {
-        final row = otherOpenRows.first;
-        throw Exception(
-          'La caja ya tiene una sesión activa (#${row['id']}) de ${row['user_name'] ?? 'otro usuario'}.',
+        final shift = await _claimOpenShiftForCurrentUser(
+          txn,
+          row: otherOpenRows.first,
+          cashbox: cashbox,
+          userId: userId,
+          userName: userName,
         );
+        result = ActiveSession.fromModels(cashbox: cashbox, shift: shift);
+        return;
       }
 
       var resolvedOpeningAmount = openingAmount;

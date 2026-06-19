@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/identity/identity_recovery_bundle.dart';
 import '../../../core/storage/prefs_safe.dart';
+import '../../registration/services/business_identity_storage.dart';
 import '../data/license_models.dart';
 
 class LicenseStorage {
@@ -241,6 +242,20 @@ class LicenseStorage {
   Future<void> _validateBusinessIdCompatibility(LicenseInfo info) async {
     final infoBusinessId = (info.businessId ?? '').trim();
     if (infoBusinessId.isEmpty) return;
+
+    final localBusinessId =
+        ((await BusinessIdentityStorage().getBusinessId()) ?? '').trim();
+    if (localBusinessId.isNotEmpty) {
+      if (localBusinessId == infoBusinessId) return;
+      await IdentityRecoveryBundle.instance.markRecoveryRequired(
+        'license_last_info_local_business_id_conflict',
+      );
+      await IdentityRecoveryBundle.instance.log(
+        'license_last_info_save_blocked_local_conflict',
+      );
+      throw StateError('license lastInfo local business_id conflict');
+    }
+
     final bundle = await IdentityRecoveryBundle.instance.loadBestAvailable();
     final bundleBusinessId = (bundle?.businessId ?? '').trim();
     if (bundleBusinessId.isNotEmpty && bundleBusinessId != infoBusinessId) {

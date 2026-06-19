@@ -139,4 +139,30 @@ void main() {
       isNot(true),
     );
   });
+
+  test(
+    'licenseKey sola no bloquea generacion inicial de terminal_id',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'flutter.${IdentityRecoveryBundle.licenseKeyKey}': 'LIC-PENDING',
+      });
+
+      await IdentityRecoveryBundle.instance.saveFromCurrentState(
+        'test_license_key_only',
+      );
+      SharedPreferences.setMockInitialValues({
+        'flutter.${IdentityRecoveryBundle.licenseKeyKey}': 'LIC-PENDING',
+      });
+
+      final terminalId = await SessionManager.ensureTerminalId();
+
+      expect(terminalId, startsWith('terminal-'));
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(IdentityRecoveryBundle.terminalIdKey), terminalId);
+      expect(
+        prefs.getBool(IdentityRecoveryBundle.recoveryRequiredKey),
+        isNot(true),
+      );
+    },
+  );
 }

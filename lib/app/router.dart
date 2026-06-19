@@ -960,6 +960,19 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   String? businessIdFromMap(Map<String, dynamic> map) {
     final candidate = (map['business_id'] ?? '').toString().trim();
     if (candidate.isNotEmpty) return candidate;
+    final camelCandidate = (map['businessId'] ?? '').toString().trim();
+    if (camelCandidate.isNotEmpty) return camelCandidate;
+    final business = map['business'];
+    if (business is Map) {
+      final nestedBusinessId = (business['business_id'] ?? '')
+          .toString()
+          .trim();
+      if (nestedBusinessId.isNotEmpty) return nestedBusinessId;
+      final nestedCamel = (business['businessId'] ?? '').toString().trim();
+      if (nestedCamel.isNotEmpty) return nestedCamel;
+      final nestedId = (business['id'] ?? '').toString().trim();
+      if (nestedId.isNotEmpty) return nestedId;
+    }
     return canonicalBusinessId;
   }
 
