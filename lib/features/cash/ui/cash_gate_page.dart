@@ -1,10 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/errors/error_handler.dart';
-import '../../../core/security/app_actions.dart';
-import '../../../core/security/authorization_guard.dart';
 import '../../../core/utils/accounting_amount_formatter.dart';
 import '../providers/cash_providers.dart';
 
@@ -70,19 +70,16 @@ class _CashGatePageState extends ConsumerState<CashGatePage> {
 
     setState(() => _isLoading = true);
     try {
-      final authorized = await requireAuthorizationIfNeeded(
-        context: context,
-        action: AppActions.startSession,
-        resourceType: 'cashbox_daily',
-        resourceId: 'new',
-        reason: 'Iniciar sesion',
-      );
-      if (!authorized || !mounted) return;
-
       final amount = AccountingAmountFormatter.parse(_amountController.text);
       await ref
           .read(activeSessionControllerProvider.notifier)
-          .startSession(openingAmount: amount, note: '');
+          .startSession(openingAmount: amount, note: '')
+          .timeout(
+            const Duration(seconds: 12),
+            onTimeout: () => throw TimeoutException(
+              'La apertura de caja tardó demasiado. Intenta nuevamente.',
+            ),
+          );
 
       if (!mounted) return;
       context.go('/sales');

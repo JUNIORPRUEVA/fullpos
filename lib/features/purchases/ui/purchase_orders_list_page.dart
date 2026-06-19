@@ -2,11 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../core/errors/error_handler.dart';
-import '../../../core/theme/app_gradient_theme.dart';
 import '../../../core/theme/app_status_theme.dart';
-import '../../../core/theme/color_utils.dart';
 import '../../../core/utils/currency_display.dart';
 import '../data/purchase_order_models.dart';
 import '../data/purchases_repository.dart';
@@ -356,7 +353,7 @@ Widget build(BuildContext context) {
       child: ListView.separated(
         padding: const EdgeInsets.only(top: 16, bottom: 8),
         itemCount: filteredOrders.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) => buildOrderCard(filteredOrders[index]),
       ),
     );

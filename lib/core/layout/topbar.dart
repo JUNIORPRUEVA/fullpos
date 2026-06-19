@@ -10,19 +10,26 @@ import '../../features/cash/ui/cash_close_dialog.dart';
 import '../../features/cash/ui/cash_panel_sheet.dart';
 import '../../features/auth/services/logout_flow_service.dart';
 import '../../features/settings/providers/business_settings_provider.dart';
-import '../config/app_config.dart';
 import '../constants/app_sizes.dart';
 import '../session/session_manager.dart';
+import '../session/ui_preferences.dart';
 import '../theme/app_tokens.dart';
 import '../theme/color_utils.dart';
 import 'topbar_utility_panels.dart';
 
 /// Topbar principal de FullPOS.
-/// Orden: Menú | Vender                                      Apps | Turno | Usuario | Mi negocio
 ///
-/// Nota importante:
-/// El OverflowBox fuerza el ancho visual al ancho completo de la ventana.
-/// Esto corrige el caso donde el Topbar está montado dentro de la columna izquierda.
+/// Diseño limpio:
+/// Menú | Facturación                                      Turno | Empresa
+///
+/// Cambios aplicados:
+/// - Eliminado el icono al lado de "Facturación".
+/// - Eliminado el botón de productos/apps del lado derecho.
+/// - Eliminado el chip separado del usuario.
+/// - El usuario activo ahora aparece dentro del menú de Turno.
+/// - La versión ya no aparece al lado del nombre de la empresa.
+/// - La versión aparece en el extremo derecho del footer.
+/// - El botón Turno tiene fondo y borde más sutiles.
 class Topbar extends ConsumerStatefulWidget {
   const Topbar({
     super.key,
@@ -58,14 +65,15 @@ enum _TopbarMenuAction {
 }
 
 class _TopbarState extends ConsumerState<Topbar> {
-  static const Color _softTextColor = Color(0xFF64748B);
   static const Color _strongTextColor = Color(0xFF0F172A);
 
   Timer? _cashTimer;
   StreamSubscription<void>? _sessionSub;
+  StreamSubscription<void>? _uiPreferencesSub;
 
   String? _username;
   String? _displayName;
+  String? _profileImagePath;
 
   bool _loadingOpenCashSessionId = false;
   int? _openCashSessionId;
@@ -81,6 +89,11 @@ class _TopbarState extends ConsumerState<Topbar> {
       _refreshTopbarData();
     });
 
+    _uiPreferencesSub = UiPreferences.changes.listen((_) {
+      if (!mounted) return;
+      unawaited(_loadUserSummary());
+    });
+
     _cashTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_loadOpenCashSessionId());
     });
@@ -90,6 +103,7 @@ class _TopbarState extends ConsumerState<Topbar> {
   void dispose() {
     _cashTimer?.cancel();
     _sessionSub?.cancel();
+    _uiPreferencesSub?.cancel();
     super.dispose();
   }
 
@@ -99,14 +113,43 @@ class _TopbarState extends ConsumerState<Topbar> {
   }
 
   Future<void> _loadUserSummary() async {
+    final userId = await SessionManager.userId();
     final username = await SessionManager.username();
     final displayName = await SessionManager.displayName();
+    final profileImagePath = await _loadProfileImagePath(
+      userId: userId,
+      username: username,
+    );
 
     if (!mounted) return;
     setState(() {
       _username = _cleanText(username) ?? 'Usuario';
       _displayName = _cleanText(displayName);
+      _profileImagePath = _cleanText(profileImagePath);
     });
+  }
+
+  Future<String?> _loadProfileImagePath({
+    required int? userId,
+    required String? username,
+  }) async {
+    final cleanUsername = _cleanText(username);
+    final candidateKeys = <String>[
+      if (userId != null) 'id:$userId',
+      if (cleanUsername != null) 'u:$cleanUsername',
+    ];
+
+    for (final userKey in candidateKeys) {
+      final path = await UiPreferences.getProfileImagePath(userKey);
+      final cleanPath = _cleanText(path);
+      if (cleanPath == null) continue;
+
+      if (File(cleanPath).existsSync()) return cleanPath;
+
+      await UiPreferences.setProfileImagePath(userKey, null);
+    }
+
+    return null;
   }
 
   Future<void> _loadOpenCashSessionId() async {
@@ -138,28 +181,6 @@ class _TopbarState extends ConsumerState<Topbar> {
   String _activeUserName() {
     final name = (_displayName ?? _username ?? '').trim();
     return name.isEmpty ? 'Usuario' : name;
-  }
-
-  Future<void> _showCompanyProductsDialog() async {
-    final theme = Theme.of(context);
-    final tokens = theme.extension<AppTokens>() ?? AppTokens.defaultTokens;
-
-    final accent = ColorUtils.ensureReadableColor(
-      tokens.buttonPrimary,
-      Colors.white,
-      minRatio: 3.0,
-    );
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) {
-        return _CompanyProductsDialog(
-          accentColor: accent,
-          onClose: () => Navigator.of(dialogContext).pop(),
-        );
-      },
-    );
   }
 
   Future<void> _handleMenuAction(_TopbarMenuAction action) async {
@@ -385,8 +406,70 @@ class _TopbarState extends ConsumerState<Topbar> {
   List<PopupMenuEntry<_TopbarMenuAction>> _turnMenuItems(
     BuildContext context,
     double menuWidth,
+    String activeUser,
+    String? profileImagePath,
   ) {
     return [
+      PopupMenuItem<_TopbarMenuAction>(
+        enabled: false,
+        height: 52,
+        padding: EdgeInsets.zero,
+        child: SizedBox(
+          width: menuWidth,
+          height: 52,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 9, 18, 6),
+            child: SizedBox(
+              height: 37,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (profileImagePath != null) ...[
+                    _TurnMenuUserAvatar(imagePath: profileImagePath),
+                    const SizedBox(width: 10),
+                  ],
+                  Flexible(
+                    child: SizedBox(
+                      height: 32,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Usuario activo',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.25,
+                              height: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            activeUser,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _strongTextColor,
+                              fontSize: 12.4,
+                              fontWeight: FontWeight.w900,
+                              height: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      const PopupMenuDivider(height: 8),
       _buildMenuItem(
         context,
         value: _TopbarMenuAction.makeShiftCut,
@@ -419,7 +502,6 @@ class _TopbarState extends ConsumerState<Topbar> {
     final businessName =
         _cleanText(businessSettings.businessName) ?? 'Mi negocio';
     final businessLogoPath = _cleanText(businessSettings.logoPath);
-    final appVersion = AppConfig.appVersion;
 
     const topbarBg = Colors.white;
 
@@ -436,21 +518,31 @@ class _TopbarState extends ConsumerState<Topbar> {
       topbarBg,
     );
 
-    final screenWidth = MediaQuery.sizeOf(context).width;
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+    final isCompactWidth = screenWidth <= 1366;
+    final isShortHeight = screenHeight <= 900;
+    final useCompactChrome = isCompactWidth || isShortHeight;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final isCompact = screenWidth < 900;
         final s = widget.scale.clamp(0.85, 1.12);
 
-        final topbarHeight = (AppSizes.topbarHeight * s).clamp(48.0, 56.0);
-        final topInset = (widget.topPadding * s).clamp(0.0, 12.0);
+        final compactScale = useCompactChrome ? 0.88 : 1.0;
+        final effectiveScale = s * compactScale;
 
-        final padM = AppSizes.paddingM * s;
-        final padL = AppSizes.paddingL * s;
+        final topbarHeight = useCompactChrome
+            ? (46.0 * s).clamp(44.0, 48.0).toDouble()
+            : (AppSizes.topbarHeight * s).clamp(48.0, 56.0).toDouble();
+        final topInset = (widget.topPadding * effectiveScale).clamp(0.0, 10.0);
+
+        final padM = AppSizes.paddingM * effectiveScale;
+        final padL = AppSizes.paddingL * effectiveScale;
 
         final horizontalPad = ((isCompact ? padM : padL) * 0.55).clamp(
-          8.0,
+          6.0,
           14.0,
         );
 
@@ -466,8 +558,9 @@ class _TopbarState extends ConsumerState<Topbar> {
         final turnMenuWidth = screenWidth < 430 ? 230.0 : 258.0;
 
         final showBusinessText = screenWidth >= 520;
-        final showProductsButton = screenWidth >= 500;
         final showTurnLabel = screenWidth >= 690;
+        final menuButtonSize = useCompactChrome ? 36.0 : 40.0;
+        final menuIconSize = useCompactChrome ? 19.0 : 21.0;
 
         final topbarContent = Container(
           width: screenWidth,
@@ -497,9 +590,6 @@ class _TopbarState extends ConsumerState<Topbar> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ─────────────────────────────────────────────────────────────
-              // Menú lateral
-              // ─────────────────────────────────────────────────────────────
               if (widget.showMenuButton) ...[
                 Tooltip(
                   message: widget.isMenuOpen ? 'Cerrar menú' : 'Abrir menú',
@@ -512,8 +602,8 @@ class _TopbarState extends ConsumerState<Topbar> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 190),
                         curve: Curves.easeOutCubic,
-                        width: 40,
-                        height: 40,
+                        width: menuButtonSize,
+                        height: menuButtonSize,
                         decoration: BoxDecoration(
                           color: widget.isMenuOpen
                               ? brandAccent
@@ -558,7 +648,7 @@ class _TopbarState extends ConsumerState<Topbar> {
                                 ? Icons.close_rounded
                                 : Icons.menu_rounded,
                             key: ValueKey<bool>(widget.isMenuOpen),
-                            size: 21,
+                            size: menuIconSize,
                             color: widget.isMenuOpen
                                 ? Colors.white
                                 : brandAccent,
@@ -568,19 +658,8 @@ class _TopbarState extends ConsumerState<Topbar> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: useCompactChrome ? 8 : 10),
               ],
-
-              // ─────────────────────────────────────────────────────────────
-              // Identidad visual de la sección
-              // ─────────────────────────────────────────────────────────────
-              Icon(
-                Icons.receipt_long_rounded,
-                size: (21 * s).clamp(19.0, 23.0).toDouble(),
-                color: brandAccent,
-              ),
-
-              SizedBox(width: (9 * s).clamp(7.0, 11.0).toDouble()),
 
               Flexible(
                 flex: 0,
@@ -590,9 +669,10 @@ class _TopbarState extends ConsumerState<Topbar> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: appBarFg,
-                    fontSize: ((isCompact ? 16.0 : 18.0) * s)
-                        .clamp(15.5, 19.0)
-                        .toDouble(),
+                    fontSize:
+                        ((isCompact || useCompactChrome ? 16.5 : 18.0) * s)
+                            .clamp(15.5, 19.0)
+                            .toDouble(),
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.18,
                     height: 1.1,
@@ -606,38 +686,19 @@ class _TopbarState extends ConsumerState<Topbar> {
                 ),
               ),
 
-              const SizedBox(width: 10),
-
-              const SizedBox(width: 14),
+              SizedBox(width: useCompactChrome ? 10 : 14),
 
               Container(
                 width: 1,
-                height: 28,
+                height: useCompactChrome ? 24 : 28,
                 color: chromeBorderColor.withOpacity(0.75),
               ),
 
               const Spacer(),
 
-              // ─────────────────────────────────────────────────────────────
-              // Acciones de la derecha
-              // ─────────────────────────────────────────────────────────────
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (showProductsButton) ...[
-                    _TopbarIconAction(
-                      scale: s,
-                      icon: Icons.apps_rounded,
-                      tooltip: 'Productos de la empresa',
-                      color: _softTextColor,
-                      borderColor: chromeBorderColor,
-                      onTap: () {
-                        unawaited(_showCompanyProductsDialog());
-                      },
-                    ),
-                    SizedBox(width: (7 * s).clamp(5.0, 8.0).toDouble()),
-                  ],
-
                   PopupMenuButton<_TopbarMenuAction>(
                     tooltip: 'Turnos',
                     position: PopupMenuPosition.under,
@@ -663,10 +724,15 @@ class _TopbarState extends ConsumerState<Topbar> {
                     ),
                     onSelected: _handleMenuAction,
                     itemBuilder: (_) {
-                      return _turnMenuItems(context, turnMenuWidth);
+                      return _turnMenuItems(
+                        context,
+                        turnMenuWidth,
+                        activeUser,
+                        _profileImagePath,
+                      );
                     },
                     child: _TurnMenuButton(
-                      scale: s,
+                      scale: useCompactChrome ? effectiveScale : s,
                       visibleLabel: showTurnLabel,
                       accentColor: brandAccent,
                       borderColor: chromeBorderColor,
@@ -674,15 +740,11 @@ class _TopbarState extends ConsumerState<Topbar> {
                     ),
                   ),
 
-                  SizedBox(width: (7 * s).clamp(5.0, 8.0).toDouble()),
-
-                  _ActiveCashierChip(
-                    scale: s,
-                    name: activeUser,
-                    borderColor: chromeBorderColor,
+                  SizedBox(
+                    width: ((useCompactChrome ? 5 : 7) * s)
+                        .clamp(4.0, 8.0)
+                        .toDouble(),
                   ),
-
-                  SizedBox(width: (7 * s).clamp(5.0, 8.0).toDouble()),
 
                   PopupMenuButton<_TopbarMenuAction>(
                     tooltip: 'Negocio y cuenta',
@@ -712,12 +774,11 @@ class _TopbarState extends ConsumerState<Topbar> {
                       return _businessMenuItems(context, businessMenuWidth);
                     },
                     child: Tooltip(
-                      message: '$businessName v$appVersion',
+                      message: businessName,
                       waitDuration: const Duration(milliseconds: 350),
                       child: _BusinessMenuButton(
-                        scale: s,
+                        scale: useCompactChrome ? effectiveScale : s,
                         businessName: businessName,
-                        appVersion: appVersion,
                         logoPath: businessLogoPath,
                         showText: showBusinessText,
                         accentColor: brandAccent,
@@ -752,7 +813,6 @@ class _BusinessMenuButton extends StatelessWidget {
   const _BusinessMenuButton({
     required this.scale,
     required this.businessName,
-    required this.appVersion,
     required this.logoPath,
     required this.showText,
     required this.accentColor,
@@ -761,7 +821,6 @@ class _BusinessMenuButton extends StatelessWidget {
 
   final double scale;
   final String businessName;
-  final String appVersion;
   final String? logoPath;
   final bool showText;
   final Color accentColor;
@@ -769,14 +828,14 @@ class _BusinessMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = (36 * scale).clamp(34.0, 40.0).toDouble();
+    final height = (36 * scale).clamp(30.0, 40.0).toDouble();
 
     final cleanName = businessName.trim().isEmpty
         ? 'Mi negocio'
         : businessName.trim();
-    final cleanVersion = appVersion.trim().isEmpty
-        ? '1.0.0+1'
-        : appVersion.trim();
+    final normalizedPath = (logoPath ?? '').trim();
+    final hasLogo =
+        normalizedPath.isNotEmpty && File(normalizedPath).existsSync();
 
     const buttonRadius = BorderRadius.only(
       topLeft: Radius.circular(12),
@@ -790,17 +849,17 @@ class _BusinessMenuButton extends StatelessWidget {
       curve: Curves.easeOutCubic,
       height: height,
       padding: EdgeInsets.only(
-        left: (6 * scale).clamp(5.0, 7.0).toDouble(),
-        right: showText ? (12 * scale).clamp(10.0, 14.0).toDouble() : 6,
+        left: hasLogo ? (6 * scale).clamp(5.0, 7.0).toDouble() : 11,
+        right: (8 * scale).clamp(7.0, 10.0).toDouble(),
       ),
       decoration: BoxDecoration(
         color: Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white),
         borderRadius: buttonRadius,
-        border: Border.all(color: borderColor.withOpacity(0.85)),
+        border: Border.all(color: borderColor.withOpacity(0.70)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.025),
-            blurRadius: 6,
+            color: Colors.black.withOpacity(0.018),
+            blurRadius: 5,
             offset: const Offset(0, 2),
           ),
         ],
@@ -808,44 +867,74 @@ class _BusinessMenuButton extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _BusinessLogoMark(
-            size: (26 * scale).clamp(24.0, 29.0).toDouble(),
-            accentColor: accentColor,
-            name: cleanName,
-            logoPath: logoPath,
-          ),
-
+          if (hasLogo)
+            _BusinessLogoMark(
+              size: (26 * scale).clamp(22.0, 29.0).toDouble(),
+              accentColor: accentColor,
+              logoPath: normalizedPath,
+            ),
           if (showText) ...[
-            SizedBox(width: (8 * scale).clamp(6.0, 9.0).toDouble()),
+            if (hasLogo)
+              SizedBox(width: (8 * scale).clamp(6.0, 9.0).toDouble()),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 190),
-              child: RichText(
+              child: Text(
+                cleanName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                text: TextSpan(
-                  text: cleanName,
-                  style: TextStyle(
-                    color: _TopbarState._strongTextColor,
-                    fontSize: (13.2 * scale).clamp(12.4, 14.2).toDouble(),
-                    fontWeight: FontWeight.w900,
-                    height: 1.05,
-                    letterSpacing: 0.05,
-                  ),
-                  children: [
-                    TextSpan(
-                      text: '  v$cleanVersion',
-                      style: TextStyle(
-                        color: _TopbarState._softTextColor,
-                        fontSize: (11.2 * scale).clamp(10.6, 12.0).toDouble(),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
+                style: TextStyle(
+                  color: _TopbarState._strongTextColor,
+                  fontSize: (13.2 * scale).clamp(12.4, 14.2).toDouble(),
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                  letterSpacing: 0.05,
                 ),
               ),
             ),
           ],
+          SizedBox(width: (4 * scale).clamp(3.0, 5.0).toDouble()),
+          Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: (16 * scale).clamp(14.0, 17.0).toDouble(),
+            color: accentColor.withOpacity(0.58),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _TurnMenuUserAvatar extends StatelessWidget {
+  const _TurnMenuUserAvatar({required this.imagePath});
+
+  final String imagePath;
+
+  @override
+  Widget build(BuildContext context) {
+    const accentColor = Color(0xFF1A56DB);
+
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF1FF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFCAD8EE), width: 0.9),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withOpacity(0.08),
+            blurRadius: 9,
+            spreadRadius: -5,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.file(
+        File(imagePath),
+        width: 32,
+        height: 32,
+        fit: BoxFit.cover,
       ),
     );
   }
@@ -855,23 +944,15 @@ class _BusinessLogoMark extends StatelessWidget {
   const _BusinessLogoMark({
     required this.size,
     required this.accentColor,
-    required this.name,
     required this.logoPath,
   });
 
   final double size;
   final Color accentColor;
-  final String name;
-  final String? logoPath;
+  final String logoPath;
 
   @override
   Widget build(BuildContext context) {
-    final initials = _initials(name);
-    final normalizedPath = (logoPath ?? '').trim();
-
-    final hasLogo =
-        normalizedPath.isNotEmpty && File(normalizedPath).existsSync();
-
     const logoRadius = BorderRadius.only(
       topLeft: Radius.circular(10),
       topRight: Radius.circular(4),
@@ -903,37 +984,8 @@ class _BusinessLogoMark extends StatelessWidget {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: hasLogo
-          ? Image.file(File(normalizedPath), fit: BoxFit.cover)
-          : Center(
-              child: Text(
-                initials,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: (10.8 * (size / 26)).clamp(9.5, 12.0).toDouble(),
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
-              ),
-            ),
+      child: Image.file(File(logoPath), fit: BoxFit.cover),
     );
-  }
-
-  static String _initials(String value) {
-    final parts = value
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-
-    if (parts.isEmpty) return 'N';
-
-    if (parts.length == 1) {
-      return parts.first.characters.first.toUpperCase();
-    }
-
-    return '${parts.first.characters.first}${parts.last.characters.first}'
-        .toUpperCase();
   }
 }
 
@@ -954,9 +1006,9 @@ class _TurnMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = (34 * scale).clamp(32.0, 38.0).toDouble();
+    final height = (34 * scale).clamp(30.0, 38.0).toDouble();
 
-    final bg = Color.alphaBlend(accentColor.withOpacity(0.08), Colors.white);
+    final bg = Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white);
 
     const buttonRadius = BorderRadius.only(
       topLeft: Radius.circular(11),
@@ -985,13 +1037,13 @@ class _TurnMenuButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: buttonRadius,
-          border: Border.all(color: accentColor.withOpacity(0.30)),
+          border: Border.all(color: accentColor.withOpacity(0.14)),
           boxShadow: [
             BoxShadow(
-              color: accentColor.withOpacity(0.06),
-              blurRadius: 7,
+              color: Colors.black.withOpacity(0.018),
+              blurRadius: 5,
               spreadRadius: -3,
-              offset: const Offset(0, 3),
+              offset: const Offset(0, 2),
             ),
           ],
         ),
@@ -1002,9 +1054,9 @@ class _TurnMenuButton extends StatelessWidget {
               width: (23 * scale).clamp(21.0, 25.0).toDouble(),
               height: (23 * scale).clamp(21.0, 25.0).toDouble(),
               decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.13),
+                color: accentColor.withOpacity(0.08),
                 borderRadius: iconRadius,
-                border: Border.all(color: accentColor.withOpacity(0.14)),
+                border: Border.all(color: accentColor.withOpacity(0.10)),
               ),
               alignment: Alignment.center,
               child: Icon(
@@ -1013,7 +1065,6 @@ class _TurnMenuButton extends StatelessWidget {
                 color: accentColor,
               ),
             ),
-
             if (visibleLabel) ...[
               SizedBox(width: (7 * scale).clamp(5.0, 8.0).toDouble()),
               Text(
@@ -1034,381 +1085,6 @@ class _TurnMenuButton extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ActiveCashierChip extends StatelessWidget {
-  const _ActiveCashierChip({
-    required this.scale,
-    required this.name,
-    required this.borderColor,
-  });
-
-  final double scale;
-  final String name;
-  final Color borderColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final cleanName = name.trim().isEmpty ? 'Usuario' : name.trim();
-    final height = (34 * scale).clamp(32.0, 38.0).toDouble();
-
-    const chipRadius = BorderRadius.only(
-      topLeft: Radius.circular(11),
-      topRight: Radius.circular(5),
-      bottomLeft: Radius.circular(5),
-      bottomRight: Radius.circular(11),
-    );
-
-    const iconRadius = BorderRadius.only(
-      topLeft: Radius.circular(9),
-      topRight: Radius.circular(4),
-      bottomLeft: Radius.circular(4),
-      bottomRight: Radius.circular(9),
-    );
-
-    return Tooltip(
-      message: cleanName,
-      waitDuration: const Duration(milliseconds: 350),
-      child: Container(
-        height: height,
-        padding: EdgeInsets.symmetric(
-          horizontal: (8 * scale).clamp(7.0, 10.0).toDouble(),
-        ),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: chipRadius,
-          border: Border.all(color: borderColor.withOpacity(0.75)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.025),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: (24 * scale).clamp(22.0, 26.0).toDouble(),
-              height: (24 * scale).clamp(22.0, 26.0).toDouble(),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: iconRadius,
-                border: Border.all(color: borderColor.withOpacity(0.55)),
-              ),
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.person_outline_rounded,
-                size: (15 * scale).clamp(14.0, 16.0).toDouble(),
-                color: _TopbarState._softTextColor,
-              ),
-            ),
-
-            SizedBox(width: (7 * scale).clamp(6.0, 8.0).toDouble()),
-
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 136),
-              child: Text(
-                cleanName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: _TopbarState._strongTextColor,
-                  fontSize: (12.5 * scale).clamp(11.6, 13.2).toDouble(),
-                  fontWeight: FontWeight.w800,
-                  height: 1,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TopbarIconAction extends StatelessWidget {
-  const _TopbarIconAction({
-    required this.scale,
-    required this.icon,
-    required this.tooltip,
-    required this.color,
-    required this.borderColor,
-    required this.onTap,
-  });
-
-  final double scale;
-  final IconData icon;
-  final String tooltip;
-  final Color color;
-  final Color borderColor;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final size = (34 * scale).clamp(32.0, 38.0).toDouble();
-
-    const actionRadius = BorderRadius.only(
-      topLeft: Radius.circular(11),
-      topRight: Radius.circular(5),
-      bottomLeft: Radius.circular(5),
-      bottomRight: Radius.circular(11),
-    );
-
-    return Tooltip(
-      message: tooltip,
-      waitDuration: const Duration(milliseconds: 350),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: actionRadius,
-          child: Ink(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: actionRadius,
-              border: Border.all(color: borderColor.withOpacity(0.70)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.025),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(
-              icon,
-              size: (18 * scale).clamp(16.0, 19.0).toDouble(),
-              color: color,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CompanyProductsDialog extends StatelessWidget {
-  const _CompanyProductsDialog({
-    required this.accentColor,
-    required this.onClose,
-  });
-
-  final Color accentColor;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: accentColor.withOpacity(0.13)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.16),
-                blurRadius: 34,
-                spreadRadius: -14,
-                offset: const Offset(0, 18),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.10),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: accentColor.withOpacity(0.14),
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.apps_rounded,
-                        color: accentColor,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 13),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Productos de la empresa',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: _TopbarState._strongTextColor,
-                              fontSize: 17,
-                              fontWeight: FontWeight.w900,
-                              height: 1.1,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Soluciones disponibles para tu negocio',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: _TopbarState._softTextColor,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              height: 1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: onClose,
-                      icon: const Icon(Icons.close_rounded),
-                      color: _TopbarState._softTextColor,
-                      splashRadius: 20,
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-                child: Column(
-                  children: [
-                    _CompanyProductCard(
-                      accentColor: accentColor,
-                      icon: Icons.point_of_sale_rounded,
-                      title: 'FullPOS',
-                      subtitle: 'Facturación, ventas, caja e inventario.',
-                    ),
-                    const SizedBox(height: 10),
-                    _CompanyProductCard(
-                      accentColor: accentColor,
-                      icon: Icons.account_balance_wallet_outlined,
-                      title: 'FullCredit',
-                      subtitle: 'Gestión de créditos, clientes y pagos.',
-                    ),
-                    const SizedBox(height: 10),
-                    _CompanyProductCard(
-                      accentColor: accentColor,
-                      icon: Icons.payments_outlined,
-                      title: 'FullPréstamos',
-                      subtitle: 'Control profesional de préstamos y cobros.',
-                    ),
-                    const SizedBox(height: 10),
-                    _CompanyProductCard(
-                      accentColor: accentColor,
-                      icon: Icons.smart_toy_outlined,
-                      title: 'Bots / Automatizaciones',
-                      subtitle: 'Automatización de ventas y seguimiento.',
-                    ),
-                    const SizedBox(height: 10),
-                    _CompanyProductCard(
-                      accentColor: accentColor,
-                      icon: Icons.cloud_outlined,
-                      title: 'Nube',
-                      subtitle: 'Sincronización, respaldo y acceso remoto.',
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CompanyProductCard extends StatelessWidget {
-  const _CompanyProductCard({
-    required this.accentColor,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final Color accentColor;
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: accentColor.withOpacity(0.10)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: accentColor, size: 21),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _TopbarState._strongTextColor,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w900,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _TopbarState._softTextColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    height: 1.1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Icon(
-            Icons.chevron_right_rounded,
-            color: accentColor.withOpacity(0.45),
-            size: 20,
-          ),
-        ],
       ),
     );
   }

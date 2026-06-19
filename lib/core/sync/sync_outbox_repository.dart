@@ -110,7 +110,7 @@ class SyncOutboxRepository {
           'last_success_at_ms': now,
           'last_error': null,
           'updated_at_ms': now,
-          if (durationMs != null) 'last_duration_ms': durationMs,
+          'last_duration_ms': ?durationMs,
         },
         where: 'target = ? AND status = ?',
         whereArgs: [target, 'syncing'],

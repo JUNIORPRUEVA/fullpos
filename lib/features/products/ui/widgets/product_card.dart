@@ -144,13 +144,13 @@ class ProductCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           [
-                                if (categoryName != null) categoryName!,
-                                if (supplierName != null) supplierName!,
+                                ?categoryName,
+                                ?supplierName,
                               ].isEmpty
                               ? 'Sin clasificación adicional'
                               : [
-                                  if (categoryName != null) categoryName!,
-                                  if (supplierName != null) supplierName!,
+                                  ?categoryName,
+                                  ?supplierName,
                                 ].join(' • '),
                           style: TextStyle(
                             fontSize: 11,

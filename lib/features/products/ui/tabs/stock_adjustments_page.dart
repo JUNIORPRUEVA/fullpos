@@ -14,7 +14,6 @@ import '../../models/stock_movement_model.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../../settings/data/user_model.dart';
 import '../dialogs/product_details_dialog.dart';
-import '../dialogs/stock_adjust_dialog.dart';
 import '../widgets/product_thumbnail.dart';
 import '../widgets/products_surface.dart';
 
@@ -297,24 +296,6 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
         return product.stock - quantity;
       case StockMovementType.adjust:
         return quantity;
-    }
-  }
-
-  Future<void> _openAdjustDialog(ProductModel product) async {
-    final fresh = await _productsRepo.getById(product.id!);
-
-    if (!mounted || fresh == null) return;
-
-    final result = await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => StockAdjustDialog(product: fresh),
-    );
-
-    if (!mounted) return;
-
-    if (result == true || (result is Map && result['ok'] == true)) {
-      await _loadData();
     }
   }
 
@@ -1172,10 +1153,7 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
                   ),
                   TextSpan(
                     text: _numberFormat.format(previewStock),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: color,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w900, color: color),
                   ),
                 ],
               ),
@@ -1290,9 +1268,7 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: const Color(0xFFE2E8F0),
-                      ),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: Icon(
                       Icons.inventory_2_outlined,
@@ -1309,11 +1285,7 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: const BoxDecoration(
                 color: Color(0xFFF8FAFC),
-                border: Border(
-                  bottom: BorderSide(
-                    color: Color(0xFFE2E8F0),
-                  ),
-                ),
+                border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
               ),
               child: Row(
                 children: [
@@ -1331,20 +1303,20 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : products.isEmpty
-                      ? _buildEmptyProductsState(theme, scheme)
-                      : ListView.builder(
-                          itemCount: products.length,
-                          padding: EdgeInsets.zero,
-                          itemBuilder: (context, index) {
-                            return _buildProductRow(
-                              theme: theme,
-                              scheme: scheme,
-                              product: products[index],
-                              canAdjustStock: canAdjustStock,
-                              isCompact: isCompact,
-                            );
-                          },
-                        ),
+                  ? _buildEmptyProductsState(theme, scheme)
+                  : ListView.builder(
+                      itemCount: products.length,
+                      padding: EdgeInsets.zero,
+                      itemBuilder: (context, index) {
+                        return _buildProductRow(
+                          theme: theme,
+                          scheme: scheme,
+                          product: products[index],
+                          canAdjustStock: canAdjustStock,
+                          isCompact: isCompact,
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -1378,7 +1350,7 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
           ),
         ],
       ),
-     );
+    );
   }
 
   Widget _buildProductRow({

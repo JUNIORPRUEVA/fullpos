@@ -58,7 +58,7 @@ class DebugAppLogger {
       'level': describeEnum(level),
       'module': module,
       'message': message,
-      if (data != null) 'data': data,
+      'data': ?data,
       if (error != null) 'error': '$error',
       if (stackTrace != null) 'stackTrace': '$stackTrace',
     };

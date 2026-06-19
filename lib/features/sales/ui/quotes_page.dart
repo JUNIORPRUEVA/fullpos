@@ -650,7 +650,7 @@ class _QuotesPageState extends State<QuotesPage> {
             child: ListView.separated(
               padding: EdgeInsets.zero,
               itemCount: _filteredQuotes.length,
-              separatorBuilder: (_, __) => Divider(
+              separatorBuilder: (_, _) => Divider(
                 height: 1,
                 thickness: 1,
                 color: ui_colors.AppColors.borderSoft.withOpacity(0.72),
@@ -1413,7 +1413,7 @@ class _QuotesPageState extends State<QuotesPage> {
                 shrinkWrap: true,
                 primary: false,
                 itemCount: detail.items.length,
-                separatorBuilder: (_, __) => const Divider(
+                separatorBuilder: (_, _) => const Divider(
                   height: 1,
                   color: ui_colors.AppColors.borderSoft,
                 ),

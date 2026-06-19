@@ -31,8 +31,8 @@ class DbLogger {
       'status': status,
       'appVersion': _kAppVersion,
       'schemaVersion': schemaVersion,
-      if (detail != null) 'detail': detail,
-      if (error != null) 'error': error,
+      'detail': ?detail,
+      'error': ?error,
     };
 
     _queue = _queue.then((_) async {

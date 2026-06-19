@@ -179,7 +179,7 @@ class AuthzService {
       resourceType: resourceType,
       resourceId: resourceId,
       meta: {
-        if (reason != null) 'reason': reason,
+        'reason': ?reason,
         if (meta != null) ...meta.value,
       },
     );
@@ -241,7 +241,7 @@ class AuthzService {
       resourceType: resourceType,
       resourceId: resourceId,
       meta: {
-        if (reason != null) 'reason': reason,
+        'reason': ?reason,
         if (meta != null) ...meta.value,
       },
     );

@@ -1146,7 +1146,7 @@ class CloudSyncService {
           // If the product prefers a color placeholder, we should explicitly clear
           // any previously synced imageUrl.
           if (p.prefersImage)
-            if (imageUrl != null) 'imageUrl': imageUrl,
+            'imageUrl': ?imageUrl,
           if (!p.prefersImage) 'imageUrl': null,
         });
       }
@@ -2544,7 +2544,7 @@ class CloudSyncService {
       if (cloudCompanyId != null && cloudCompanyId.isNotEmpty)
         'companyCloudId': cloudCompanyId,
       'companyName': _normalizeText(settings.businessName) ?? 'Empresa',
-      if (logoUrl != null) 'logoUrl': logoUrl,
+      'logoUrl': ?logoUrl,
       'phone': _normalizeText(settings.phone),
       'phone2': _normalizeText(settings.phone2),
       'email': _normalizeEmail(settings.email),
@@ -2554,7 +2554,7 @@ class CloudSyncService {
       'website': _normalizeUrl(settings.website),
       'instagramUrl': _normalizeUrl(settings.instagramUrl),
       'facebookUrl': _normalizeUrl(settings.facebookUrl),
-      if (themeKey != null) 'themeKey': themeKey,
+      'themeKey': ?themeKey,
     };
   }
 

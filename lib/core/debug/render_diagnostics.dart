@@ -137,7 +137,7 @@ class RenderDiagnostics {
     unawaited(
       _logger.info(
         'first_frame_painted',
-        data: {'source': source, if (ttffMs != null) 'ttff_ms': ttffMs},
+        data: {'source': source, 'ttff_ms': ?ttffMs},
       ),
     );
   }
@@ -163,7 +163,7 @@ class RenderDiagnostics {
       data: {
         'attempt': attempt,
         'reason': reason,
-        if (hasSurface != null) 'hasSurface': hasSurface,
+        'hasSurface': ?hasSurface,
       },
     );
   }
@@ -171,14 +171,14 @@ class RenderDiagnostics {
   Future<void> logRecoveryAction(String action, {int? attempt}) {
     return _logger.info(
       'render_recovery',
-      data: {'action': action, if (attempt != null) 'attempt': attempt},
+      data: {'action': action, 'attempt': ?attempt},
     );
   }
 
   Future<void> logSafeMode(bool enabled, {int? attempts}) {
     return _logger.warn(
       enabled ? 'safe_mode_enabled' : 'safe_mode_exit',
-      data: {if (attempts != null) 'attempts': attempts},
+      data: {'attempts': ?attempts},
     );
   }
 

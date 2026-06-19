@@ -78,8 +78,12 @@ class _AppShellState extends State<AppShell> {
 
         final isShort = _isShort;
         final showSalesFooter = !isShort && _currentPath() == _salesRoute;
-        final topbarHeight = AppSizes.topbarHeight;
-        final footerHeight = showSalesFooter ? AppSizes.footerHeight : 0.0;
+        final size = MediaQuery.sizeOf(context);
+        final useCompactChrome = size.width <= 1366 || size.height <= 900;
+        final topbarHeight = useCompactChrome ? 46.0 : AppSizes.topbarHeight;
+        final footerHeight = showSalesFooter
+            ? (useCompactChrome ? 36.0 : AppSizes.footerHeight)
+            : 0.0;
 
         final topbarWidget = Builder(
           builder: (context) => Column(

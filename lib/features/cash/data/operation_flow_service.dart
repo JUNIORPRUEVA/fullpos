@@ -115,13 +115,6 @@ class OperationFlowService {
     ]);
     final cashboxToday = results[0] as CashboxDailyModel?;
     final openShifts = results[1] as List<CashSessionModel>;
-    if (openShifts.length > 1) {
-      throw StateError(
-        'Se detectaron varios turnos abiertos para el usuario $userId. '
-        'Corrige el estado de caja antes de continuar.',
-      );
-    }
-
     final userShift = openShifts.isEmpty ? null : openShifts.first;
     final linkedCashbox = userShift == null
         ? null
@@ -131,6 +124,7 @@ class OperationFlowService {
         : null;
     final activeSession =
         linkedCashbox != null &&
+            linkedCashbox.businessDate == today &&
             linkedCashbox.isOpen &&
             userShift != null &&
             userShift.isOpen
@@ -310,6 +304,179 @@ class OperationFlowService {
     return shift;
   }
 
+  static Future<CashboxDailyModel> _ensureCashboxForBusinessDate(
+    Transaction txn, {
+    required String businessDate,
+    required int userId,
+    required int nowMs,
+    required double openingAmount,
+    String? note,
+  }) async {
+    final rows = await txn.query(
+      DbTables.cashboxDaily,
+      where: 'business_date = ?',
+      whereArgs: [businessDate],
+      limit: 1,
+    );
+
+    if (rows.isEmpty) {
+      final cashboxId = await txn.insert(DbTables.cashboxDaily, {
+        'business_date': businessDate,
+        'opened_at_ms': nowMs,
+        'opened_by_user_id': userId,
+        'initial_amount': openingAmount,
+        'current_amount': openingAmount,
+        'status': 'OPEN',
+        'note': note,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
+      final inserted = await txn.query(
+        DbTables.cashboxDaily,
+        where: 'id = ?',
+        whereArgs: [cashboxId],
+        limit: 1,
+      );
+      return CashboxDailyModel.fromMap(inserted.first);
+    }
+
+    final row = rows.first;
+    final status = (row['status'] as String? ?? 'OPEN').toUpperCase();
+    if (status != 'OPEN') {
+      await txn.update(
+        DbTables.cashboxDaily,
+        {
+          'opened_at_ms': nowMs,
+          'opened_by_user_id': userId,
+          'initial_amount': openingAmount,
+          'current_amount': openingAmount,
+          'status': 'OPEN',
+          'closed_at_ms': null,
+          'closed_by_user_id': null,
+          'note': note,
+        },
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+      final reopened = await txn.query(
+        DbTables.cashboxDaily,
+        where: 'id = ?',
+        whereArgs: [row['id']],
+        limit: 1,
+      );
+      return CashboxDailyModel.fromMap(reopened.first);
+    }
+
+    return CashboxDailyModel.fromMap(row);
+  }
+
+  static Future<CashSessionModel> _moveOpenShiftToBusinessDate(
+    Transaction txn, {
+    required CashSessionModel shift,
+    required CashboxDailyModel? previousCashbox,
+    required String businessDate,
+    required int userId,
+    required String userName,
+    required int nowMs,
+    required double openingAmount,
+    String? note,
+  }) async {
+    final shiftId = shift.id;
+    if (shiftId == null) {
+      throw StateError('El turno abierto no tiene un identificador válido.');
+    }
+
+    final targetCashbox = await _ensureCashboxForBusinessDate(
+      txn,
+      businessDate: businessDate,
+      userId: userId,
+      nowMs: nowMs,
+      openingAmount: openingAmount,
+      note: note,
+    );
+
+    final movedShift = await _claimOpenShiftForCurrentUser(
+      txn,
+      row: shift.toMap(),
+      cashbox: targetCashbox,
+      userId: userId,
+      userName: userName,
+    );
+
+    final previousCashboxId = previousCashbox?.id;
+    final previousBusinessDate = previousCashbox?.businessDate;
+    if (previousCashboxId != null &&
+        previousBusinessDate != null &&
+        previousBusinessDate != businessDate) {
+      final remainingRows = await txn.query(
+        DbTables.cashSessions,
+        columns: ['id'],
+        where: '''
+          status = 'OPEN'
+          AND closed_at_ms IS NULL
+          AND id <> ?
+          AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
+        ''',
+        whereArgs: [shiftId, previousCashboxId, previousBusinessDate],
+        limit: 1,
+      );
+      if (remainingRows.isEmpty) {
+        final previousNote = (previousCashbox?.note ?? '').trim();
+        final repairNote = [
+          if (previousNote.isNotEmpty) previousNote,
+          'Cerrada automaticamente al mover turno #$shiftId a $businessDate (${DateTime.now().toLocal()})',
+        ].join('\n');
+        await txn.update(
+          DbTables.cashboxDaily,
+          {
+            'status': 'CLOSED',
+            'closed_at_ms': nowMs,
+            'closed_by_user_id': userId,
+            'note': repairNote,
+          },
+          where: 'id = ? AND status = ?',
+          whereArgs: [previousCashboxId, 'OPEN'],
+        );
+      }
+    }
+
+    return movedShift.copyWith(
+      cashboxDailyId: targetCashbox.id,
+      businessDate: targetCashbox.businessDate,
+      userId: userId,
+      userName: userName,
+    );
+  }
+
+  static Future<void> _retireDuplicateOpenShifts(
+    Transaction txn, {
+    required List<Map<String, dynamic>> rows,
+    required int keepShiftId,
+    required int actorUserId,
+    required int nowMs,
+  }) async {
+    for (final row in rows) {
+      final duplicateId = row['id'] as int?;
+      if (duplicateId == null || duplicateId == keepShiftId) continue;
+
+      final previousNote = (row['note'] as String? ?? '').trim();
+      final repairNote = [
+        if (previousNote.isNotEmpty) previousNote,
+        'Cerrada automaticamente por apertura segura; se conserva turno #$keepShiftId (${DateTime.now().toLocal()})',
+      ].join('\n');
+
+      await txn.update(
+        DbTables.cashSessions,
+        {
+          'closed_at_ms': nowMs,
+          'closed_by_user_id': actorUserId,
+          'status': CashSessionStatus.closed,
+          'note': repairNote,
+        },
+        where: 'id = ? AND status = ? AND closed_at_ms IS NULL',
+        whereArgs: [duplicateId, CashSessionStatus.open],
+      );
+    }
+  }
+
   static void queueRestoredSessionNotice(ActiveSession session) {
     _pendingRestoredSessionNotice = session;
   }
@@ -444,17 +611,11 @@ class OperationFlowService {
       await db.transaction((txn) async {
         final openRows = await txn.query(
           DbTables.cashSessions,
-          columns: ['id'],
           where:
               "status = 'OPEN' AND closed_at_ms IS NULL AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))",
           whereArgs: [existing.id, businessDate],
-          limit: 1,
+          orderBy: 'opened_at_ms DESC',
         );
-        if (openRows.isNotEmpty) {
-          throw Exception(
-            'No se puede reabrir la caja mientras existan turnos abiertos.',
-          );
-        }
 
         final previousNote = (existing.note ?? '').trim();
         final newNote = [
@@ -482,6 +643,40 @@ class OperationFlowService {
           throw Exception(
             'No fue posible reabrir la caja diaria. Intenta nuevamente.',
           );
+        }
+
+        if (openRows.isNotEmpty) {
+          final reopenedRows = await txn.query(
+            DbTables.cashboxDaily,
+            where: 'id = ?',
+            whereArgs: [existing.id],
+            limit: 1,
+          );
+          if (reopenedRows.isNotEmpty) {
+            final reopenedCashbox = CashboxDailyModel.fromMap(
+              reopenedRows.first,
+            );
+            final shift = await _claimOpenShiftForCurrentUser(
+              txn,
+              row: openRows.first,
+              cashbox: reopenedCashbox,
+              userId: userId,
+              userName:
+                  await SessionManager.displayName() ??
+                  await SessionManager.username() ??
+                  'Usuario',
+            );
+            final shiftId = shift.id;
+            if (shiftId != null && openRows.length > 1) {
+              await _retireDuplicateOpenShifts(
+                txn,
+                rows: openRows,
+                keepShiftId: shiftId,
+                actorUserId: userId,
+                nowMs: now,
+              );
+            }
+          }
         }
       });
 
@@ -599,23 +794,30 @@ class OperationFlowService {
         where: 'status = ? AND closed_at_ms IS NULL AND opened_by_user_id = ?',
         whereArgs: ['OPEN', userId],
         orderBy: 'opened_at_ms DESC',
-        limit: 1,
       );
       if (existingUserRows.isNotEmpty) {
         id = existingUserRows.first['id'] as int?;
+        if (id != null && existingUserRows.length > 1) {
+          await _retireDuplicateOpenShifts(
+            txn,
+            rows: existingUserRows,
+            keepShiftId: id!,
+            actorUserId: userId,
+            nowMs: DateTime.now().millisecondsSinceEpoch,
+          );
+        }
         return;
       }
 
       final otherOpenRows = await txn.query(
         DbTables.cashSessions,
-        columns: ['id', 'opened_by_user_id', 'user_name'],
         where: '''
           status = 'OPEN'
           AND closed_at_ms IS NULL
           AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
         ''',
         whereArgs: [cashbox.id, businessDate],
-        limit: 1,
+        orderBy: 'opened_at_ms DESC',
       );
       if (otherOpenRows.isNotEmpty) {
         final shift = await _claimOpenShiftForCurrentUser(
@@ -626,6 +828,15 @@ class OperationFlowService {
           userName: userName,
         );
         id = shift.id;
+        if (id != null && otherOpenRows.length > 1) {
+          await _retireDuplicateOpenShifts(
+            txn,
+            rows: otherOpenRows,
+            keepShiftId: id!,
+            actorUserId: userId,
+            nowMs: DateTime.now().millisecondsSinceEpoch,
+          );
+        }
         return;
       }
 
@@ -654,12 +865,6 @@ class OperationFlowService {
     required double openingAmount,
     String? note,
   }) async {
-    final gate = await loadGateState();
-    final existing = gate.activeSession;
-    if (existing != null) {
-      return existing;
-    }
-
     final businessDate = businessDateOf();
     final userId = await SessionManager.userId() ?? 1;
     final userName =
@@ -694,12 +899,17 @@ class OperationFlowService {
       );
 
       if (currentUserRows.isNotEmpty) {
-        if (currentUserRows.length > 1) {
-          throw StateError(
-            'Se detectaron varios turnos abiertos para este usuario.',
+        final shift = CashSessionModel.fromMap(currentUserRows.first);
+        final shiftId = shift.id;
+        if (shiftId != null && currentUserRows.length > 1) {
+          await _retireDuplicateOpenShifts(
+            txn,
+            rows: currentUserRows,
+            keepShiftId: shiftId,
+            actorUserId: userId,
+            nowMs: now,
           );
         }
-        final shift = CashSessionModel.fromMap(currentUserRows.first);
         final linkedCashboxRows = shift.cashboxDailyId == null
             ? await txn.query(
                 DbTables.cashboxDaily,
@@ -714,6 +924,32 @@ class OperationFlowService {
                 limit: 1,
               );
         if (linkedCashboxRows.isEmpty) {
+          final shiftBusinessDate = (shift.businessDate ?? '').trim();
+          if (shiftBusinessDate.isNotEmpty &&
+              shiftBusinessDate != businessDate) {
+            final movedShift = await _moveOpenShiftToBusinessDate(
+              txn,
+              shift: shift,
+              previousCashbox: null,
+              businessDate: businessDate,
+              userId: userId,
+              userName: userName,
+              nowMs: now,
+              openingAmount: openingAmount,
+              note: note,
+            );
+            final movedCashboxRows = await txn.query(
+              DbTables.cashboxDaily,
+              where: 'id = ?',
+              whereArgs: [movedShift.cashboxDailyId],
+              limit: 1,
+            );
+            result = ActiveSession.fromModels(
+              cashbox: CashboxDailyModel.fromMap(movedCashboxRows.first),
+              shift: movedShift,
+            );
+            return;
+          }
           final repairedCashbox = await _repairCashboxForOpenShift(
             txn,
             shift: shift,
@@ -733,6 +969,30 @@ class OperationFlowService {
         final linkedCashbox = CashboxDailyModel.fromMap(
           linkedCashboxRows.first,
         );
+        if (linkedCashbox.businessDate != businessDate) {
+          final movedShift = await _moveOpenShiftToBusinessDate(
+            txn,
+            shift: shift,
+            previousCashbox: linkedCashbox,
+            businessDate: businessDate,
+            userId: userId,
+            userName: userName,
+            nowMs: now,
+            openingAmount: openingAmount,
+            note: note,
+          );
+          final movedCashboxRows = await txn.query(
+            DbTables.cashboxDaily,
+            where: 'id = ?',
+            whereArgs: [movedShift.cashboxDailyId],
+            limit: 1,
+          );
+          result = ActiveSession.fromModels(
+            cashbox: CashboxDailyModel.fromMap(movedCashboxRows.first),
+            shift: movedShift,
+          );
+          return;
+        }
         if (!linkedCashbox.isOpen) {
           final repairedCashbox = await _repairCashboxForOpenShift(
             txn,
@@ -808,7 +1068,6 @@ class OperationFlowService {
         ''',
         whereArgs: [cashbox.id, businessDate],
         orderBy: 'opened_at_ms DESC',
-        limit: 1,
       );
       if (otherOpenRows.isNotEmpty) {
         final shift = await _claimOpenShiftForCurrentUser(
@@ -819,6 +1078,15 @@ class OperationFlowService {
           userName: userName,
         );
         result = ActiveSession.fromModels(cashbox: cashbox, shift: shift);
+        if (otherOpenRows.length > 1) {
+          await _retireDuplicateOpenShifts(
+            txn,
+            rows: otherOpenRows,
+            keepShiftId: shift.id!,
+            actorUserId: userId,
+            nowMs: now,
+          );
+        }
         return;
       }
 

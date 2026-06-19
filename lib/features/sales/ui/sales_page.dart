@@ -108,6 +108,66 @@ class _ProductGridMetrics {
   final double tileHeight;
 }
 
+class _SalesResponsiveMetrics {
+  const _SalesResponsiveMetrics({
+    required this.isCompactDesktop,
+    required this.isTightDesktop,
+    required this.isShortDesktop,
+    required this.isVeryShortDesktop,
+    required this.ticketPanelWidth,
+    required this.productCardWidth,
+    required this.productCardHeight,
+    required this.productHorizontalMargin,
+    required this.productVerticalMargin,
+    required this.catalogLeftPadding,
+    required this.controlBarTopPadding,
+    required this.controlBarRightPadding,
+    required this.controlBarHeight,
+    required this.productImageSize,
+    required this.productImageBoxSize,
+    required this.productNameFontSize,
+    required this.productPriceFontSize,
+    required this.ticketHorizontalPadding,
+    required this.ticketHeaderVerticalPadding,
+    required this.totalAreaHeight,
+    required this.categorySidebarWidth,
+    required this.categoryItemHeight,
+    required this.categoryAvatarOuterSize,
+    required this.categoryAvatarInnerSize,
+    required this.footerTicketHeight,
+    required this.footerTicketTabHeight,
+    required this.spaceBelowControlBar,
+  });
+
+  final bool isCompactDesktop;
+  final bool isTightDesktop;
+  final bool isShortDesktop;
+  final bool isVeryShortDesktop;
+  final double ticketPanelWidth;
+  final double productCardWidth;
+  final double productCardHeight;
+  final double productHorizontalMargin;
+  final double productVerticalMargin;
+  final double catalogLeftPadding;
+  final double controlBarTopPadding;
+  final double controlBarRightPadding;
+  final double controlBarHeight;
+  final double productImageSize;
+  final double productImageBoxSize;
+  final double productNameFontSize;
+  final double productPriceFontSize;
+  final double ticketHorizontalPadding;
+  final double ticketHeaderVerticalPadding;
+  final double totalAreaHeight;
+  final double categorySidebarWidth;
+  final double categoryItemHeight;
+  final double categoryAvatarOuterSize;
+  final double categoryAvatarInnerSize;
+  final double footerTicketHeight;
+  final double footerTicketTabHeight;
+  final double spaceBelowControlBar;
+}
+
 class _SalesPageState extends ConsumerState<SalesPage>
     with WidgetsBindingObserver {
   static const Color _allegraBackgroundColor = Color(0xFFF2F6F9);
@@ -116,32 +176,169 @@ class _SalesPageState extends ConsumerState<SalesPage>
   static const Color _allegraTextPrimaryColor = Color(0xFF172033);
   static const Color _allegraTextSecondaryColor = Color(0xFF6B7A8C);
   static const Color _allegraAccentColor = Color(0xFF1A56DB);
-  static const double _productCardWidth = 220.0;
-  static const double _productCardHeight = 254.0;
-  static const double _productHorizontalMargin = 12.0;
-  static const double _productVerticalMargin = 10.0;
-  static const double _categorySidebarCollapsedWidth = 64.0;
-  static const double _categorySidebarExpandedWidth = 236.0;
   static const double _customerRowControlHeight = 36.0;
   static const double _customerRowControlRadius = 10.0;
   static const double _customerNewButtonWidth = 110.0;
-  _ProductGridMetrics _productGridMetricsFor(double availableWidth) {
-    if (!availableWidth.isFinite || availableWidth <= 0) {
-      return const _ProductGridMetrics(
-        crossAxisCount: 1,
-        crossAxisSpacing: 0,
-        mainAxisSpacing: 0,
-        tileWidth: _productCardWidth,
-        tileHeight: _productCardHeight + (_productVerticalMargin * 2),
+
+  bool _useCompactChromeFor(Size size) {
+    final isCompactWidth = size.width <= 1366;
+    final isShortHeight = size.height <= 900;
+    return isCompactWidth || isShortHeight;
+  }
+
+  double _categorySidebarCollapsedWidthFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return _useCompactChromeFor(size) ? 54.0 : 64.0;
+  }
+
+  double _categorySidebarExpandedWidthFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return _useCompactChromeFor(size) ? 216.0 : 236.0;
+  }
+
+  double _categoryItemHeightFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return _useCompactChromeFor(size) ? 40.0 : 48.0;
+  }
+
+  double _categoryAvatarOuterSizeFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return _useCompactChromeFor(size) ? 36.0 : 44.0;
+  }
+
+  double _categoryAvatarInnerSizeFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return _useCompactChromeFor(size) ? 30.0 : 36.0;
+  }
+
+  _SalesResponsiveMetrics _salesMetricsFor(Size size) {
+    final width = size.width;
+    final height = size.height;
+
+    final isTightDesktop = width <= 1280 || height <= 768;
+    final isCompactDesktop = width <= 1366 || height <= 900;
+    final isShortDesktop = height <= 900;
+    final isVeryShortDesktop = height <= 768;
+
+    if (isTightDesktop) {
+      return _SalesResponsiveMetrics(
+        isCompactDesktop: true,
+        isTightDesktop: true,
+        isShortDesktop: isShortDesktop,
+        isVeryShortDesktop: isVeryShortDesktop,
+        ticketPanelWidth: 420,
+        productCardWidth: 182,
+        productCardHeight: 214,
+        productHorizontalMargin: 6,
+        productVerticalMargin: 5,
+        catalogLeftPadding: 8,
+        controlBarTopPadding: isVeryShortDesktop ? 8 : 9,
+        controlBarRightPadding: 10,
+        controlBarHeight: 39,
+        productImageSize: 84,
+        productImageBoxSize: 92,
+        productNameFontSize: 12.1,
+        productPriceFontSize: 15.0,
+        ticketHorizontalPadding: 12,
+        ticketHeaderVerticalPadding: 9,
+        totalAreaHeight: 82,
+        categorySidebarWidth: 54,
+        categoryItemHeight: 40,
+        categoryAvatarOuterSize: 36,
+        categoryAvatarInnerSize: 30,
+        footerTicketHeight: 36,
+        footerTicketTabHeight: 30,
+        spaceBelowControlBar: isVeryShortDesktop ? 14 : 16,
       );
     }
 
-    const horizontalInsetPerTile = _productHorizontalMargin * 2;
+    if (isCompactDesktop) {
+      return _SalesResponsiveMetrics(
+        isCompactDesktop: true,
+        isTightDesktop: false,
+        isShortDesktop: isShortDesktop,
+        isVeryShortDesktop: isVeryShortDesktop,
+        ticketPanelWidth: 440,
+        productCardWidth: 186,
+        productCardHeight: 218,
+        productHorizontalMargin: 7,
+        productVerticalMargin: 6,
+        catalogLeftPadding: 10,
+        controlBarTopPadding: 10,
+        controlBarRightPadding: 12,
+        controlBarHeight: 40,
+        productImageSize: 88,
+        productImageBoxSize: 94,
+        productNameFontSize: 12.3,
+        productPriceFontSize: 15.2,
+        ticketHorizontalPadding: 14,
+        ticketHeaderVerticalPadding: 10,
+        totalAreaHeight: 86,
+        categorySidebarWidth: 54,
+        categoryItemHeight: 40,
+        categoryAvatarOuterSize: 36,
+        categoryAvatarInnerSize: 30,
+        footerTicketHeight: 36,
+        footerTicketTabHeight: 30,
+        spaceBelowControlBar: 8,
+      );
+    }
+
+    return _SalesResponsiveMetrics(
+      isCompactDesktop: false,
+      isTightDesktop: false,
+      isShortDesktop: false,
+      isVeryShortDesktop: isVeryShortDesktop,
+      ticketPanelWidth: 550,
+      productCardWidth: 220,
+      productCardHeight: 254,
+      productHorizontalMargin: 12,
+      productVerticalMargin: 10,
+      catalogLeftPadding: 14,
+      controlBarTopPadding: isShortDesktop ? 16 : 20,
+      controlBarRightPadding: 18,
+      controlBarHeight: 42,
+      productImageSize: 112,
+      productImageBoxSize: 118,
+      productNameFontSize: 13.4,
+      productPriceFontSize: 16.5,
+      ticketHorizontalPadding: 18,
+      ticketHeaderVerticalPadding: 13,
+      totalAreaHeight: 92,
+      categorySidebarWidth: 64,
+      categoryItemHeight: 48,
+      categoryAvatarOuterSize: 44,
+      categoryAvatarInnerSize: 36,
+      footerTicketHeight: 58,
+      footerTicketTabHeight: 46,
+      spaceBelowControlBar: 14,
+    );
+  }
+
+  _ProductGridMetrics _productGridMetricsFor(
+    double availableWidth,
+    _SalesResponsiveMetrics metrics,
+  ) {
+    if (!availableWidth.isFinite || availableWidth <= 0) {
+      return _ProductGridMetrics(
+        crossAxisCount: 1,
+        crossAxisSpacing: 0,
+        mainAxisSpacing: 0,
+        tileWidth: metrics.productCardWidth,
+        tileHeight:
+            metrics.productCardHeight + (metrics.productVerticalMargin * 2),
+      );
+    }
+
+    final horizontalInsetPerTile = metrics.productHorizontalMargin * 2;
     final crossSpacing = 0.0;
     final mainSpacing = 0.0;
-    final slotWidth = _productCardWidth + horizontalInsetPerTile;
+    final slotWidth = metrics.productCardWidth + horizontalInsetPerTile;
 
     int crossAxisCount = math.max(1, (availableWidth / slotWidth).floor());
+    if (metrics.isTightDesktop) {
+      crossAxisCount = math.min(crossAxisCount, 3);
+    }
 
     while (crossAxisCount > 1) {
       final slot = availableWidth / crossAxisCount;
@@ -149,8 +346,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
       crossAxisCount -= 1;
     }
 
-    final tileWidth = _productCardWidth;
-    final tileHeight = _productCardHeight + (_productVerticalMargin * 2);
+    final tileWidth = metrics.productCardWidth;
+    final tileHeight =
+        metrics.productCardHeight + (metrics.productVerticalMargin * 2);
 
     return _ProductGridMetrics(
       crossAxisCount: crossAxisCount,
@@ -394,8 +592,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
   final Set<String> _hoveredCartRowActions = <String>{};
   final Set<String> _hoveredTicketHeaderActions = <String>{};
   final Set<String> _processedPaymentRequestIds = <String>{};
-  bool _isFacturaActionHovered = false;
-  bool _isFacturaActionPressed = false;
   bool _isProcessingSaleExecution = false;
   bool _isQuotePdfFlowRunning = false;
   bool _showRecentSalesPanel = false;
@@ -409,7 +605,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   ElectronicCompanyModel? _electronicCompany;
   List<CategoryModel> _categories = [];
-  int? _selectedCategoryId;
+  final Set<int> _selectedCategoryIds = <int>{};
   bool _isCategorySidebarExpanded = false;
   Timer? _categorySidebarCollapseTimer;
   List<ClientModel> _clients = [];
@@ -608,10 +804,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   BoxConstraints _ticketPanelConstraints(double width) {
-    if (width < 1100) {
-      return const BoxConstraints(minWidth: 450, maxWidth: 450);
+    if (width <= 1280) {
+      return const BoxConstraints(minWidth: 418, maxWidth: 418);
+    }
+    if (width <= 1366) {
+      return const BoxConstraints(minWidth: 438, maxWidth: 438);
     }
     if (width < 1400) {
+      return const BoxConstraints(minWidth: 470, maxWidth: 470);
+    }
+    if (width < 1600) {
       return const BoxConstraints(minWidth: 500, maxWidth: 500);
     }
     return const BoxConstraints(minWidth: 550, maxWidth: 550);
@@ -1819,6 +2021,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final source = _searchController.text.trim().isEmpty
         ? _allProducts
         : _searchResults;
+    final selectedCategoryIds = _selectedCategoryIds.toList()..sort();
 
     final cacheKey = Object.hash(
       _searchController.text.trim().isEmpty,
@@ -1826,7 +2029,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
       source.length,
       identityHashCode(_categories),
       _categories.length,
-      _selectedCategoryId,
+      Object.hashAll(selectedCategoryIds),
       _productFilter.onlyWithStock,
       _productFilter.minPrice,
       _productFilter.maxPrice,
@@ -1837,7 +2040,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }
 
     final filtered = source.where((p) {
-      if (_selectedCategoryId != null && p.categoryId != _selectedCategoryId) {
+      if (_selectedCategoryIds.isNotEmpty &&
+          !_selectedCategoryIds.contains(p.categoryId)) {
         return false;
       }
       if (_productFilter.onlyWithStock && p.stock <= 0) return false;
@@ -1942,10 +2146,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
         _allProducts = products;
       }
       _categories = categories;
-      if (_selectedCategoryId != null &&
-          !categories.any((category) => category.id == _selectedCategoryId)) {
-        _selectedCategoryId = null;
-      }
+      final validCategoryIds = categories
+          .map((category) => category.id)
+          .whereType<int>()
+          .toSet();
+      _selectedCategoryIds.removeWhere(
+        (categoryId) => !validCategoryIds.contains(categoryId),
+      );
       _filteredProductsCacheKey = null;
       _isSearching = false;
     });
@@ -2041,16 +2248,20 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   void _onCategorySelected(int? categoryId) {
     setState(() {
-      _selectedCategoryId = _selectedCategoryId == categoryId
-          ? null
-          : categoryId;
+      if (categoryId == null) {
+        _selectedCategoryIds.clear();
+      } else if (_selectedCategoryIds.contains(categoryId)) {
+        _selectedCategoryIds.remove(categoryId);
+      } else {
+        _selectedCategoryIds.add(categoryId);
+      }
       _filteredProductsCacheKey = null;
     });
   }
 
   void _clearCategoryFilter() {
     setState(() {
-      _selectedCategoryId = null;
+      _selectedCategoryIds.clear();
       _filteredProductsCacheKey = null;
     });
   }
@@ -2116,9 +2327,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
   Future<ClientModel?> _showClientFormFromSales({
     ClientModel? initialClient,
   }) async {
+    final screenSize = MediaQuery.sizeOf(context);
+    final panelWidth = _ticketPanelConstraints(screenSize.width).maxWidth;
     final result = await showClientFormSidePanel(
       context,
       initialClient: initialClient,
+      panelWidth: panelWidth,
     );
 
     if (!mounted || result == null) return null;
@@ -2343,8 +2557,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final screenSize = MediaQuery.sizeOf(context);
     final ticketPanelConstraints = _ticketPanelConstraints(screenSize.width);
 
+    final isTightDesktop = screenSize.width <= 1280 || screenSize.height <= 768;
+    final isCompactDesktop =
+        screenSize.width <= 1366 || screenSize.height <= 820;
+
     // Debe coincidir con el ancho del QuickItemDialog.
-    final dialogWidth = math.min(382.0, screenSize.width - 24);
+    final dialogWidth = isTightDesktop
+        ? math.min(366.0, screenSize.width - 24)
+        : isCompactDesktop
+        ? math.min(386.0, screenSize.width - 24)
+        : math.min(420.0, screenSize.width - 24);
 
     final rightOffset = ticketPanelConstraints.maxWidth + 8;
 
@@ -4607,6 +4829,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
             body: LayoutBuilder(
               builder: (context, outerConstraints) {
                 Widget buildSalesLayout(BoxConstraints constraints) {
+                  final metrics = _salesMetricsFor(
+                    Size(constraints.maxWidth, constraints.maxHeight),
+                  );
+                  final categoryCollapsedWidth =
+                      _categorySidebarCollapsedWidthFor(context);
+                  final categoryExpandedWidth =
+                      _categorySidebarExpandedWidthFor(context);
+
                   final ticketPanelConstraints = _ticketPanelConstraints(
                     constraints.maxWidth,
                   );
@@ -4645,21 +4875,30 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (_categories.isNotEmpty)
-                              const SizedBox(
-                                width: _categorySidebarCollapsedWidth,
-                              ),
+                              SizedBox(width: categoryCollapsedWidth),
 
                             Expanded(
                               child: Padding(
-                                padding: const EdgeInsets.fromLTRB(14, 0, 0, 0),
+                                padding: EdgeInsets.fromLTRB(
+                                  metrics.catalogLeftPadding,
+                                  0,
+                                  0,
+                                  0,
+                                ),
                                 child: Column(
                                   children: [
                                     Padding(
-                                      padding: const EdgeInsets.only(top: 20),
-                                      child: _build3DControlBar(),
+                                      padding: EdgeInsets.only(
+                                        top: metrics.controlBarTopPadding,
+                                      ),
+                                      child: _build3DControlBar(
+                                        metrics: metrics,
+                                      ),
                                     ),
 
-                                    const SizedBox(height: 14),
+                                    SizedBox(
+                                      height: metrics.spaceBelowControlBar,
+                                    ),
 
                                     Expanded(
                                       child: Container(
@@ -4739,11 +4978,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                                                     context,
                                                                     gridConstraints,
                                                                   ) {
-                                                                    final metrics =
-                                                                        _productGridMetricsFor(
-                                                                          gridConstraints
-                                                                              .maxWidth,
-                                                                        );
+                                                                    final gridMetrics = _productGridMetricsFor(
+                                                                      gridConstraints
+                                                                          .maxWidth,
+                                                                      metrics,
+                                                                    );
 
                                                                     final totalItems =
                                                                         products
@@ -4751,16 +4990,21 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                                                         1;
 
                                                                     return GridView.builder(
-                                                                      padding: const EdgeInsets.only(
-                                                                        top: 1,
-                                                                        right:
-                                                                            _productHorizontalMargin,
+                                                                      padding: EdgeInsets.only(
+                                                                        top:
+                                                                            metrics.isTightDesktop
+                                                                            ? 2
+                                                                            : metrics.isCompactDesktop
+                                                                            ? 2
+                                                                            : 1,
+                                                                        right: metrics
+                                                                            .productHorizontalMargin,
                                                                       ),
                                                                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                                                                         crossAxisCount:
-                                                                            metrics.crossAxisCount,
+                                                                            gridMetrics.crossAxisCount,
                                                                         mainAxisExtent:
-                                                                            metrics.tileHeight,
+                                                                            gridMetrics.tileHeight,
                                                                         crossAxisSpacing:
                                                                             0,
                                                                         mainAxisSpacing:
@@ -4776,20 +5020,21 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                                                             if (index ==
                                                                                 0) {
                                                                               return Padding(
-                                                                                padding: const EdgeInsets.fromLTRB(
-                                                                                  _productHorizontalMargin,
-                                                                                  _productVerticalMargin +
+                                                                                padding: EdgeInsets.fromLTRB(
+                                                                                  metrics.productHorizontalMargin,
+                                                                                  metrics.productVerticalMargin +
                                                                                       1,
-                                                                                  _productHorizontalMargin,
-                                                                                  _productVerticalMargin,
+                                                                                  metrics.productHorizontalMargin,
+                                                                                  metrics.productVerticalMargin,
                                                                                 ),
                                                                                 child: Align(
                                                                                   alignment: Alignment.topCenter,
                                                                                   child: SizedBox(
-                                                                                    width: metrics.tileWidth,
+                                                                                    width: gridMetrics.tileWidth,
                                                                                     child: _buildQuickSaleCard(
                                                                                       index: index,
-                                                                                      cardSize: _productCardHeight,
+                                                                                      cardSize: metrics.productCardHeight,
+                                                                                      metrics: metrics,
                                                                                     ),
                                                                                   ),
                                                                                 ),
@@ -4797,22 +5042,23 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                                                             }
 
                                                                             return Padding(
-                                                                              padding: const EdgeInsets.fromLTRB(
-                                                                                _productHorizontalMargin,
-                                                                                _productVerticalMargin +
+                                                                              padding: EdgeInsets.fromLTRB(
+                                                                                metrics.productHorizontalMargin,
+                                                                                metrics.productVerticalMargin +
                                                                                     1,
-                                                                                _productHorizontalMargin,
-                                                                                _productVerticalMargin,
+                                                                                metrics.productHorizontalMargin,
+                                                                                metrics.productVerticalMargin,
                                                                               ),
                                                                               child: Align(
                                                                                 alignment: Alignment.topCenter,
                                                                                 child: SizedBox(
-                                                                                  width: metrics.tileWidth,
+                                                                                  width: gridMetrics.tileWidth,
                                                                                   child: _buildModernProductCard(
                                                                                     products[index -
                                                                                         1],
                                                                                     index: index,
-                                                                                    cardSize: _productCardHeight,
+                                                                                    cardSize: metrics.productCardHeight,
+                                                                                    metrics: metrics,
                                                                                   ),
                                                                                 ),
                                                                               ),
@@ -4870,7 +5116,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                   },
                                   child: _showMovementPanel
                                       ? _buildMovementPanel()
-                                      : _buildTicketPanel(),
+                                      : _buildTicketPanel(metrics: metrics),
                                 ),
                               ),
                             ),
@@ -4883,8 +5129,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           top: 0,
                           bottom: 0,
                           width: _isCategorySidebarExpanded
-                              ? _categorySidebarExpandedWidth
-                              : _categorySidebarCollapsedWidth,
+                              ? categoryExpandedWidth
+                              : categoryCollapsedWidth,
                           child: _buildCategorySidebar(),
                         ),
 
@@ -5313,7 +5559,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
     ProductModel product, {
     required int index,
     required double cardSize,
+    required _SalesResponsiveMetrics metrics,
   }) {
+    final m = metrics;
     final qtyInCart = _qtyInCart(product.id);
     final effectiveStock = product.stock - qtyInCart;
     final isCriticalStock = effectiveStock <= 1;
@@ -5367,6 +5615,18 @@ class _SalesPageState extends ConsumerState<SalesPage>
       bottomRight: Radius.circular(28),
     );
 
+    final isCompact = m.isCompactDesktop;
+    final imageSize = m.productImageSize;
+    final imageBoxSize = m.productImageBoxSize;
+    final nameFontSize = m.productNameFontSize;
+    final priceFontSize = m.productPriceFontSize;
+    final cardPadding = isCompact
+        ? const EdgeInsets.fromLTRB(14, 9, 14, 7)
+        : const EdgeInsets.fromLTRB(18, 12, 18, 9);
+    final imageContainerHoverSize = isHovered
+        ? (isCompact ? imageBoxSize + 4 : imageBoxSize + 4)
+        : imageBoxSize;
+
     return MouseRegion(
       cursor: isOutOfStock
           ? SystemMouseCursors.forbidden
@@ -5417,14 +5677,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   child: SizedBox(
                     height: cardSize,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 9),
+                      padding: cardPadding,
                       child: Column(
                         children: [
                           const SizedBox(height: 4),
                           Expanded(
                             child: Column(
                               children: [
-                                const SizedBox(height: 8),
+                                SizedBox(height: isCompact ? 4 : 8),
                                 Expanded(
                                   child: Center(
                                     child: AnimatedContainer(
@@ -5432,16 +5692,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                         milliseconds: 180,
                                       ),
                                       curve: Curves.easeOutCubic,
-                                      width: isHovered ? 122 : 118,
-                                      height: isHovered ? 122 : 118,
+                                      width: imageContainerHoverSize,
+                                      height: imageContainerHoverSize,
                                       child: Center(
                                         child: ProductThumbnail.fromProduct(
                                           product,
-                                          size: 112,
-                                          width: 112,
-                                          height: 112,
+                                          size: imageSize,
+                                          width: imageSize,
+                                          height: imageSize,
                                           borderRadius: BorderRadius.circular(
-                                            16,
+                                            isCompact ? 14 : 16,
                                           ),
                                           showBorder: false,
                                           showShadow: false,
@@ -5452,7 +5712,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: isCompact ? 8 : 12),
                               ],
                             ),
                           ),
@@ -5466,14 +5726,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: isOutOfStock ? stockColor : tealAccent,
-                                  fontSize: 11,
+                                  fontSize: isCompact ? 10.5 : 11,
                                   fontWeight: FontWeight.w600,
                                   height: 1.1,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               SizedBox(
-                                height: 31,
+                                height: isCompact ? 28 : 31,
                                 child: Text(
                                   product.name,
                                   textAlign: TextAlign.center,
@@ -5483,7 +5743,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     color: nameColor.withOpacity(
                                       isOutOfStock ? 0.62 : 1,
                                     ),
-                                    fontSize: 13.4,
+                                    fontSize: nameFontSize,
                                     fontWeight: FontWeight.w600,
                                     height: 1.2,
                                   ),
@@ -5499,7 +5759,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                   color: priceColorResolved.withOpacity(
                                     isOutOfStock ? 0.72 : 1,
                                   ),
-                                  fontSize: 16.5,
+                                  fontSize: priceFontSize,
                                   fontWeight: FontWeight.w700,
                                   height: 1,
                                 ),
@@ -5551,11 +5811,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
           if (isSelected)
             Positioned(
-              top: -12,
-              right: -12,
+              top: isCompact ? -6 : -12,
+              right: isCompact ? -6 : -12,
               child: Container(
-                width: 30,
-                height: 30,
+                width: isCompact ? 26 : 30,
+                height: isCompact ? 26 : 30,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
@@ -5574,7 +5834,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     qtyInCart.toInt().toString(),
                     style: TextStyle(
                       color: tealAccent,
-                      fontSize: 12,
+                      fontSize: isCompact ? 11 : 12,
                       fontWeight: FontWeight.w800,
                       height: 1,
                     ),
@@ -5605,10 +5865,15 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _buildQuickSaleCard({required int index, required double cardSize}) {
+  Widget _buildQuickSaleCard({
+    required int index,
+    required double cardSize,
+    required _SalesResponsiveMetrics metrics,
+  }) {
     final isHovered = _hoveredProductIndexes.contains(index);
     const accentColor = _allegraAccentColor;
     final isActive = isHovered || _isQuickSalePressed;
+    final isCompact = metrics.isCompactDesktop;
 
     final borderColor = isActive
         ? accentColor.withOpacity(0.90)
@@ -5627,6 +5892,18 @@ class _SalesPageState extends ConsumerState<SalesPage>
       bottomLeft: Radius.circular(12),
       bottomRight: Radius.circular(26),
     );
+
+    // Responsive sizes
+    final iconBoxSize = isCompact ? 88.0 : 98.0;
+    final iconBoxSizeHover = isCompact ? 94.0 : 106.0;
+    final iconSize = isCompact ? 46.0 : 50.0;
+    final iconSizeHover = isCompact ? 50.0 : 54.0;
+    final titleFontSize = isCompact ? 16.0 : 16.8;
+    final hoverFontSize = isCompact ? 14.5 : 15.5;
+    final verticalSpacing = isCompact ? 10.0 : 14.0;
+    final bottomSpacing = isCompact ? 6.0 : 10.0;
+    final paddingH = isCompact ? 14.0 : 18.0;
+    final paddingV = isCompact ? 14.0 : 18.0;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -5720,37 +5997,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       ),
                     ),
 
-                    // Etiqueta superior.
-                    Positioned(
-                      top: 14,
-                      left: 18,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: accentColor.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(7),
-                          border: Border.all(
-                            color: accentColor.withOpacity(0.16),
-                          ),
-                        ),
-                        child: const Text(
-                          'ACCESO RÁPIDO',
-                          style: TextStyle(
-                            color: accentColor,
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.65,
-                            height: 1,
-                          ),
-                        ),
-                      ),
-                    ),
-
+                    // Contenido centrado (sin badge "ACCESO RÁPIDO")
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                      padding: EdgeInsets.fromLTRB(
+                        paddingH,
+                        paddingV,
+                        paddingH,
+                        paddingV,
+                      ),
                       child: Column(
                         children: [
                           Expanded(
@@ -5766,8 +6020,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 190),
                                   curve: Curves.easeOutCubic,
-                                  width: isHovered ? 106 : 98,
-                                  height: isHovered ? 106 : 98,
+                                  width: isHovered
+                                      ? iconBoxSizeHover
+                                      : iconBoxSize,
+                                  height: isHovered
+                                      ? iconBoxSizeHover
+                                      : iconBoxSize,
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       begin: Alignment.topLeft,
@@ -5805,7 +6063,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     turns: isHovered ? -0.018 : 0,
                                     child: Icon(
                                       Icons.shopping_cart_checkout_rounded,
-                                      size: isHovered ? 54 : 50,
+                                      size: isHovered
+                                          ? iconSizeHover
+                                          : iconSize,
                                       color: isHovered
                                           ? accentColor
                                           : const Color(0xFF71839A),
@@ -5816,7 +6076,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             ),
                           ),
 
-                          const SizedBox(height: 14),
+                          SizedBox(height: verticalSpacing),
 
                           SizedBox(
                             height: 42,
@@ -5837,28 +6097,32 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 );
                               },
                               child: isHovered
-                                  ? const Text(
+                                  ? Text(
                                       'Vender fuera de\ninventario',
-                                      key: ValueKey('quick-sale-hover-text'),
+                                      key: const ValueKey(
+                                        'quick-sale-hover-text',
+                                      ),
                                       textAlign: TextAlign.center,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         color: Color(0xFF111827),
-                                        fontSize: 15.5,
+                                        fontSize: hoverFontSize,
                                         fontWeight: FontWeight.w700,
                                         height: 1.18,
                                       ),
                                     )
-                                  : const Text(
+                                  : Text(
                                       'Venta común',
-                                      key: ValueKey('quick-sale-default-text'),
+                                      key: const ValueKey(
+                                        'quick-sale-default-text',
+                                      ),
                                       textAlign: TextAlign.center,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         color: Color(0xFF111827),
-                                        fontSize: 16.8,
+                                        fontSize: titleFontSize,
                                         fontWeight: FontWeight.w800,
                                         height: 1.08,
                                       ),
@@ -5866,7 +6130,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             ),
                           ),
 
-                          const SizedBox(height: 10),
+                          SizedBox(height: bottomSpacing),
                         ],
                       ),
                     ),
@@ -5958,7 +6222,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
       );
     }
 
-    final selectedCategoryId = _selectedCategoryId;
+    final selectedCategoryIds = _selectedCategoryIds;
 
     return Padding(
       padding: const EdgeInsets.only(right: 2),
@@ -5970,7 +6234,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           separatorBuilder: (context, index) => const SizedBox(width: 6),
           itemBuilder: (context, index) {
             if (index == 0) {
-              final isSelected = selectedCategoryId == null;
+              final isSelected = selectedCategoryIds.isEmpty;
               return buildCategoryIcon(
                 label: allOption,
                 isSelected: isSelected,
@@ -5980,7 +6244,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
             }
 
             final category = _categories[index - 1];
-            final isSelected = selectedCategoryId == category.id;
+            final isSelected =
+                category.id != null &&
+                selectedCategoryIds.contains(category.id);
             return buildCategoryIcon(
               label: category.name,
               isSelected: isSelected,
@@ -5994,54 +6260,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _buildNewProductButton({double height = 40, double radius = 0}) {
-    const borderColor = Color(0xFF1A56DB);
-    return SizedBox(
-      width: 170,
-      height: height,
-      child: OutlinedButton(
-        onPressed: _showNewProductDialog,
-        style:
-            OutlinedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: borderColor,
-              side: const BorderSide(color: borderColor, width: 1),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(radius),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-              minimumSize: Size(170, height),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ).copyWith(
-              overlayColor: WidgetStateProperty.all(
-                borderColor.withOpacity(0.08),
-              ),
-            ),
-        child: const FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Nuevo producto',
-                style: TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w500,
-                  color: borderColor,
-                ),
-              ),
-              SizedBox(width: 10),
-              Icon(Icons.add, size: 22, color: borderColor),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildClearCategoryFilterButton({required bool isExpanded}) {
+    final selectedCount = _selectedCategoryIds.length;
     return Container(
       width: double.infinity,
       height: 40,
@@ -6057,10 +6277,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
             splashColor: Colors.transparent,
             highlightColor: Colors.transparent,
             child: isExpanded
-                ? const Center(
+                ? Center(
                     child: Text(
-                      'Limpiar (1 Filtro)',
-                      style: TextStyle(
+                      selectedCount == 1
+                          ? 'Limpiar (1 filtro)'
+                          : 'Limpiar ($selectedCount filtros)',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -6098,13 +6320,21 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   Widget _buildCategorySidebar() {
-    const avatarLaneWidth = 60.0;
     final hasCategories = _categories.isNotEmpty;
     if (!hasCategories) {
       return const SizedBox.shrink();
     }
 
     final isExpanded = _isCategorySidebarExpanded;
+    final screenSize = MediaQuery.sizeOf(context);
+    final useCompactChrome = _useCompactChromeFor(screenSize);
+    final collapsedWidth = _categorySidebarCollapsedWidthFor(context);
+    final expandedWidth = _categorySidebarExpandedWidthFor(context);
+    final avatarLaneWidth = useCompactChrome ? 52.0 : 60.0;
+    final categoryItemHeight = _categoryItemHeightFor(context);
+    final topPadding = _selectedCategoryIds.isNotEmpty
+        ? (useCompactChrome ? 8.0 : 12.0)
+        : (useCompactChrome ? 10.0 : 14.0);
 
     return MouseRegion(
       onEnter: (_) => _expandCategorySidebar(),
@@ -6112,9 +6342,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        width: isExpanded
-            ? _categorySidebarExpandedWidth
-            : _categorySidebarCollapsedWidth,
+        width: isExpanded ? expandedWidth : collapsedWidth,
         decoration: const BoxDecoration(
           color: Colors.white,
           border: Border(
@@ -6124,21 +6352,23 @@ class _SalesPageState extends ConsumerState<SalesPage>
         ),
         child: Column(
           children: [
-            if (_selectedCategoryId != null)
+            if (_selectedCategoryIds.isNotEmpty)
               _buildClearCategoryFilterButton(isExpanded: isExpanded),
             Expanded(
               child: ListView.separated(
                 padding: EdgeInsets.fromLTRB(
                   isExpanded ? 0 : 0,
-                  _selectedCategoryId != null ? 12 : 14,
+                  topPadding,
                   isExpanded ? 0 : 0,
-                  4,
+                  useCompactChrome ? 2 : 4,
                 ),
                 itemCount: _categories.length,
                 separatorBuilder: (context, index) => const SizedBox(height: 0),
                 itemBuilder: (context, index) {
                   final category = _categories[index];
-                  final isSelected = _selectedCategoryId == category.id;
+                  final isSelected =
+                      category.id != null &&
+                      _selectedCategoryIds.contains(category.id);
                   final avatarColor = _categorySidebarColor(index);
                   final normalizedPath = (category.imagePath ?? '').trim();
                   final hasImage =
@@ -6161,10 +6391,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           : Colors.transparent,
                       overlayColor: WidgetStateProperty.all(Colors.transparent),
                       child: SizedBox(
-                        width: isExpanded
-                            ? _categorySidebarExpandedWidth
-                            : _categorySidebarCollapsedWidth,
-                        height: 48,
+                        width: isExpanded ? expandedWidth : collapsedWidth,
+                        height: categoryItemHeight,
                         child: LayoutBuilder(
                           builder: (context, constraints) {
                             final showExpandedLayout =
@@ -6182,7 +6410,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             }
 
                             return Padding(
-                              padding: const EdgeInsets.only(right: 12),
+                              padding: EdgeInsets.only(
+                                right: useCompactChrome ? 10 : 12,
+                              ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
@@ -6198,16 +6428,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  SizedBox(width: useCompactChrome ? 8 : 12),
                                   Expanded(
                                     child: Text(
                                       category.name,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       softWrap: false,
-                                      style: const TextStyle(
-                                        color: Color(0xFF172033),
-                                        fontSize: 14,
+                                      style: TextStyle(
+                                        color: const Color(0xFF172033),
+                                        fontSize: useCompactChrome ? 13 : 14,
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
@@ -6236,23 +6466,32 @@ class _SalesPageState extends ConsumerState<SalesPage>
     required bool isSelected,
     required Color fillColor,
   }) {
+    final screenSize = MediaQuery.sizeOf(context);
+    final useCompactChrome = _useCompactChromeFor(screenSize);
+
+    final outerSize = _categoryAvatarOuterSizeFor(context);
+    final innerSize = _categoryAvatarInnerSizeFor(context);
+    final padding = useCompactChrome ? 2.0 : 2.5;
+    final ringWidth = useCompactChrome ? 1.8 : 2.2;
+    final fontSize = useCompactChrome ? 14.5 : 18.0;
+
     final selectedFillColor = Color.alphaBlend(
       Colors.black.withOpacity(0.18),
       fillColor,
     );
     final ringColor = fillColor.withOpacity(0.34);
-    const outerSize = 44.0;
-    const innerSize = 36.0;
 
     return Container(
       width: outerSize,
       height: outerSize,
-      padding: const EdgeInsets.all(2.5),
+      padding: EdgeInsets.all(padding),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: Colors.transparent,
         shape: BoxShape.circle,
-        border: isSelected ? Border.all(color: ringColor, width: 2.2) : null,
+        border: isSelected
+            ? Border.all(color: ringColor, width: ringWidth)
+            : null,
       ),
       child: Container(
         width: innerSize,
@@ -6279,7 +6518,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 initial,
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 18,
+                  fontSize: fontSize,
                   fontWeight: FontWeight.w500,
                   height: 1.3,
                 ),
@@ -6288,7 +6527,38 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _build3DControlBar() {
+  Widget _build3DControlBar({_SalesResponsiveMetrics? metrics}) {
+    final m =
+        metrics ??
+        _SalesResponsiveMetrics(
+          isCompactDesktop: false,
+          isTightDesktop: false,
+          isShortDesktop: false,
+          isVeryShortDesktop: false,
+          ticketPanelWidth: 550,
+          productCardWidth: 220,
+          productCardHeight: 254,
+          productHorizontalMargin: 12,
+          productVerticalMargin: 10,
+          catalogLeftPadding: 14,
+          controlBarTopPadding: 20,
+          controlBarRightPadding: 18,
+          controlBarHeight: 42,
+          productImageSize: 112,
+          productImageBoxSize: 118,
+          productNameFontSize: 13.4,
+          productPriceFontSize: 16.5,
+          ticketHorizontalPadding: 18,
+          ticketHeaderVerticalPadding: 13,
+          totalAreaHeight: 86,
+          categorySidebarWidth: 64,
+          categoryItemHeight: 48,
+          categoryAvatarOuterSize: 44,
+          categoryAvatarInnerSize: 36,
+          footerTicketHeight: 58,
+          footerTicketTabHeight: 46,
+          spaceBelowControlBar: 14,
+        );
     void showSearchNotice({required IconData icon, required String message}) {
       final overlayState = Overlay.of(context, rootOverlay: true);
 
@@ -6391,13 +6661,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
         final isCompact = constraints.maxWidth < 760;
 
         const fullposBlue = Color(0xFF1A56DB);
-        const fullposBlueDark = Color(0xFF1443B0);
         const darkScanner = Color(0xFF111827);
         const borderColor = Color(0xFFAEBBC9);
         const textColor = Color(0xFF172033);
         const hintColor = Color(0xFF64748B);
 
-        const barHeight = 42.0;
+        final barHeight = m.controlBarHeight;
         const iconButtonWidth = 50.0;
 
         const completeRadius = BorderRadius.only(
@@ -6457,11 +6726,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
         final searchBorder = OutlineInputBorder(
           borderRadius: rightRadius,
-          borderSide: const BorderSide(color: borderColor, width: 0.9),
+          borderSide: const BorderSide(color: borderColor, width: 0.65),
         );
+        final controlRightPadding = math.max(
+          m.controlBarRightPadding,
+          m.isCompactDesktop ? 16.0 : 30.0,
+        );
+        final productButtonMinWidth = isCompact ? 46.0 : 162.0;
 
         return Padding(
-          padding: const EdgeInsets.only(left: 8, right: 18),
+          padding: EdgeInsets.only(left: 8, right: controlRightPadding),
           child: Row(
             children: [
               Expanded(
@@ -6498,7 +6772,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           width: 20,
                           height: 20,
                           color: Colors.white,
-                          errorBuilder: (_, __, ___) {
+                          errorBuilder: (_, _, _) {
                             return const Icon(
                               Icons.search_rounded,
                               color: Colors.white,
@@ -6526,7 +6800,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           width: 21,
                           height: 21,
                           color: Colors.white,
-                          errorBuilder: (_, __, ___) {
+                          errorBuilder: (_, _, _) {
                             return const Icon(
                               Icons.qr_code_scanner_rounded,
                               color: Colors.white,
@@ -6567,7 +6841,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               focusedBorder: searchBorder.copyWith(
                                 borderSide: const BorderSide(
                                   color: fullposBlue,
-                                  width: 1.15,
+                                  width: 0.95,
                                 ),
                               ),
                               suffixIcon: _searchController.text.trim().isEmpty
@@ -6623,7 +6897,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 ),
               ),
 
-              const SizedBox(width: 10),
+              SizedBox(width: m.isCompactDesktop ? 12 : 16),
 
               Tooltip(
                 message: 'Crear un producto nuevo',
@@ -6638,7 +6912,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     child: Container(
                       height: barHeight,
                       constraints: BoxConstraints(
-                        minWidth: isCompact ? 46 : 162,
+                        minWidth: productButtonMinWidth,
                       ),
                       padding: EdgeInsets.symmetric(
                         horizontal: isCompact ? 11 : 14,
@@ -6850,20 +7124,51 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   /// Panel de ticket refactorizado con 3 cards profesionales
-  Widget _buildTicketPanel() {
+  Widget _buildTicketPanel({_SalesResponsiveMetrics? metrics}) {
+    final m =
+        metrics ??
+        _SalesResponsiveMetrics(
+          isCompactDesktop: false,
+          isTightDesktop: false,
+          isShortDesktop: false,
+          isVeryShortDesktop: false,
+          ticketPanelWidth: 550,
+          productCardWidth: 220,
+          productCardHeight: 254,
+          productHorizontalMargin: 12,
+          productVerticalMargin: 10,
+          catalogLeftPadding: 14,
+          controlBarTopPadding: 20,
+          controlBarRightPadding: 18,
+          controlBarHeight: 42,
+          productImageSize: 112,
+          productImageBoxSize: 118,
+          productNameFontSize: 13.4,
+          productPriceFontSize: 16.5,
+          ticketHorizontalPadding: 18,
+          ticketHeaderVerticalPadding: 13,
+          totalAreaHeight: 86,
+          categorySidebarWidth: 64,
+          categoryItemHeight: 48,
+          categoryAvatarOuterSize: 44,
+          categoryAvatarInnerSize: 36,
+          footerTicketHeight: 58,
+          footerTicketTabHeight: 46,
+          spaceBelowControlBar: 14,
+        );
     final dividerColor = salesDetailBorderColor;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildInvoicePanelHeader(),
+        _buildInvoicePanelHeader(metrics: m),
         const SizedBox(height: 5),
         Divider(height: 1, color: dividerColor),
-        Expanded(child: _buildItemsListCard()),
+        Expanded(child: _buildItemsListCard(metrics: m)),
         Divider(height: 1, color: dividerColor),
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 2),
-          child: _buildTotalAndActionsCard(embedded: true),
+          padding: EdgeInsets.fromLTRB(0, 0, m.ticketHorizontalPadding, 2),
+          child: _buildTotalAndActionsCard(embedded: true, metrics: m),
         ),
       ],
     );
@@ -6871,20 +7176,28 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   Widget _buildRecentSalesPanel() {
     const dividerColor = Color(0xFFE2E8F0);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isCompact = screenWidth <= 1366;
+    final hp = isCompact ? 12.0 : 18.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildRecentSalesPanelHeader(),
+        _buildRecentSalesPanelHeader(isCompact: isCompact, hp: hp),
         const SizedBox(height: 10),
         const Divider(height: 1, color: dividerColor),
         _buildRecentSalesTableHeader(),
         Expanded(child: _buildRecentSalesTable()),
         const Divider(height: 1, color: dividerColor),
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          padding: EdgeInsets.fromLTRB(
+            hp,
+            isCompact ? 10 : 14,
+            hp,
+            isCompact ? 12 : 18,
+          ),
           child: SizedBox(
-            height: 46,
+            height: isCompact ? 40 : 46,
             child: OutlinedButton(
               onPressed: _openFacturaPage,
               style: OutlinedButton.styleFrom(
@@ -6918,9 +7231,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _buildRecentSalesPanelHeader() {
+  Widget _buildRecentSalesPanelHeader({
+    bool isCompact = false,
+    double hp = 18,
+  }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
+      padding: EdgeInsets.fromLTRB(hp, isCompact ? 12 : 18, hp, 0),
       child: Row(
         children: [
           Container(
@@ -6987,7 +7303,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
         flex: flex,
         child: Container(
           alignment: alignment,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
             border: showRightDivider
                 ? const Border(
@@ -7008,12 +7324,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
       ),
       child: Row(
         children: [
-          cell('Venta', flex: 38),
-          cell('Total', flex: 26),
-          cell('Estado', flex: 34),
+          cell('Venta', flex: 34),
+          cell('Total', flex: 30),
+          cell('Estado', flex: 24),
           cell(
             '',
-            flex: 22,
+            flex: 20,
             alignment: Alignment.center,
             showRightDivider: false,
           ),
@@ -7087,11 +7403,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 140),
         color: backgroundColor,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
         child: Row(
           children: [
             Expanded(
-              flex: 38,
+              flex: 34,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text(
@@ -7108,21 +7424,28 @@ class _SalesPageState extends ConsumerState<SalesPage>
               ),
             ),
             Expanded(
-              flex: 26,
-              child: Text(
-                CurrencyDisplay.format(sale.total),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF0F172A),
-                  fontSize: 13.8,
-                  fontWeight: FontWeight.w500,
-                  height: 1.15,
+              flex: 30,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    CurrencyDisplay.format(sale.total),
+                    maxLines: 1,
+                    softWrap: false,
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 13.2,
+                      fontWeight: FontWeight.w700,
+                      height: 1.15,
+                    ),
+                  ),
                 ),
               ),
             ),
             Expanded(
-              flex: 34,
+              flex: 24,
               child: Text(
                 _recentSaleStatusLabel(sale),
                 maxLines: 1,
@@ -7137,7 +7460,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
               ),
             ),
             Expanded(
-              flex: 22,
+              flex: 20,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -7151,11 +7474,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             : () => unawaited(_printRecentSale(sale)),
                         borderRadius: BorderRadius.circular(10),
                         child: const SizedBox(
-                          width: 32,
-                          height: 32,
+                          width: 26,
+                          height: 30,
                           child: Icon(
                             Icons.print_outlined,
-                            size: 18,
+                            size: 17,
                             color: Color(0xFF475569),
                           ),
                         ),
@@ -7164,7 +7487,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   ),
                   if (sale.id != null &&
                       sale.status.toUpperCase() != 'REFUNDED') ...[
-                    const SizedBox(width: 2),
+                    const SizedBox(width: 0),
                     Tooltip(
                       message: 'Reembolsar factura',
                       child: Material(
@@ -7174,11 +7497,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               unawaited(_showRecentSaleRefundDialog(sale)),
                           borderRadius: BorderRadius.circular(10),
                           child: const SizedBox(
-                            width: 32,
-                            height: 32,
+                            width: 26,
+                            height: 30,
                             child: Icon(
                               Icons.assignment_return_outlined,
-                              size: 18,
+                              size: 17,
                               color: Color(0xFFB45309),
                             ),
                           ),
@@ -7195,13 +7518,43 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _buildInvoicePanelHeader() {
+  Widget _buildInvoicePanelHeader({_SalesResponsiveMetrics? metrics}) {
+    final m =
+        metrics ??
+        _SalesResponsiveMetrics(
+          isCompactDesktop: false,
+          isTightDesktop: false,
+          isShortDesktop: false,
+          isVeryShortDesktop: false,
+          ticketPanelWidth: 550,
+          productCardWidth: 220,
+          productCardHeight: 254,
+          productHorizontalMargin: 12,
+          productVerticalMargin: 10,
+          catalogLeftPadding: 14,
+          controlBarTopPadding: 20,
+          controlBarRightPadding: 18,
+          controlBarHeight: 42,
+          productImageSize: 112,
+          productImageBoxSize: 118,
+          productNameFontSize: 13.4,
+          productPriceFontSize: 16.5,
+          ticketHorizontalPadding: 18,
+          ticketHeaderVerticalPadding: 13,
+          totalAreaHeight: 86,
+          categorySidebarWidth: 64,
+          categoryItemHeight: 48,
+          categoryAvatarOuterSize: 44,
+          categoryAvatarInnerSize: 36,
+          footerTicketHeight: 58,
+          footerTicketTabHeight: 46,
+          spaceBelowControlBar: 14,
+        );
+
     const fullposBlue = Color(0xFF1A56DB);
-    const strongText = Color(0xFF0F172A);
-    const mutedText = Color(0xFF64748B);
     const borderColor = Color(0xFFD7E0EA);
-    const softBlue = Color(0xFFEAF1FF);
     const panelBackground = Color(0xFFF8FAFC);
+    const activeGreen = Color(0xFF16A34A);
 
     const headerRadius = BorderRadius.only(
       topLeft: Radius.circular(18),
@@ -7210,18 +7563,22 @@ class _SalesPageState extends ConsumerState<SalesPage>
       bottomRight: Radius.circular(18),
     );
 
-    const iconRadius = BorderRadius.only(
-      topLeft: Radius.circular(11),
-      topRight: Radius.circular(5),
-      bottomLeft: Radius.circular(5),
-      bottomRight: Radius.circular(11),
+    const statusRadius = BorderRadius.only(
+      topLeft: Radius.circular(9),
+      topRight: Radius.circular(4),
+      bottomLeft: Radius.circular(4),
+      bottomRight: Radius.circular(9),
     );
+
+    final isCompact = m.isCompactDesktop;
+    final hp = m.ticketHorizontalPadding;
+    final vp = m.ticketHeaderVerticalPadding;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+          padding: EdgeInsets.fromLTRB(hp - 6, vp, hp - 6, 0),
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -7239,11 +7596,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
             clipBehavior: Clip.antiAlias,
             child: Stack(
               children: [
-                // Firma visual FullPOS.
                 Positioned(
                   left: 0,
-                  top: 14,
-                  bottom: 14,
+                  top: 13,
+                  bottom: 13,
                   child: Container(
                     width: 4,
                     decoration: const BoxDecoration(
@@ -7255,7 +7611,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   ),
                 ),
 
-                // Decoración suave inferior derecha.
                 Positioned(
                   right: -34,
                   bottom: -34,
@@ -7272,30 +7627,15 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 ),
 
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 13, 14, 13),
+                  padding: EdgeInsets.fromLTRB(
+                    isCompact ? 14 : 18,
+                    isCompact ? 10 : 13,
+                    isCompact ? 10 : 14,
+                    isCompact ? 10 : 13,
+                  ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: softBlue,
-                          borderRadius: iconRadius,
-                          border: Border.all(
-                            color: fullposBlue.withOpacity(0.15),
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.receipt_long_rounded,
-                          size: 20,
-                          color: fullposBlue,
-                        ),
-                      ),
-
-                      const SizedBox(width: 11),
-
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -7310,36 +7650,61 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       color: salesDetailTextColor,
-                                      fontSize: 16.5,
-                                      fontWeight: FontWeight.w700,
+                                      fontSize: isCompact ? 15 : 16.5,
+                                      fontWeight: FontWeight.w800,
                                       height: 1.05,
                                       letterSpacing: -0.28,
                                     ),
                                   ),
                                 ),
 
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 7),
 
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 7,
-                                    vertical: 4,
+                                Tooltip(
+                                  message: 'Venta activa',
+                                  waitDuration: const Duration(
+                                    milliseconds: 350,
                                   ),
-                                  decoration: BoxDecoration(
-                                    color: fullposBlue.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(
-                                      color: fullposBlue.withOpacity(0.13),
+                                  child: Container(
+                                    width: isCompact ? 24 : 26,
+                                    height: isCompact ? 24 : 26,
+                                    decoration: BoxDecoration(
+                                      color: Color.alphaBlend(
+                                        activeGreen.withOpacity(0.08),
+                                        Colors.white,
+                                      ),
+                                      borderRadius: statusRadius,
+                                      border: Border.all(
+                                        color: activeGreen.withOpacity(0.18),
+                                        width: 0.9,
+                                      ),
                                     ),
-                                  ),
-                                  child: const Text(
-                                    'VENTA ACTIVA',
-                                    style: TextStyle(
-                                      color: fullposBlue,
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.55,
-                                      height: 1,
+                                    alignment: Alignment.center,
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.point_of_sale_rounded,
+                                          size: isCompact ? 14 : 15,
+                                          color: fullposBlue.withOpacity(0.88),
+                                        ),
+                                        Positioned(
+                                          right: 3,
+                                          top: 3,
+                                          child: Container(
+                                            width: 6,
+                                            height: 6,
+                                            decoration: BoxDecoration(
+                                              color: activeGreen,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: Colors.white,
+                                                width: 1,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
@@ -7354,7 +7719,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: salesDetailMutedTextColor,
-                                fontSize: 10.8,
+                                fontSize: isCompact ? 10 : 10.8,
                                 fontWeight: FontWeight.w500,
                                 height: 1.15,
                               ),
@@ -7365,12 +7730,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
                       const SizedBox(width: 8),
 
-                      // Descuento rápido.
                       _buildQuickDiscountButton(),
 
                       const SizedBox(width: 6),
 
-                      // Guardar como cotización.
                       _buildQuoteHeaderIconAction(
                         id: 'save-quote-header',
                         icon: Icons.description_outlined,
@@ -7391,9 +7754,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
         ),
 
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: EdgeInsets.fromLTRB(hp - 6, isCompact ? 6 : 8, hp - 6, 0),
           child: Container(
-            padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+            padding: EdgeInsets.fromLTRB(
+              isCompact ? 8 : 10,
+              isCompact ? 7 : 9,
+              isCompact ? 8 : 10,
+              isCompact ? 8 : 10,
+            ),
             decoration: BoxDecoration(
               color: panelBackground,
               borderRadius: const BorderRadius.only(
@@ -10007,13 +10375,48 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   /// CARD B: Detalle de la venta (lista scrollable)
-  Widget _buildItemsListCard({bool embedded = false}) {
+  Widget _buildItemsListCard({
+    bool embedded = false,
+    _SalesResponsiveMetrics? metrics,
+  }) {
     const emptyKey = ValueKey<String>('ticket_items_empty');
     const listKey = ValueKey<String>('ticket_items_list');
 
     const panelBackground = Color(0xFFF8FAFC);
     const listBackground = Colors.white;
     const panelBorderColor = Color(0xFFD3DCE6);
+
+    final m =
+        metrics ??
+        _SalesResponsiveMetrics(
+          isCompactDesktop: false,
+          isTightDesktop: false,
+          isShortDesktop: false,
+          isVeryShortDesktop: false,
+          ticketPanelWidth: 550,
+          productCardWidth: 220,
+          productCardHeight: 254,
+          productHorizontalMargin: 12,
+          productVerticalMargin: 10,
+          catalogLeftPadding: 14,
+          controlBarTopPadding: 20,
+          controlBarRightPadding: 18,
+          controlBarHeight: 42,
+          productImageSize: 112,
+          productImageBoxSize: 118,
+          productNameFontSize: 13.4,
+          productPriceFontSize: 16.5,
+          ticketHorizontalPadding: 18,
+          ticketHeaderVerticalPadding: 13,
+          totalAreaHeight: 86,
+          categorySidebarWidth: 64,
+          categoryItemHeight: 48,
+          categoryAvatarOuterSize: 44,
+          categoryAvatarInnerSize: 36,
+          footerTicketHeight: 58,
+          footerTicketTabHeight: 46,
+          spaceBelowControlBar: 14,
+        );
 
     final hasItems = _currentCart.items.isNotEmpty;
     final showScrollbar = embedded ? _currentCart.items.length > 5 : hasItems;
@@ -10030,7 +10433,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           primary: false,
           shrinkWrap: embedded,
           physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(0, 2, 0, 4),
+          padding: const EdgeInsets.fromLTRB(0, 2, 0, 2),
           itemCount: _currentCart.items.length,
           separatorBuilder: (context, index) {
             return const SizedBox.shrink();
@@ -10038,7 +10441,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           itemBuilder: (context, index) {
             final item = _currentCart.items[index];
 
-            return _buildCartItemRow(item, index);
+            return _buildCartItemRow(item, index, metrics: m);
           },
         ),
       );
@@ -10071,7 +10474,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
       },
       child: Container(
         color: panelBackground,
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+        padding: const EdgeInsets.fromLTRB(0, 4, 0, 4),
         child: Container(
           key: ValueKey<bool>(hasItems),
           decoration: BoxDecoration(
@@ -10143,7 +10546,43 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _buildCartItemRow(SaleItemModel item, int index) {
+  Widget _buildCartItemRow(
+    SaleItemModel item,
+    int index, {
+    _SalesResponsiveMetrics? metrics,
+  }) {
+    final m =
+        metrics ??
+        _SalesResponsiveMetrics(
+          isCompactDesktop: false,
+          isTightDesktop: false,
+          isShortDesktop: false,
+          isVeryShortDesktop: false,
+          ticketPanelWidth: 550,
+          productCardWidth: 220,
+          productCardHeight: 254,
+          productHorizontalMargin: 12,
+          productVerticalMargin: 10,
+          catalogLeftPadding: 14,
+          controlBarTopPadding: 20,
+          controlBarRightPadding: 18,
+          controlBarHeight: 42,
+          productImageSize: 112,
+          productImageBoxSize: 118,
+          productNameFontSize: 13.4,
+          productPriceFontSize: 16.5,
+          ticketHorizontalPadding: 18,
+          ticketHeaderVerticalPadding: 13,
+          totalAreaHeight: 86,
+          categorySidebarWidth: 64,
+          categoryItemHeight: 48,
+          categoryAvatarOuterSize: 44,
+          categoryAvatarInnerSize: 36,
+          footerTicketHeight: 58,
+          footerTicketTabHeight: 46,
+          spaceBelowControlBar: 14,
+        );
+    final isCompact = m.isCompactDesktop || m.ticketPanelWidth <= 440;
     final isHovered = _hoveredCartItemIndexes.contains(index);
     final animationToken = _cartItemAnimationTokens[index] ?? 0;
     final subtotal = (item.qty * item.unitPrice) - item.discountLine;
@@ -10184,6 +10623,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 rowDividerColor,
                 showActions,
                 subtotal,
+                isCompact: isCompact,
               ),
             )
           : _buildCartItemContent(
@@ -10193,6 +10633,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
               rowDividerColor,
               showActions,
               subtotal,
+              isCompact: isCompact,
             ),
     );
   }
@@ -10203,8 +10644,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
     Color rowBackground,
     Color rowDividerColor,
     bool showActions,
-    double subtotal,
-  ) {
+    double subtotal, {
+    bool isCompact = false,
+  }) {
     return Builder(
       builder: (rowContext) => MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -10223,7 +10665,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
           ),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 6 : 8,
+              vertical: isCompact ? 8 : 12,
+            ),
             decoration: BoxDecoration(
               color: rowBackground,
               border: Border(
@@ -10233,29 +10678,33 @@ class _SalesPageState extends ConsumerState<SalesPage>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // LEFT: Product name (2 lines max, no truncated unit price)
                 Expanded(
+                  flex: isCompact ? 5 : 4,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         item.productNameSnapshot,
-                        style: const TextStyle(
-                          fontSize: 14.5,
+                        style: TextStyle(
+                          fontSize: isCompact ? 12.8 : 14.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF0F172A),
-                          height: 1.15,
+                          color: const Color(0xFF0F172A),
+                          height: 1.2,
                           letterSpacing: -0.2,
                         ),
-                        maxLines: 1,
+                        maxLines: isCompact ? 2 : 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 7),
+                      // Unit price below product name (visible in all modes)
+                      SizedBox(height: isCompact ? 5 : 7),
                       Text(
                         'RD\$${CurrencyDisplay.formatPlain(item.unitPrice, decimalDigits: 2)}',
-                        style: const TextStyle(
-                          fontSize: 12,
+                        style: TextStyle(
+                          fontSize: isCompact ? 11 : 12,
                           fontWeight: FontWeight.w500,
-                          color: Color(0xFF64748B),
+                          color: const Color(0xFF64748B),
                           height: 1.0,
                         ),
                         maxLines: 1,
@@ -10264,9 +10713,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     ],
                   ),
                 ),
-                const SizedBox(width: 18),
+                SizedBox(width: isCompact ? 8 : 18),
+
+                // MIDDLE: Compact quantity controls
                 SizedBox(
-                  width: 118,
+                  width: isCompact ? 82 : 118,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -10282,51 +10733,54 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           }
                         },
                         borderRadius: BorderRadius.circular(8),
-                        child: const SizedBox(
-                          width: 22,
-                          height: 22,
+                        child: SizedBox(
+                          width: isCompact ? 24 : 22,
+                          height: isCompact ? 24 : 22,
                           child: Icon(
                             Icons.remove,
-                            size: 18,
-                            color: Color(0xFFC1C9D6),
+                            size: isCompact ? 16 : 18,
+                            color: const Color(0xFFC1C9D6),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      SizedBox(width: isCompact ? 6 : 14),
                       Text(
                         item.qty == item.qty.roundToDouble()
                             ? item.qty.toStringAsFixed(0)
                             : item.qty.toStringAsFixed(2),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 14.5,
+                        style: TextStyle(
+                          fontSize: isCompact ? 13.5 : 14.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF0F172A),
+                          color: const Color(0xFF0F172A),
                           height: 1.0,
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      SizedBox(width: isCompact ? 6 : 14),
                       InkWell(
                         onTap: () => _incrementCartItemQty(item, index),
                         borderRadius: BorderRadius.circular(8),
-                        child: const SizedBox(
-                          width: 22,
-                          height: 22,
+                        child: SizedBox(
+                          width: isCompact ? 24 : 22,
+                          height: isCompact ? 24 : 22,
                           child: Icon(
                             Icons.add,
-                            size: 18,
-                            color: Color(0xFFC1C9D6),
+                            size: isCompact ? 16 : 18,
+                            color: const Color(0xFFC1C9D6),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 16),
+                SizedBox(width: isCompact ? 8 : 16),
+
+                // RIGHT: Total line price + hover actions
                 SizedBox(
-                  width: 182,
+                  width: isCompact ? 95 : 182,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       AnimatedOpacity(
                         duration: const Duration(milliseconds: 120),
@@ -10336,10 +10790,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           child: Text(
                             'RD\$${CurrencyDisplay.formatPlain(subtotal, decimalDigits: 2)}',
                             textAlign: TextAlign.right,
-                            style: const TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF0F172A),
+                            style: TextStyle(
+                              fontSize: isCompact ? 14 : 14.5,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF0F172A),
                               height: 1.0,
                             ),
                           ),
@@ -10359,8 +10813,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                   id: 'edit-$index',
                                   icon: Image.asset(
                                     'assets/imagen/iconos/editar-texto.png',
-                                    width: 22,
-                                    height: 22,
+                                    width: isCompact ? 20 : 22,
+                                    height: isCompact ? 20 : 22,
                                     fit: BoxFit.contain,
                                   ),
                                   tooltip: 'Editar',
@@ -10372,13 +10826,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                SizedBox(width: isCompact ? 6 : 10),
                                 _buildCartRowActionButton(
                                   id: 'delete-$index',
                                   icon: Image.asset(
                                     'assets/imagen/iconos/eliminar.png',
-                                    width: 22,
-                                    height: 22,
+                                    width: isCompact ? 20 : 22,
+                                    height: isCompact ? 20 : 22,
                                     fit: BoxFit.contain,
                                   ),
                                   tooltip: 'Eliminar',
@@ -10508,7 +10962,42 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  Widget _buildTotalAndActionsCard({bool embedded = false}) {
+  Widget _buildTotalAndActionsCard({
+    bool embedded = false,
+    _SalesResponsiveMetrics? metrics,
+  }) {
+    final m =
+        metrics ??
+        _SalesResponsiveMetrics(
+          isCompactDesktop: false,
+          isTightDesktop: false,
+          isShortDesktop: false,
+          isVeryShortDesktop: false,
+          ticketPanelWidth: 550,
+          productCardWidth: 220,
+          productCardHeight: 254,
+          productHorizontalMargin: 12,
+          productVerticalMargin: 10,
+          catalogLeftPadding: 14,
+          controlBarTopPadding: 20,
+          controlBarRightPadding: 18,
+          controlBarHeight: 42,
+          productImageSize: 112,
+          productImageBoxSize: 118,
+          productNameFontSize: 13.4,
+          productPriceFontSize: 16.5,
+          ticketHorizontalPadding: 18,
+          ticketHeaderVerticalPadding: 13,
+          totalAreaHeight: 86,
+          categorySidebarWidth: 64,
+          categoryItemHeight: 48,
+          categoryAvatarOuterSize: 44,
+          categoryAvatarInnerSize: 36,
+          footerTicketHeight: 58,
+          footerTicketTabHeight: 46,
+          spaceBelowControlBar: 14,
+        );
+
     final totalAmount = _currentCart.calculateTotal();
     final itemsCount = _currentCart.items.length;
 
@@ -10517,7 +11006,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
         : '$itemsCount productos';
 
     final totalLabel = CurrencyDisplay.format(totalAmount, decimalDigits: 2);
-
     final canSell = _currentCart.items.isNotEmpty;
 
     const fullposBlue = Color(0xFF1A56DB);
@@ -10539,6 +11027,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
       bottomLeft: Radius.circular(6),
       bottomRight: Radius.circular(14),
     );
+
+    final isCompact = m.isCompactDesktop;
+    final rowHeight = isCompact ? 64.0 : 70.0;
+    final sideCardWidth = isCompact ? 58.0 : 66.0;
+    final footerHeight = isCompact ? 36.0 : 40.0;
 
     final content = Column(
       mainAxisSize: MainAxisSize.min,
@@ -10570,8 +11063,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
             return Container(
               width: double.infinity,
-              margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 11),
+              margin: EdgeInsets.fromLTRB(
+                6,
+                isCompact ? 6 : 8,
+                6,
+                isCompact ? 5 : 6,
+              ),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
                 borderRadius: secondaryRadius,
@@ -10580,9 +11078,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
               child: Column(
                 children: [
                   _buildSummaryRow('Subtotal', grossSubtotal, false),
-
                   if (discountsCombined > 0) ...[
-                    const SizedBox(height: 9),
+                    const SizedBox(height: 8),
                     _buildSummaryRow(
                       'Descuento',
                       -discountsCombined,
@@ -10590,9 +11087,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       color: scheme.error,
                     ),
                   ],
-
                   if (shouldShowFiscalTax) ...[
-                    const SizedBox(height: 9),
+                    const SizedBox(height: 8),
                     _buildSummaryRow(itbisLabel, itbisAmount, false),
                   ],
                 ],
@@ -10602,15 +11098,23 @@ class _SalesPageState extends ConsumerState<SalesPage>
         ),
 
         // ─────────────────────────────────────────────
-        // BOTÓN COBRAR + BOTÓN DE VENTAS RECIENTES
+        // FILA PRINCIPAL: COBRAR + VENTAS
         // ─────────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 7),
+          padding: EdgeInsets.fromLTRB(
+            6,
+            isCompact ? 6 : 8,
+            6,
+            isCompact ? 5 : 6,
+          ),
           child: SizedBox(
-            height: 72,
+            height: rowHeight,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // ─────────────────────────────────────────────
+                // COBRAR + TOTAL
+                // ─────────────────────────────────────────────
                 Expanded(
                   child: ElevatedButton(
                     onPressed: canSell
@@ -10621,7 +11125,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         : null,
                     style: ButtonStyle(
                       padding: WidgetStateProperty.all(
-                        const EdgeInsets.fromLTRB(20, 10, 18, 10),
+                        EdgeInsets.fromLTRB(
+                          isCompact ? 16 : 20,
+                          8,
+                          isCompact ? 16 : 20,
+                          8,
+                        ),
                       ),
                       elevation: WidgetStateProperty.all(0),
                       shadowColor: WidgetStateProperty.all(Colors.transparent),
@@ -10636,138 +11145,46 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         if (states.contains(WidgetState.disabled)) {
                           return disabledBackground;
                         }
-
                         if (states.contains(WidgetState.hovered)) {
                           return fullposBlueDark;
                         }
-
                         if (states.contains(WidgetState.pressed)) {
                           return const Color(0xFF10388F);
                         }
-
                         return fullposBlue;
                       }),
                       foregroundColor: WidgetStateProperty.all(Colors.white),
                     ),
                     child: Row(
                       children: [
-                        // ICONO DE COBRO
-                        Container(
-                          width: 42,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(
-                              canSell ? 0.15 : 0.10,
-                            ),
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(13),
-                              topRight: Radius.circular(5),
-                              bottomLeft: Radius.circular(5),
-                              bottomRight: Radius.circular(13),
-                            ),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(
-                                canSell ? 0.16 : 0.08,
-                              ),
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.payments_rounded,
-                            size: 22,
-                            color: Colors.white,
+                        Text(
+                          'Cobrar',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: isCompact ? 17 : 18.5,
+                            fontWeight: FontWeight.w900,
+                            height: 1,
+                            letterSpacing: -0.25,
                           ),
                         ),
-
-                        const SizedBox(width: 13),
-
-                        // INFORMACIÓN DE LA ACCIÓN
-                        const Expanded(
-                          flex: 5,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Cobrar venta',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 18.5,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1,
-                                  letterSpacing: -0.20,
-                                ),
-                              ),
-                              SizedBox(height: 5),
-                              Text(
-                                'Procesar pago',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1,
-                                  color: Color(0xFFDCE7FF),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(width: 10),
-
-                        // TOTAL A COBRAR
-                        // NUNCA SE CORTA NI MUESTRA TRES PUNTOS
+                        const SizedBox(width: 12),
                         Expanded(
-                          flex: 4,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              const SizedBox(
-                                width: double.infinity,
-                                child: Text(
-                                  'TOTAL A COBRAR',
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    color: Color(0xFFDCE7FF),
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.30,
-                                    height: 1,
-                                  ),
-                                ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text(
+                              totalLabel,
+                              maxLines: 1,
+                              softWrap: false,
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: isCompact ? 24 : 26,
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                                letterSpacing: -0.45,
                               ),
-
-                              const SizedBox(height: 5),
-
-                              SizedBox(
-                                width: double.infinity,
-                                height: 27,
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    alignment: Alignment.centerRight,
-                                    child: Text(
-                                      totalLabel,
-                                      maxLines: 1,
-                                      softWrap: false,
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w700,
-                                        height: 1,
-                                        letterSpacing: -0.65,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                       ],
@@ -10775,147 +11192,63 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   ),
                 ),
 
-                const SizedBox(width: 9),
+                const SizedBox(width: 6),
 
-                // BOTÓN DE VENTAS RECIENTES
-                Material(
-                  color: Colors.transparent,
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    onEnter: (_) {
-                      if (!mounted) return;
-
-                      setState(() {
-                        _isFacturaActionHovered = true;
-                      });
-                    },
-                    onExit: (_) {
-                      if (!mounted) return;
-
-                      setState(() {
-                        _isFacturaActionHovered = false;
-                        _isFacturaActionPressed = false;
-                      });
-                    },
-                    child: GestureDetector(
-                      onTapDown: (_) {
-                        if (!mounted) return;
-
-                        setState(() {
-                          _isFacturaActionPressed = true;
-                        });
-                      },
-                      onTapCancel: () {
-                        if (!mounted) return;
-
-                        setState(() {
-                          _isFacturaActionPressed = false;
-                        });
-                      },
-                      onTapUp: (_) {
-                        if (!mounted) return;
-
-                        setState(() {
-                          _isFacturaActionPressed = false;
-                        });
-                      },
-                      child: AnimatedScale(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        scale: _isFacturaActionPressed
-                            ? 0.95
-                            : _isFacturaActionHovered
-                            ? 1.025
-                            : 1,
+                // ─────────────────────────────────────────────
+                // VENTAS RECIENTES
+                // ─────────────────────────────────────────────
+                Tooltip(
+                  message: 'Ver ventas recientes',
+                  waitDuration: const Duration(milliseconds: 350),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _toggleRecentSalesPanel,
+                      borderRadius: secondaryRadius,
+                      splashColor: fullposBlue.withOpacity(0.08),
+                      hoverColor: fullposBlue.withOpacity(0.035),
+                      child: Ink(
+                        width: sideCardWidth,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: secondaryRadius,
+                          border: Border.all(color: borderColor, width: 0.9),
+                        ),
                         child: Stack(
                           clipBehavior: Clip.none,
                           children: [
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeOutCubic,
-                              width: 66,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                color: _showRecentSalesPanel
-                                    ? softBlue
-                                    : Colors.white,
-                                borderRadius: secondaryRadius,
-                                border: Border.all(
-                                  color:
-                                      _showRecentSalesPanel ||
-                                          _isFacturaActionHovered
-                                      ? fullposBlue
-                                      : borderColor,
-                                  width: _showRecentSalesPanel ? 1.2 : 0.9,
-                                ),
-                                boxShadow:
-                                    _isFacturaActionHovered ||
-                                        _showRecentSalesPanel
-                                    ? [
-                                        BoxShadow(
-                                          color: fullposBlue.withOpacity(0.13),
-                                          blurRadius: 14,
-                                          spreadRadius: -4,
-                                          offset: const Offset(0, 6),
-                                        ),
-                                      ]
-                                    : const [],
-                              ),
-                              child: Material(
-                                color: Colors.transparent,
-                                borderRadius: secondaryRadius,
-                                child: InkWell(
-                                  onTap: () =>
-                                      unawaited(_toggleRecentSalesPanel()),
-                                  borderRadius: secondaryRadius,
-                                  splashColor: fullposBlue.withOpacity(0.10),
-                                  hoverColor: Colors.transparent,
-                                  highlightColor: Colors.transparent,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      AnimatedSlide(
-                                        duration: const Duration(
-                                          milliseconds: 180,
-                                        ),
-                                        curve: Curves.easeOutCubic,
-                                        offset: _isFacturaActionHovered
-                                            ? const Offset(0, -0.03)
-                                            : Offset.zero,
-                                        child: const ImageIcon(
-                                          AssetImage(
-                                            'assets/imagen/iconos/factura.png',
-                                          ),
-                                          color: fullposBlue,
-                                          size: 29,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 5),
-                                      const Text(
-                                        'Ventas',
-                                        maxLines: 1,
-                                        style: TextStyle(
-                                          color: fullposBlue,
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w800,
-                                          height: 1,
-                                        ),
-                                      ),
-                                    ],
+                            Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.receipt_long_rounded,
+                                    size: isCompact ? 24 : 27,
+                                    color: fullposBlue,
                                   ),
-                                ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Ventas',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: fullposBlue,
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-
-                            // CONTADOR DE VENTAS RECIENTES
                             if (_recentSales.isNotEmpty)
                               Positioned(
-                                top: -5,
+                                top: -7,
                                 right: -5,
                                 child: Container(
                                   constraints: const BoxConstraints(
-                                    minWidth: 19,
-                                    minHeight: 19,
+                                    minWidth: 18,
+                                    minHeight: 18,
                                   ),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 5,
@@ -10964,20 +11297,20 @@ class _SalesPageState extends ConsumerState<SalesPage>
         ),
 
         // ─────────────────────────────────────────────
-        // PRODUCTOS + CANCELAR VENTA
+        // BARRA INFERIOR: PRODUCTOS + CANCELAR VENTA
         // ─────────────────────────────────────────────
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 3),
+          padding: const EdgeInsets.fromLTRB(6, 0, 6, 4),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: canSell ? () => unawaited(_cancelCurrentCart()) : null,
               borderRadius: secondaryRadius,
               splashColor: scheme.error.withOpacity(0.06),
-              hoverColor: const Color(0xFFF8FAFC),
+              hoverColor: scheme.error.withOpacity(0.025),
               child: Ink(
-                height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                height: footerHeight,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: secondaryRadius,
@@ -10996,9 +11329,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       ),
                       child: Text(
                         productCountLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: fullposBlue,
-                          fontSize: 11.5,
+                          fontSize: 11,
                           fontWeight: FontWeight.w800,
                           height: 1,
                         ),
@@ -11017,10 +11352,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
                     Text(
                       'Cancelar venta',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: canSell ? scheme.error : const Color(0xFF94A3B8),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
+                        fontSize: isCompact ? 12 : 12.5,
+                        fontWeight: FontWeight.w800,
                         height: 1,
                       ),
                     ),

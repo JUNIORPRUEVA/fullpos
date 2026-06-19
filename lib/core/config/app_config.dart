@@ -75,8 +75,14 @@ class AppConfig {
 
   static String get appVersion => const String.fromEnvironment(
     'FULLPOS_APP_VERSION',
-    defaultValue: '1.0.5+9',
+    defaultValue: '1.0.7+11',
   );
+
+  static String get appDisplayVersion {
+    final clean = appVersion.trim();
+    if (clean.isEmpty) return 'v1.0.7';
+    return 'v${clean.split('+').first}';
+  }
 
   static String get userAgent {
     final os = Platform.operatingSystem;

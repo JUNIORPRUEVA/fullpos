@@ -48,8 +48,8 @@ class AppSideSheet extends StatelessWidget {
           subtitle: subtitle,
           width: width,
           footer: footer,
-          child: child,
           barrierDismissible: barrierDismissible,
+          child: child,
         );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
@@ -60,10 +60,7 @@ class AppSideSheet extends StatelessWidget {
         );
 
         return FadeTransition(
-          opacity: Tween<double>(
-            begin: 0.0,
-            end: 1.0,
-          ).animate(curved),
+          opacity: Tween<double>(begin: 0.0, end: 1.0).animate(curved),
           child: SlideTransition(
             // Ahora entra desde la derecha hacia la izquierda.
             position: Tween<Offset>(
@@ -81,6 +78,11 @@ class AppSideSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final size = MediaQuery.sizeOf(context);
+    final compact = size.width <= 1366 || size.height <= 900;
+    final footerPadding = compact
+        ? const EdgeInsets.fromLTRB(16, 10, 16, 12)
+        : const EdgeInsets.fromLTRB(22, 16, 22, 18);
 
     return Container(
       width: width,
@@ -91,10 +93,7 @@ class AppSideSheet extends StatelessWidget {
         // Como ahora está pegado a la derecha,
         // el borde va del lado izquierdo del panel.
         border: const Border(
-          left: BorderSide(
-            color: Color(0xFFD8E2EE),
-            width: 1,
-          ),
+          left: BorderSide(color: Color(0xFFD8E2EE), width: 1),
         ),
 
         // Sombra hacia la izquierda para dar profundidad.
@@ -123,28 +122,15 @@ class AppSideSheet extends StatelessWidget {
             onClose: onClose ?? () => Navigator.of(context).maybePop(),
             primaryColor: scheme.primary,
           ),
-          const Divider(
-            height: 1,
-            thickness: 1,
-            color: Color(0xFFE7EEF5),
-          ),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFE7EEF5)),
           Expanded(
-            child: ColoredBox(
-              color: Colors.white,
-              child: child,
-            ),
+            child: ColoredBox(color: Colors.white, child: child),
           ),
           if (footer != null) ...[
-            const Divider(
-              height: 1,
-              thickness: 1,
-              color: Color(0xFFE7EEF5),
-            ),
+            const Divider(height: 1, thickness: 1, color: Color(0xFFE7EEF5)),
             Container(
-              padding: const EdgeInsets.fromLTRB(22, 16, 22, 18),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFBFCFE),
-              ),
+              padding: footerPadding,
+              decoration: const BoxDecoration(color: Color(0xFFFBFCFE)),
               child: footer!,
             ),
           ],
@@ -172,18 +158,24 @@ class _SideSheetHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final size = MediaQuery.sizeOf(context);
+    final compact = size.width <= 1366 || size.height <= 900;
+    final headerPadding = compact
+        ? const EdgeInsets.fromLTRB(16, 12, 12, 12)
+        : const EdgeInsets.fromLTRB(22, 18, 16, 17);
+    final iconSize = compact ? 38.0 : 46.0;
+    final iconSymbolSize = compact ? 20.0 : 23.0;
+    final closeSize = compact ? 34.0 : 38.0;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(22, 18, 16, 17),
-      decoration: const BoxDecoration(
-        color: Color(0xFFFBFCFE),
-      ),
+      padding: headerPadding,
+      decoration: const BoxDecoration(color: Color(0xFFFBFCFE)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 46,
-            height: 46,
+            width: iconSize,
+            height: iconSize,
             decoration: BoxDecoration(
               color: primaryColor.withOpacity(0.10),
               borderRadius: BorderRadius.circular(14),
@@ -200,13 +192,9 @@ class _SideSheetHeader extends StatelessWidget {
                 ),
               ],
             ),
-            child: Icon(
-              icon,
-              color: primaryColor,
-              size: 23,
-            ),
+            child: Icon(icon, color: primaryColor, size: iconSymbolSize),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: compact ? 10 : 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,21 +224,19 @@ class _SideSheetHeader extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: compact ? 8 : 10),
           Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: onClose,
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                width: 38,
-                height: 38,
+                width: closeSize,
+                height: closeSize,
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: const Color(0xFFE2E8F0),
-                  ),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: const Icon(
                   Icons.close_rounded,
@@ -289,19 +275,25 @@ class _AppSideSheetOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final screenWidth = mediaQuery.size.width;
+    final screenHeight = mediaQuery.size.height;
+    final compact = screenWidth <= 1366 || screenHeight <= 900;
 
     // Pegado completamente a la derecha, arriba y abajo.
     const double topOffset = 0.0;
     const double bottomOffset = 0.0;
     const double rightOffset = 0.0;
 
-    final availableWidth = math.max(360.0, screenWidth - rightOffset);
+    final availableWidth = math.max(320.0, screenWidth - rightOffset);
 
-    // Ancho parecido a la columna de detalle de ventas,
-    // pero con más presencia para paneles como Licencia/Nube/Soporte.
+    final maxPanelWidth = compact ? 520.0 : 680.0;
+    final minPanelWidth = compact ? 360.0 : 460.0;
+    final widthRatio = compact ? 0.40 : 0.42;
     final resolvedWidth = math.min(
-      width.clamp(560.0, 680.0),
-      math.max(460.0, availableWidth * 0.42),
+      width.clamp(minPanelWidth, maxPanelWidth),
+      math.min(
+        availableWidth - 8,
+        math.max(minPanelWidth, availableWidth * widthRatio),
+      ),
     );
 
     return Material(
@@ -319,10 +311,7 @@ class _AppSideSheetOverlay extends StatelessWidget {
                     : null,
                 child: ClipRect(
                   child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(
-                      sigmaX: 3.8,
-                      sigmaY: 3.8,
-                    ),
+                    filter: ui.ImageFilter.blur(sigmaX: 3.8, sigmaY: 3.8),
                     child: Container(
                       color: const Color(0xFF0F172A).withOpacity(0.105),
                     ),

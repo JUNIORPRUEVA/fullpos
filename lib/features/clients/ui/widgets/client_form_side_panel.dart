@@ -11,11 +11,16 @@ import '../../utils/rnc_validator.dart';
 Future<ClientModel?> showClientFormSidePanel(
   BuildContext context, {
   ClientModel? initialClient,
+  double? panelWidth,
 }) {
   final screenSize = MediaQuery.sizeOf(context);
-  final panelWidth = screenSize.width >= 1600
-      ? 520.0
-      : (screenSize.width >= 1200 ? 460.0 : 420.0);
+  final effectivePanelWidth =
+      panelWidth ??
+      (screenSize.width >= 1600
+          ? 440.0
+          : (screenSize.width >= 1200 ? 400.0 : 360.0)
+                .clamp(320.0, screenSize.width - 16)
+                .toDouble());
 
   return showGeneralDialog<ClientModel>(
     context: context,
@@ -44,27 +49,29 @@ Future<ClientModel?> showClientFormSidePanel(
                 ),
               ),
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Material(
-                  color: Colors.transparent,
-                  elevation: 24,
-                  shadowColor: Colors.black.withOpacity(0.24),
-                  borderRadius: BorderRadius.circular(18),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: SizedBox(
-                      width: panelWidth,
-                      height: double.infinity,
-                      child: ClientFormSidePanel(
-                        initialClient: initialClient,
-                        onClose: () => Navigator.of(dialogContext).pop(),
-                        onSaved: (client) =>
-                            Navigator.of(dialogContext).pop(client),
-                      ),
-                    ),
+            Positioned(
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: effectivePanelWidth,
+              child: Material(
+                color: Colors.transparent,
+                elevation: 24,
+                shadowColor: Colors.black.withOpacity(0.24),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  bottomLeft: Radius.circular(18),
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(18),
+                    bottomLeft: Radius.circular(18),
+                  ),
+                  child: ClientFormSidePanel(
+                    initialClient: initialClient,
+                    onClose: () => Navigator.of(dialogContext).pop(),
+                    onSaved: (client) =>
+                        Navigator.of(dialogContext).pop(client),
                   ),
                 ),
               ),
@@ -201,193 +208,215 @@ class _ClientFormSidePanelState extends State<ClientFormSidePanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 14, 14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE9F1FF),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.person_add_alt_1_rounded,
-                      color: Color(0xFF1A56DB),
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final contentMaxWidth = (constraints.maxWidth - 32).clamp(320.0, 460.0);
+
+        return Material(
+          color: Colors.white,
+          child: SafeArea(
+            left: false,
+            top: false,
+            bottom: false,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 12, 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE9F1FF),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.person_add_alt_1_rounded,
+                          color: Color(0xFF1A56DB),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _isEditing ? 'Editar cliente' : 'Nuevo cliente',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF17324D),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _isEditing
+                                  ? 'Actualiza los datos del cliente desde esta columna'
+                                  : 'Crea un cliente rapido para esta factura',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF6B7C8E),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: widget.onClose,
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _isEditing ? 'Editar cliente' : 'Nuevo cliente',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF17324D),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            children: [
+                              TextFormField(
+                                controller: _nameController,
+                                decoration: _panelFieldDecoration(
+                                  'Nombre o razón social *',
+                                  Icons.person_outline,
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'El nombre es obligatorio';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _phoneController,
+                                keyboardType: TextInputType.phone,
+                                decoration: _panelFieldDecoration(
+                                  'Teléfono',
+                                  Icons.phone_outlined,
+                                ),
+                                validator: (value) {
+                                  final phone = value?.trim() ?? '';
+                                  final taxId = _taxIdController.text.trim();
+                                  if (phone.isEmpty && taxId.isEmpty) {
+                                    return 'Indica teléfono o RNC/Cédula';
+                                  }
+                                  if (phone.isNotEmpty &&
+                                      PhoneValidator.normalizeRDPhone(phone) ==
+                                          null) {
+                                    return 'Teléfono inválido';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _taxIdController,
+                                decoration: _panelFieldDecoration(
+                                  'RNC o Cédula',
+                                  Icons.badge_outlined,
+                                ),
+                                validator: (value) {
+                                  final taxId = value?.trim() ?? '';
+                                  final phone = _phoneController.text.trim();
+                                  if (taxId.isEmpty && phone.isEmpty) {
+                                    return 'Indica teléfono o RNC/Cédula';
+                                  }
+                                  final digits = taxId.replaceAll(
+                                    RegExp(r'\D'),
+                                    '',
+                                  );
+                                  if (digits.isNotEmpty &&
+                                      digits.length != 9 &&
+                                      digits.length != 11) {
+                                    return 'Usa 9 dígitos para RNC o 11 para cédula';
+                                  }
+                                  if (digits.length == 9 &&
+                                      !RncValidator.isValidBasic(digits)) {
+                                    return 'RNC inválido';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              TextFormField(
+                                controller: _addressController,
+                                maxLines: 2,
+                                decoration: _panelFieldDecoration(
+                                  'Dirección',
+                                  Icons.location_on_outlined,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _isEditing
-                              ? 'Actualiza los datos del cliente desde esta columna'
-                              : 'Crea un cliente rapido para esta factura',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF6B7C8E),
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: contentMaxWidth),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isSaving ? null : widget.onClose,
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(44),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Cancelar'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _isSaving ? null : _save,
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size.fromHeight(44),
+                              backgroundColor: const Color(0xFF1A56DB),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isSaving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    _isEditing
+                                        ? 'Guardar cambios'
+                                        : 'Guardar cliente',
+                                  ),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    onPressed: widget.onClose,
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: _nameController,
-                        decoration: _panelFieldDecoration(
-                          'Nombre o razón social *',
-                          Icons.person_outline,
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'El nombre es obligatorio';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: _panelFieldDecoration(
-                          'Teléfono',
-                          Icons.phone_outlined,
-                        ),
-                        validator: (value) {
-                          final phone = value?.trim() ?? '';
-                          final taxId = _taxIdController.text.trim();
-                          if (phone.isEmpty && taxId.isEmpty) {
-                            return 'Indica teléfono o RNC/Cédula';
-                          }
-                          if (phone.isNotEmpty &&
-                              PhoneValidator.normalizeRDPhone(phone) == null) {
-                            return 'Teléfono inválido';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _taxIdController,
-                        decoration: _panelFieldDecoration(
-                          'RNC o Cédula',
-                          Icons.badge_outlined,
-                        ),
-                        validator: (value) {
-                          final taxId = value?.trim() ?? '';
-                          final phone = _phoneController.text.trim();
-                          if (taxId.isEmpty && phone.isEmpty) {
-                            return 'Indica teléfono o RNC/Cédula';
-                          }
-                          final digits = taxId.replaceAll(RegExp(r'\D'), '');
-                          if (digits.isNotEmpty &&
-                              digits.length != 9 &&
-                              digits.length != 11) {
-                            return 'Usa 9 dígitos para RNC o 11 para cédula';
-                          }
-                          if (digits.length == 9 &&
-                              !RncValidator.isValidBasic(digits)) {
-                            return 'RNC inválido';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: _addressController,
-                        maxLines: 2,
-                        decoration: _panelFieldDecoration(
-                          'Dirección',
-                          Icons.location_on_outlined,
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
-              ),
+              ],
             ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _isSaving ? null : widget.onClose,
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: const Text('Cancelar'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _isSaving ? null : _save,
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        backgroundColor: const Color(0xFF1A56DB),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: _isSaving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(
-                              _isEditing
-                                  ? 'Guardar cambios'
-                                  : 'Guardar cliente',
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -395,7 +424,9 @@ class _ClientFormSidePanelState extends State<ClientFormSidePanel> {
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
     );
   }
 }

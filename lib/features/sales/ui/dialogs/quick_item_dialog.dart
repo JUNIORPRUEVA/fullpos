@@ -567,15 +567,31 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
 
-    final dialogWidth = (screen.width < 430 ? screen.width - 24 : 372.0)
-        .clamp(330.0, 382.0)
-        .toDouble();
+    final isTightDesktop = screen.width <= 1280 || screen.height <= 768;
+    final isCompactDesktop = screen.width <= 1366 || screen.height <= 820;
 
-    final dialogMaxHeight = (screen.height - 40)
-        .clamp(660.0, 840.0)
-        .toDouble();
+    final dialogWidth = isTightDesktop
+        ? (screen.width - 24).clamp(356.0, 366.0).toDouble()
+        : isCompactDesktop
+            ? (screen.width - 24).clamp(374.0, 386.0).toDouble()
+            : (screen.width < 430 ? screen.width - 24 : 400.0)
+                .clamp(380.0, 420.0)
+                .toDouble();
 
-    final compact = screen.width < 430;
+    // Altura suficiente para mostrar todo el contenido sin scroll interno.
+    // En tight (1280x1024): ~984px disponibles - 40 topbar - 45 footer = ~899px
+    // Usamos clamp generoso para que quepa todo.
+    final availableHeight = screen.height - 40.0 - 45.0 - 32.0;
+    final dialogMaxHeight = isTightDesktop
+        ? availableHeight.clamp(680.0, 820.0).toDouble()
+        : isCompactDesktop
+            ? availableHeight.clamp(720.0, 860.0).toDouble()
+            : availableHeight.clamp(760.0, 900.0).toDouble();
+
+    final compact = isTightDesktop || isCompactDesktop || screen.width < 430;
+
+    // En tight desktop, reducimos espaciados internos para que quepa sin scroll
+    final tight = isTightDesktop;
 
     return DialogKeyboardShortcuts(
       onSubmit: _saveItem,
@@ -594,7 +610,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
               width: dialogWidth,
-              padding: EdgeInsets.all(compact ? 12 : 14),
+              padding: EdgeInsets.all(compact ? 10 : 14),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(10),
@@ -610,31 +626,41 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
               ),
               child: Form(
                 key: _formKey,
-                child: SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: AnimatedSize(
-                    duration: const Duration(milliseconds: 190),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.topCenter,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildHeader(),
-                        const SizedBox(height: 12),
-                        _buildModeSelector(),
-                        const SizedBox(height: 12),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 190),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          child: _calculatorOnly
-                              ? _buildCalculatorOnlyBody()
-                              : _buildProductSaleBody(compact: compact),
-                        ),
-                      ],
-                    ),
-                  ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final needsScroll = constraints.maxHeight < 680;
+                    final body = AnimatedSize(
+                      duration: const Duration(milliseconds: 190),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildHeader(),
+                          SizedBox(height: tight ? 8 : 12),
+                          _buildModeSelector(),
+                          SizedBox(height: tight ? 8 : 12),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 190),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            child: _calculatorOnly
+                                ? _buildCalculatorOnlyBody()
+                                : _buildProductSaleBody(compact: compact, tight: tight),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (needsScroll) {
+                      return SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: body,
+                      );
+                    }
+                    return body;
+                  },
                 ),
               ),
             ),
@@ -644,16 +670,16 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     );
   }
 
-  Widget _buildProductSaleBody({required bool compact}) {
+  Widget _buildProductSaleBody({required bool compact, bool tight = false}) {
     return Column(
       key: const ValueKey<String>('product-sale-body'),
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildTotalDisplay(compact: true),
-        const SizedBox(height: 12),
+        SizedBox(height: tight ? 8 : 12),
         _buildDescriptionField(),
-        const SizedBox(height: 10),
+        SizedBox(height: tight ? 6 : 10),
         Row(
           children: [
             Expanded(
@@ -688,13 +714,13 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: tight ? 4 : 8),
         _buildMoreDataSection(),
-        const SizedBox(height: 10),
+        SizedBox(height: tight ? 6 : 10),
         _buildCalculatorHeader(),
-        const SizedBox(height: 8),
+        SizedBox(height: tight ? 4 : 8),
         _buildCalculatorPad(),
-        const SizedBox(height: 12),
+        SizedBox(height: tight ? 8 : 12),
         _buildFooterActions(),
       ],
     );

@@ -56,8 +56,8 @@ void main() {
 
   test('repara turno abierto sin caja diaria asociada al abrir caja', () async {
     final db = await AppDb.database;
-    const orphanBusinessDate = '2000-01-01';
-    final openedAt = DateTime(2000, 1, 1, 9).millisecondsSinceEpoch;
+    final orphanBusinessDate = OperationFlowService.businessDateOf();
+    final openedAt = DateTime.now().millisecondsSinceEpoch;
     final shiftId = await db.insert(DbTables.cashSessions, {
       'opened_by_user_id': 1,
       'user_name': 'Admin',
@@ -102,7 +102,7 @@ void main() {
       where: 'business_date = ?',
       whereArgs: [OperationFlowService.businessDateOf()],
     );
-    expect(todayRows, isEmpty);
+    expect(todayRows, hasLength(1));
   });
 
   test(
@@ -164,6 +164,234 @@ void main() {
       expect(shifts.first['user_name'], 'Cajero');
       expect(shifts.first['status'], 'OPEN');
       expect(shifts.first['closed_at_ms'], isNull);
+    },
+  );
+
+  test('consolida turnos duplicados al iniciar caja', () async {
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final businessDate = OperationFlowService.businessDateOf();
+    final cashboxId = await db.insert(DbTables.cashboxDaily, {
+      'business_date': businessDate,
+      'opened_at_ms': now,
+      'opened_by_user_id': 1,
+      'initial_amount': 800.0,
+      'current_amount': 800.0,
+      'status': 'OPEN',
+      'note': 'caja duplicada',
+    });
+    final olderShiftId = await db.insert(DbTables.cashSessions, {
+      'opened_by_user_id': 1,
+      'user_name': 'Admin',
+      'opened_at_ms': now - 1000,
+      'initial_amount': 800.0,
+      'cashbox_daily_id': cashboxId,
+      'business_date': businessDate,
+      'requires_closure': 0,
+      'status': 'OPEN',
+    });
+    final newestShiftId = await db.insert(DbTables.cashSessions, {
+      'opened_by_user_id': 1,
+      'user_name': 'Admin',
+      'opened_at_ms': now,
+      'initial_amount': 800.0,
+      'cashbox_daily_id': cashboxId,
+      'business_date': businessDate,
+      'requires_closure': 0,
+      'status': 'OPEN',
+    });
+
+    final session = await OperationFlowService.startActiveSession(
+      openingAmount: 800,
+      note: '',
+    );
+
+    expect(session.shiftId, newestShiftId);
+
+    final openRows = await db.query(
+      DbTables.cashSessions,
+      where: 'status = ? AND closed_at_ms IS NULL',
+      whereArgs: ['OPEN'],
+    );
+    expect(openRows, hasLength(1));
+    expect(openRows.first['id'], newestShiftId);
+
+    final olderRows = await db.query(
+      DbTables.cashSessions,
+      where: 'id = ?',
+      whereArgs: [olderShiftId],
+      limit: 1,
+    );
+    expect(olderRows.first['status'], 'CLOSED');
+    expect(olderRows.first['closed_at_ms'], isNotNull);
+  });
+
+  test('reabre caja cerrada con turno abierto sin lanzar error', () async {
+    final db = await AppDb.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final businessDate = OperationFlowService.businessDateOf();
+    final cashboxId = await db.insert(DbTables.cashboxDaily, {
+      'business_date': businessDate,
+      'opened_at_ms': now - 2000,
+      'opened_by_user_id': 1,
+      'initial_amount': 300.0,
+      'current_amount': 300.0,
+      'status': 'CLOSED',
+      'closed_at_ms': now - 1000,
+      'closed_by_user_id': 1,
+      'note': 'cierre inconsistente',
+    });
+    final shiftId = await db.insert(DbTables.cashSessions, {
+      'opened_by_user_id': 1,
+      'user_name': 'Admin',
+      'opened_at_ms': now - 2000,
+      'initial_amount': 300.0,
+      'cashbox_daily_id': cashboxId,
+      'business_date': businessDate,
+      'requires_closure': 0,
+      'status': 'OPEN',
+    });
+
+    final cashbox = await OperationFlowService.openDailyCashboxToday(
+      openingAmount: 300,
+      note: 'reapertura segura',
+    );
+
+    expect(cashbox.id, cashboxId);
+    expect(cashbox.status, 'OPEN');
+    expect(cashbox.closedAtMs, isNull);
+
+    final shifts = await db.query(
+      DbTables.cashSessions,
+      where: 'status = ? AND closed_at_ms IS NULL',
+      whereArgs: ['OPEN'],
+    );
+    expect(shifts, hasLength(1));
+    expect(shifts.first['id'], shiftId);
+    expect(shifts.first['cashbox_daily_id'], cashboxId);
+  });
+
+  test('mueve turno reciente de fecha anterior a la caja de hoy', () async {
+    final db = await AppDb.database;
+    final now = DateTime.now();
+    final nowMs = now.millisecondsSinceEpoch;
+    final previousBusinessDate = OperationFlowService.businessDateOf(
+      now.subtract(const Duration(days: 1)),
+    );
+    final today = OperationFlowService.businessDateOf(now);
+
+    final oldCashboxId = await db.insert(DbTables.cashboxDaily, {
+      'business_date': previousBusinessDate,
+      'opened_at_ms': nowMs - const Duration(hours: 1).inMilliseconds,
+      'opened_by_user_id': 1,
+      'initial_amount': 1200.0,
+      'current_amount': 1200.0,
+      'status': 'OPEN',
+      'note': 'caja previa por actualizacion',
+    });
+    final shiftId = await db.insert(DbTables.cashSessions, {
+      'opened_by_user_id': 1,
+      'user_name': 'Admin',
+      'opened_at_ms': nowMs - const Duration(hours: 1).inMilliseconds,
+      'initial_amount': 1200.0,
+      'cashbox_daily_id': oldCashboxId,
+      'business_date': previousBusinessDate,
+      'requires_closure': 0,
+      'status': 'OPEN',
+    });
+
+    expect(await OperationFlowService.loadActiveSession(), isNull);
+
+    final session = await OperationFlowService.startActiveSession(
+      openingAmount: 1200,
+      note: 'recuperacion tras actualizacion',
+    );
+
+    expect(session.shiftId, shiftId);
+    expect(session.businessDate, today);
+
+    final movedShift = await db.query(
+      DbTables.cashSessions,
+      where: 'id = ?',
+      whereArgs: [shiftId],
+      limit: 1,
+    );
+    expect(movedShift.first['business_date'], today);
+    expect(movedShift.first['cashbox_daily_id'], isNot(oldCashboxId));
+
+    final oldCashbox = await db.query(
+      DbTables.cashboxDaily,
+      where: 'id = ?',
+      whereArgs: [oldCashboxId],
+      limit: 1,
+    );
+    expect(oldCashbox.first['status'], 'CLOSED');
+
+    final todayCashbox = await db.query(
+      DbTables.cashboxDaily,
+      where: 'business_date = ?',
+      whereArgs: [today],
+      limit: 1,
+    );
+    expect(todayCashbox, hasLength(1));
+    expect(todayCashbox.first['status'], 'OPEN');
+  });
+
+  test(
+    'mueve turno antiguo de fecha anterior para evitar rebote al gate',
+    () async {
+      final db = await AppDb.database;
+      final now = DateTime.now();
+      final oldOpenedAt = now.subtract(const Duration(days: 3));
+      final oldOpenedAtMs = oldOpenedAt.millisecondsSinceEpoch;
+      final previousBusinessDate = OperationFlowService.businessDateOf(
+        oldOpenedAt,
+      );
+      final today = OperationFlowService.businessDateOf(now);
+
+      final oldCashboxId = await db.insert(DbTables.cashboxDaily, {
+        'business_date': previousBusinessDate,
+        'opened_at_ms': oldOpenedAtMs,
+        'opened_by_user_id': 1,
+        'initial_amount': 900.0,
+        'current_amount': 900.0,
+        'status': 'OPEN',
+        'note': 'turno viejo antes de actualizar',
+      });
+      final shiftId = await db.insert(DbTables.cashSessions, {
+        'opened_by_user_id': 1,
+        'user_name': 'Admin',
+        'opened_at_ms': oldOpenedAtMs,
+        'initial_amount': 900.0,
+        'cashbox_daily_id': oldCashboxId,
+        'business_date': previousBusinessDate,
+        'requires_closure': 0,
+        'status': 'OPEN',
+      });
+
+      expect(await OperationFlowService.loadActiveSession(), isNull);
+
+      final session = await OperationFlowService.startActiveSession(
+        openingAmount: 10000,
+        note: 'apertura despues de actualizacion',
+      );
+
+      expect(session.shiftId, shiftId);
+      expect(session.businessDate, today);
+
+      final active = await OperationFlowService.loadActiveSession();
+      expect(active, isNotNull);
+      expect(active!.shiftId, shiftId);
+      expect(active.businessDate, today);
+
+      final movedShift = await db.query(
+        DbTables.cashSessions,
+        where: 'id = ?',
+        whereArgs: [shiftId],
+        limit: 1,
+      );
+      expect(movedShift.first['business_date'], today);
+      expect(movedShift.first['cashbox_daily_id'], isNot(oldCashboxId));
     },
   );
 }

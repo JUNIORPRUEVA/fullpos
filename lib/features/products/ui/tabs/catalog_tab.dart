@@ -1593,8 +1593,6 @@ class _CatalogProductRow extends StatefulWidget {
 }
 
 class _CatalogProductRowState extends State<_CatalogProductRow> {
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1650,8 +1648,6 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
     }
 
     return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
