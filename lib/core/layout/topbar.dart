@@ -834,32 +834,25 @@ class _BusinessMenuButton extends StatelessWidget {
         ? 'Mi negocio'
         : businessName.trim();
     final normalizedPath = (logoPath ?? '').trim();
-    final hasLogo =
-        normalizedPath.isNotEmpty && File(normalizedPath).existsSync();
 
-    const buttonRadius = BorderRadius.only(
-      topLeft: Radius.circular(12),
-      topRight: Radius.circular(5),
-      bottomLeft: Radius.circular(5),
-      bottomRight: Radius.circular(12),
-    );
+    final buttonRadius = BorderRadius.circular(11);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOutCubic,
       height: height,
       padding: EdgeInsets.only(
-        left: hasLogo ? (6 * scale).clamp(5.0, 7.0).toDouble() : 11,
+        left: (7 * scale).clamp(6.0, 8.0).toDouble(),
         right: (8 * scale).clamp(7.0, 10.0).toDouble(),
       ),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white),
+        color: Colors.white,
         borderRadius: buttonRadius,
-        border: Border.all(color: borderColor.withOpacity(0.70)),
+        border: Border.all(color: const Color(0xFFD9E3F0), width: 0.95),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.018),
-            blurRadius: 5,
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
@@ -867,15 +860,13 @@ class _BusinessMenuButton extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (hasLogo)
-            _BusinessLogoMark(
-              size: (26 * scale).clamp(22.0, 29.0).toDouble(),
-              accentColor: accentColor,
-              logoPath: normalizedPath,
-            ),
+          _BusinessLogoMark(
+            size: (28 * scale).clamp(24.0, 30.0).toDouble(),
+            accentColor: accentColor,
+            logoPath: normalizedPath,
+          ),
           if (showText) ...[
-            if (hasLogo)
-              SizedBox(width: (8 * scale).clamp(6.0, 9.0).toDouble()),
+            SizedBox(width: (8 * scale).clamp(6.0, 9.0).toDouble()),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 190),
               child: Text(
@@ -884,8 +875,8 @@ class _BusinessMenuButton extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: _TopbarState._strongTextColor,
-                  fontSize: (13.2 * scale).clamp(12.4, 14.2).toDouble(),
-                  fontWeight: FontWeight.w900,
+                  fontSize: (12.8 * scale).clamp(12.2, 13.4).toDouble(),
+                  fontWeight: FontWeight.w800,
                   height: 1.05,
                   letterSpacing: 0.05,
                 ),
@@ -896,7 +887,7 @@ class _BusinessMenuButton extends StatelessWidget {
           Icon(
             Icons.keyboard_arrow_down_rounded,
             size: (16 * scale).clamp(14.0, 17.0).toDouble(),
-            color: accentColor.withOpacity(0.58),
+            color: const Color(0xFF64748B),
           ),
         ],
       ),
@@ -953,39 +944,39 @@ class _BusinessLogoMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const logoRadius = BorderRadius.only(
-      topLeft: Radius.circular(10),
-      topRight: Radius.circular(4),
-      bottomLeft: Radius.circular(4),
-      bottomRight: Radius.circular(10),
-    );
+    final hasLogo = logoPath.trim().isNotEmpty && File(logoPath).existsSync();
+    final logoRadius = BorderRadius.circular(8);
 
     return Container(
       width: size,
       height: size,
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         borderRadius: logoRadius,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            accentColor,
-            Color.alphaBlend(Colors.black.withOpacity(0.16), accentColor),
-          ],
-        ),
-        border: Border.all(color: accentColor.withOpacity(0.16)),
-        boxShadow: [
-          BoxShadow(
-            color: accentColor.withOpacity(0.18),
-            blurRadius: 10,
-            spreadRadius: -7,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        color: const Color(0xFFEFF6FF),
+        border: Border.all(color: const Color(0xFFD9E3F0), width: 0.85),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Image.file(File(logoPath), fit: BoxFit.cover),
+      child: hasLogo
+          ? Image.file(
+              File(logoPath),
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) =>
+                  _BusinessLogoPlaceholder(accentColor: accentColor),
+            )
+          : _BusinessLogoPlaceholder(accentColor: accentColor),
     );
+  }
+}
+
+class _BusinessLogoPlaceholder extends StatelessWidget {
+  const _BusinessLogoPlaceholder({required this.accentColor});
+
+  final Color accentColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(Icons.storefront_rounded, size: 17, color: accentColor);
   }
 }
 
@@ -1006,23 +997,13 @@ class _TurnMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = (34 * scale).clamp(30.0, 38.0).toDouble();
+    final height = (36 * scale).clamp(32.0, 38.0).toDouble();
 
-    final bg = Color.alphaBlend(accentColor.withOpacity(0.035), Colors.white);
+    const bg = Colors.white;
 
-    const buttonRadius = BorderRadius.only(
-      topLeft: Radius.circular(11),
-      topRight: Radius.circular(5),
-      bottomLeft: Radius.circular(5),
-      bottomRight: Radius.circular(11),
-    );
+    final buttonRadius = BorderRadius.circular(11);
 
-    const iconRadius = BorderRadius.only(
-      topLeft: Radius.circular(9),
-      topRight: Radius.circular(4),
-      bottomLeft: Radius.circular(4),
-      bottomRight: Radius.circular(9),
-    );
+    final iconRadius = BorderRadius.circular(8);
 
     return Tooltip(
       message: isOpen ? 'Turno abierto' : 'Gestionar turno',
@@ -1037,11 +1018,11 @@ class _TurnMenuButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: buttonRadius,
-          border: Border.all(color: accentColor.withOpacity(0.14)),
+          border: Border.all(color: const Color(0xFFD9E3F0), width: 0.95),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.018),
-              blurRadius: 5,
+              color: Colors.black.withOpacity(0.015),
+              blurRadius: 6,
               spreadRadius: -3,
               offset: const Offset(0, 2),
             ),
@@ -1054,9 +1035,9 @@ class _TurnMenuButton extends StatelessWidget {
               width: (23 * scale).clamp(21.0, 25.0).toDouble(),
               height: (23 * scale).clamp(21.0, 25.0).toDouble(),
               decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.08),
+                color: const Color(0xFFEFF6FF),
                 borderRadius: iconRadius,
-                border: Border.all(color: accentColor.withOpacity(0.10)),
+                border: Border.all(color: const Color(0xFFD9E3F0), width: 0.8),
               ),
               alignment: Alignment.center,
               child: Icon(
@@ -1072,7 +1053,7 @@ class _TurnMenuButton extends StatelessWidget {
                 style: TextStyle(
                   color: accentColor,
                   fontSize: (12 * scale).clamp(11.2, 12.8).toDouble(),
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w800,
                   height: 1,
                 ),
               ),
@@ -1080,7 +1061,7 @@ class _TurnMenuButton extends StatelessWidget {
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: (17 * scale).clamp(15.0, 18.0).toDouble(),
-                color: accentColor.withOpacity(0.72),
+                color: const Color(0xFF64748B),
               ),
             ],
           ],

@@ -63,6 +63,15 @@ class TicketRenderer {
     final ecfCode = _sanitizeTicketText(
       (data.electronicInvoiceCode ?? '').trim(),
     ).toUpperCase();
+    final fiscalReceiptNumber = _sanitizeTicketText(
+      (data.fiscalReceiptNumber ?? '').trim(),
+    ).toUpperCase();
+    final fiscalReceiptName = _sanitizeTicketText(
+      (data.fiscalReceiptName ?? '').trim(),
+    ).toUpperCase();
+    final fiscalReceiptCode = _sanitizeTicketText(
+      (data.fiscalReceiptCode ?? '').trim(),
+    ).toUpperCase();
     final electronicTypeCode = _sanitizeTicketText(
       (data.electronicDocumentType ?? '').trim(),
     ).toUpperCase();
@@ -145,6 +154,21 @@ class TicketRenderer {
         }
       } else {
         addPair('CLI: $clientDisplay', '');
+      }
+    }
+
+    if (fiscalReceiptNumber.isNotEmpty) {
+      add('COMPROBANTE FISCAL');
+      final typeLabel = fiscalReceiptName.isNotEmpty
+          ? fiscalReceiptName
+          : fiscalReceiptCode;
+      if (typeLabel.isNotEmpty) {
+        addPair('TIPO:', typeLabel);
+      }
+      addPair('NCF:', fiscalReceiptNumber);
+      final expiration = data.fiscalReceiptExpirationDate;
+      if (expiration != null) {
+        addPair('VENCE:', DateFormat('dd/MM/yyyy').format(expiration));
       }
     }
 

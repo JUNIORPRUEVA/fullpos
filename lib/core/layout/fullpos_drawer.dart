@@ -19,8 +19,10 @@ const Color _kPrimaryBlue = Color(0xFF1A56DB);
 const Color _kBorderColor = Color(0xFFD6E0EA);
 const Color _kTextDark = Color(0xFF0F172A);
 const Color _kTextMuted = Color(0xFF64748B);
-const Color _kActiveBg = Color(0xFFEAF2FF);
-const Color _kHoverBg = Color(0xFFF5F8FC);
+const Color _kActiveBg = Color(0xFFEFF6FF);
+const Color _kActiveBorder = Color(0xFFBFDBFE);
+const Color _kHoverBg = Color(0xFFF8FAFC);
+const Color _kIconBg = Color(0xFFF8FAFC);
 const Color _kPanelBg = Colors.white;
 const Color _kFooterBg = Color(0xFFF8FAFC);
 
@@ -609,7 +611,7 @@ class _DrawerHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 72,
-      padding: const EdgeInsets.fromLTRB(16, 10, 14, 10),
+      padding: const EdgeInsets.fromLTRB(16, 10, 13, 10),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: _kBorderColor, width: 1)),
@@ -617,8 +619,8 @@ class _DrawerHeader extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(14),
@@ -634,8 +636,8 @@ class _DrawerHeader extends StatelessWidget {
               boxShadow: [
                 BoxShadow(
                   color: _kPrimaryBlue.withOpacity(0.23),
-                  blurRadius: 16,
-                  spreadRadius: -8,
+                  blurRadius: 14,
+                  spreadRadius: -9,
                   offset: const Offset(0, 8),
                 ),
               ],
@@ -709,10 +711,10 @@ class _DrawerCloseButtonState extends State<_DrawerCloseButton> {
       onExit: (_) => setState(() => _hovered = false),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        width: 34,
-        height: 34,
+        width: 33,
+        height: 33,
         decoration: BoxDecoration(
-          color: _hovered ? _kActiveBg : const Color(0xFFF1F5F9),
+          color: _hovered ? _kActiveBg : _kIconBg,
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(11),
             topRight: Radius.circular(5),
@@ -721,6 +723,7 @@ class _DrawerCloseButtonState extends State<_DrawerCloseButton> {
           ),
           border: Border.all(
             color: _hovered ? const Color(0xFFBFD1F7) : Colors.transparent,
+            width: 0.9,
           ),
         ),
         child: Material(
@@ -797,7 +800,7 @@ class _DrawerCurrentShiftState extends State<_DrawerCurrentShift> {
               color: _hovered ? const Color(0xFFF8FBFF) : Colors.white,
               borderRadius: cardRadius,
               border: Border.all(
-                color: _hovered ? const Color(0xFFB8CBF5) : _kBorderColor,
+                color: _hovered ? _kActiveBorder : _kBorderColor,
                 width: 0.9,
               ),
               boxShadow: [
@@ -830,14 +833,10 @@ class _DrawerCurrentShiftState extends State<_DrawerCurrentShift> {
                         width: 30,
                         height: 30,
                         decoration: BoxDecoration(
-                          color: _hovered
-                              ? _kActiveBg
-                              : const Color(0xFFF1F5F9),
+                          color: _hovered ? _kActiveBg : _kIconBg,
                           borderRadius: iconRadius,
                           border: Border.all(
-                            color: _hovered
-                                ? const Color(0xFFBDD0F8)
-                                : _kBorderColor,
+                            color: _hovered ? _kActiveBorder : _kBorderColor,
                             width: 0.8,
                           ),
                         ),
@@ -1041,7 +1040,7 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
               borderRadius: itemRadius,
               border: Border.all(
                 color: widget.isActive
-                    ? const Color(0xFFB8CBF5)
+                    ? _kActiveBorder
                     : _hovered
                     ? _kBorderColor
                     : Colors.transparent,
@@ -1080,16 +1079,16 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
                         decoration: BoxDecoration(
                           color: widget.isActive
                               ? Color.alphaBlend(
-                                  _kPrimaryBlue.withOpacity(0.10),
+                                  _kPrimaryBlue.withOpacity(0.11),
                                   Colors.white,
                                 )
                               : _hovered
                               ? Colors.white
-                              : const Color(0xFFF4F7FA),
+                              : _kIconBg,
                           borderRadius: iconRadius,
                           border: Border.all(
                             color: widget.isActive
-                                ? _kPrimaryBlue.withOpacity(0.18)
+                                ? _kPrimaryBlue.withOpacity(0.20)
                                 : _kBorderColor,
                             width: 0.8,
                           ),
@@ -1108,13 +1107,13 @@ class _DrawerBaseItemState extends State<_DrawerBaseItem> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: widget.isActive ? _kPrimaryBlue : _kTextDark,
+                            color: widget.isActive ? _kTextDark : _kTextDark,
                             fontSize: widget.isPrimary ? 14.3 : 14.0,
                             fontWeight: widget.isActive
                                 ? FontWeight.w700
                                 : widget.isPrimary
-                                ? FontWeight.w600
-                                : FontWeight.w500,
+                                ? FontWeight.w700
+                                : FontWeight.w600,
                             height: 1.2,
                             letterSpacing: -0.03,
                             decoration: TextDecoration.none,
@@ -1233,7 +1232,7 @@ class _DrawerSubItemState extends State<_DrawerSubItem> {
               borderRadius: itemRadius,
               border: Border.all(
                 color: widget.isActive
-                    ? const Color(0xFFBED0F5)
+                    ? _kActiveBorder
                     : _hovered
                     ? _kBorderColor
                     : Colors.transparent,
@@ -1274,11 +1273,11 @@ class _DrawerSubItemState extends State<_DrawerSubItem> {
                                   _kPrimaryBlue.withOpacity(0.10),
                                   Colors.white,
                                 )
-                              : const Color(0xFFF4F7FA),
+                              : _kIconBg,
                           borderRadius: iconRadius,
                           border: Border.all(
                             color: widget.isActive
-                                ? _kPrimaryBlue.withOpacity(0.16)
+                                ? _kPrimaryBlue.withOpacity(0.18)
                                 : _kBorderColor,
                             width: 0.75,
                           ),
@@ -1298,11 +1297,11 @@ class _DrawerSubItemState extends State<_DrawerSubItem> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: widget.isActive
-                                ? _kPrimaryBlue
-                                : _kTextDark.withOpacity(0.88),
+                                ? _kTextDark
+                                : const Color(0xFF475569),
                             fontSize: 13.2,
                             fontWeight: widget.isActive
-                                ? FontWeight.w700
+                                ? FontWeight.w600
                                 : FontWeight.w500,
                             height: 1.18,
                             letterSpacing: -0.02,
@@ -1346,10 +1345,10 @@ class _DrawerFooterState extends State<_DrawerFooter> {
         '${now.minute.toString().padLeft(2, '0')}';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 11, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 11),
       decoration: const BoxDecoration(
         color: _kFooterBg,
-        border: Border(top: BorderSide(color: _kBorderColor, width: 1)),
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
       ),
       child: Row(
         children: [
@@ -1357,14 +1356,14 @@ class _DrawerFooterState extends State<_DrawerFooter> {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: _kActiveBg,
+              color: const Color(0xFFEFF6FF),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(11),
                 topRight: Radius.circular(5),
                 bottomLeft: Radius.circular(5),
                 bottomRight: Radius.circular(11),
               ),
-              border: Border.all(color: const Color(0xFFBFD1F7)),
+              border: Border.all(color: _kActiveBorder, width: 0.9),
             ),
             child: const Icon(
               Icons.cloud_done_rounded,
@@ -1384,7 +1383,7 @@ class _DrawerFooterState extends State<_DrawerFooter> {
                   style: TextStyle(
                     color: _kTextDark,
                     fontSize: 12.2,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     height: 1.12,
                     decoration: TextDecoration.none,
                   ),
@@ -1428,7 +1427,7 @@ class _DrawerFooterState extends State<_DrawerFooter> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: _syncHover ? _kPrimaryBlue : Colors.white,
+                color: _syncHover ? _kActiveBg : Colors.white,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(12),
                   topRight: Radius.circular(5),
@@ -1436,15 +1435,15 @@ class _DrawerFooterState extends State<_DrawerFooter> {
                   bottomRight: Radius.circular(12),
                 ),
                 border: Border.all(
-                  color: _syncHover ? _kPrimaryBlue : _kBorderColor,
+                  color: _syncHover ? _kActiveBorder : _kBorderColor,
                 ),
                 boxShadow: [
                   if (_syncHover)
                     BoxShadow(
-                      color: _kPrimaryBlue.withOpacity(0.18),
-                      blurRadius: 16,
-                      spreadRadius: -8,
-                      offset: const Offset(0, 8),
+                      color: _kPrimaryBlue.withOpacity(0.08),
+                      blurRadius: 12,
+                      spreadRadius: -7,
+                      offset: const Offset(0, 6),
                     ),
                 ],
               ),
@@ -1469,7 +1468,7 @@ class _DrawerFooterState extends State<_DrawerFooter> {
                   child: Icon(
                     Icons.refresh_rounded,
                     size: 22,
-                    color: _syncHover ? Colors.white : _kPrimaryBlue,
+                    color: _kPrimaryBlue,
                   ),
                 ),
               ),

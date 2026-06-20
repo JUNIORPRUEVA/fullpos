@@ -26,6 +26,14 @@ class SaleModel {
   final int? creditDueDateMs;
   final int? creditInstallments;
   final String? creditNote;
+  final int fiscalEnabled;
+  final int? fiscalReceiptTypeId;
+  final String? fiscalReceiptName;
+  final String? fiscalReceiptPrefix;
+  final String? ncfFull;
+  final String? ncfType;
+  final int? fiscalSequenceNumber;
+  final int? fiscalReceiptExpirationDateMs;
   final int electronicInvoiceEnabled;
   final String? electronicInvoiceCode;
   final String? electronicDocumentType;
@@ -60,6 +68,14 @@ class SaleModel {
     this.creditDueDateMs,
     this.creditInstallments,
     this.creditNote,
+    this.fiscalEnabled = 0,
+    this.fiscalReceiptTypeId,
+    this.fiscalReceiptName,
+    this.fiscalReceiptPrefix,
+    this.ncfFull,
+    this.ncfType,
+    this.fiscalSequenceNumber,
+    this.fiscalReceiptExpirationDateMs,
     this.electronicInvoiceEnabled = 0,
     this.electronicInvoiceCode,
     this.electronicDocumentType,
@@ -95,6 +111,14 @@ class SaleModel {
     'credit_due_date_ms': creditDueDateMs,
     'credit_installments': creditInstallments,
     'credit_note': creditNote,
+    'fiscal_enabled': fiscalEnabled,
+    'fiscal_receipt_type_id': fiscalReceiptTypeId,
+    'fiscal_receipt_name': fiscalReceiptName,
+    'fiscal_receipt_prefix': fiscalReceiptPrefix,
+    'ncf_full': ncfFull,
+    'ncf_type': ncfType,
+    'fiscal_sequence_number': fiscalSequenceNumber,
+    'fiscal_receipt_expiration_date_ms': fiscalReceiptExpirationDateMs,
     'electronic_invoice_enabled': electronicInvoiceEnabled,
     'electronic_invoice_code': electronicInvoiceCode,
     'electronic_document_type': electronicDocumentType,
@@ -132,6 +156,15 @@ class SaleModel {
     creditDueDateMs: map['credit_due_date_ms'] as int?,
     creditInstallments: map['credit_installments'] as int?,
     creditNote: map['credit_note'] as String?,
+    fiscalEnabled: map['fiscal_enabled'] as int? ?? 0,
+    fiscalReceiptTypeId: map['fiscal_receipt_type_id'] as int?,
+    fiscalReceiptName: map['fiscal_receipt_name'] as String?,
+    fiscalReceiptPrefix: map['fiscal_receipt_prefix'] as String?,
+    ncfFull: map['ncf_full'] as String?,
+    ncfType: map['ncf_type'] as String?,
+    fiscalSequenceNumber: map['fiscal_sequence_number'] as int?,
+    fiscalReceiptExpirationDateMs:
+        map['fiscal_receipt_expiration_date_ms'] as int?,
     electronicInvoiceEnabled: map['electronic_invoice_enabled'] as int? ?? 0,
     electronicInvoiceCode: map['electronic_invoice_code'] as String?,
     electronicDocumentType: map['electronic_document_type'] as String?,
@@ -167,6 +200,14 @@ class SaleModel {
     int? creditDueDateMs,
     int? creditInstallments,
     String? creditNote,
+    int? fiscalEnabled,
+    int? fiscalReceiptTypeId,
+    String? fiscalReceiptName,
+    String? fiscalReceiptPrefix,
+    String? ncfFull,
+    String? ncfType,
+    int? fiscalSequenceNumber,
+    int? fiscalReceiptExpirationDateMs,
     int? electronicInvoiceEnabled,
     String? electronicInvoiceCode,
     String? electronicDocumentType,
@@ -200,6 +241,16 @@ class SaleModel {
     creditDueDateMs: creditDueDateMs ?? this.creditDueDateMs,
     creditInstallments: creditInstallments ?? this.creditInstallments,
     creditNote: creditNote ?? this.creditNote,
+    fiscalEnabled: fiscalEnabled ?? this.fiscalEnabled,
+    fiscalReceiptTypeId: fiscalReceiptTypeId ?? this.fiscalReceiptTypeId,
+    fiscalReceiptName: fiscalReceiptName ?? this.fiscalReceiptName,
+    fiscalReceiptPrefix: fiscalReceiptPrefix ?? this.fiscalReceiptPrefix,
+    ncfFull: ncfFull ?? this.ncfFull,
+    ncfType: ncfType ?? this.ncfType,
+    fiscalSequenceNumber:
+        fiscalSequenceNumber ?? this.fiscalSequenceNumber,
+    fiscalReceiptExpirationDateMs:
+        fiscalReceiptExpirationDateMs ?? this.fiscalReceiptExpirationDateMs,
     electronicInvoiceEnabled:
         electronicInvoiceEnabled ?? this.electronicInvoiceEnabled,
     electronicInvoiceCode: electronicInvoiceCode ?? this.electronicInvoiceCode,

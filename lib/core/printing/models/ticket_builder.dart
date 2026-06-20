@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:intl/intl.dart';
 import '../../../features/settings/data/printer_settings_model.dart';
 import '../../utils/currency_display.dart';
 import 'company_info.dart';
@@ -745,6 +746,15 @@ class TicketBuilder {
     final ecfCode = _sanitizePrintText(
       (data.electronicInvoiceCode ?? '').trim(),
     ).toUpperCase();
+    final fiscalReceiptNumber = _sanitizePrintText(
+      (data.fiscalReceiptNumber ?? '').trim(),
+    ).toUpperCase();
+    final fiscalReceiptName = _sanitizePrintText(
+      (data.fiscalReceiptName ?? '').trim(),
+    ).toUpperCase();
+    final fiscalReceiptCode = _sanitizePrintText(
+      (data.fiscalReceiptCode ?? '').trim(),
+    ).toUpperCase();
     final paymentMethod = _sanitizePrintText(data.paymentMethod).toUpperCase();
 
     final computedSubtotal = data.items.fold<double>(
@@ -974,6 +984,48 @@ class TicketBuilder {
               fontSize: smallFontSize,
               color: bodyTextColor,
             ),
+          ),
+        ),
+      if (fiscalReceiptNumber.isNotEmpty)
+        pw.Padding(
+          padding: sectionPadding,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'COMPROBANTE FISCAL',
+                style: pw.TextStyle(
+                  font: boldFont,
+                  fontSize: smallFontSize,
+                  color: bodyTextColor,
+                ),
+              ),
+              pw.Text(
+                'Tipo: ${(fiscalReceiptName.isNotEmpty ? fiscalReceiptName : fiscalReceiptCode)}',
+                style: pw.TextStyle(
+                  font: uiBodyFont,
+                  fontSize: smallFontSize,
+                  color: bodyTextColor,
+                ),
+              ),
+              pw.Text(
+                'NCF: $fiscalReceiptNumber',
+                style: pw.TextStyle(
+                  font: uiBodyFont,
+                  fontSize: smallFontSize,
+                  color: bodyTextColor,
+                ),
+              ),
+              if (data.fiscalReceiptExpirationDate != null)
+                pw.Text(
+                  'Vence: ${DateFormat('dd/MM/yyyy').format(data.fiscalReceiptExpirationDate!)}',
+                  style: pw.TextStyle(
+                    font: uiBodyFont,
+                    fontSize: smallFontSize,
+                    color: bodyTextColor,
+                  ),
+                ),
+            ],
           ),
         ),
       pw.SizedBox(height: math.max(2.0, sectionGap - 2)),

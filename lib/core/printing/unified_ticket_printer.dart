@@ -214,6 +214,14 @@ class UnifiedTicketPrinter {
       discountTotal: sale.discountTotal,
       electronicInvoiceCode:
           electronicInvoice?.ecf ?? sale.electronicInvoiceCode,
+      fiscalReceiptNumber: sale.ncfFull,
+      fiscalReceiptName: sale.fiscalReceiptName,
+      fiscalReceiptCode: sale.ncfType,
+      fiscalReceiptExpirationDate: sale.fiscalReceiptExpirationDateMs == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              sale.fiscalReceiptExpirationDateMs!,
+            ),
       electronicDocumentType:
           electronicInvoice?.tipoDocumento ?? sale.electronicDocumentType,
       electronicDgiiStatus: electronicInvoice?.estadoDgii,
@@ -307,6 +315,14 @@ class UnifiedTicketPrinter {
       discountTotal: sale.discountTotal,
       electronicInvoiceCode:
           electronicInvoice?.ecf ?? sale.electronicInvoiceCode,
+      fiscalReceiptNumber: sale.ncfFull,
+      fiscalReceiptName: sale.fiscalReceiptName,
+      fiscalReceiptCode: sale.ncfType,
+      fiscalReceiptExpirationDate: sale.fiscalReceiptExpirationDateMs == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              sale.fiscalReceiptExpirationDateMs!,
+            ),
       electronicDocumentType:
           electronicInvoice?.tipoDocumento ?? sale.electronicDocumentType,
       electronicDgiiStatus: electronicInvoice?.estadoDgii,

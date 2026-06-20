@@ -78,6 +78,8 @@ class SettingsRepository {
         id: null,
         itbisEnabledDefault: false,
         electronicInvoiceEnabledDefault: false,
+        fiscalEnabledDefault: false,
+        defaultNcfBookId: null,
         itbisRate: 0.18,
         ticketSize: '80mm',
         updatedAtMs: now,

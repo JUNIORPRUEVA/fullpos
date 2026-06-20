@@ -59,6 +59,8 @@ import '../../settings/data/printer_settings_repository.dart';
 import '../../settings/providers/business_settings_provider.dart';
 import '../../facturacion_electronica/data/electronic_company_repository.dart';
 import '../../facturacion_electronica/data/models/electronic_company_model.dart';
+import '../../fiscal_receipts/data/fiscal_receipt_models.dart';
+import '../../fiscal_receipts/data/fiscal_receipt_repository.dart';
 import '../data/app_settings_model.dart';
 import '../data/sale_item_model.dart';
 import '../data/sale_model.dart';
@@ -198,17 +200,22 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   double _categoryItemHeightFor(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    return _useCompactChromeFor(size) ? 40.0 : 48.0;
+    return _useCompactChromeFor(size) ? 58.0 : 64.0;
   }
 
-  double _categoryAvatarOuterSizeFor(BuildContext context) {
+  double _categoryCardWidthFor(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    return _useCompactChromeFor(size) ? 36.0 : 44.0;
+    return _useCompactChromeFor(size) ? 46.0 : 50.0;
   }
 
-  double _categoryAvatarInnerSizeFor(BuildContext context) {
+  double _categoryCardHeightFor(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    return _useCompactChromeFor(size) ? 30.0 : 36.0;
+    return _useCompactChromeFor(size) ? 54.0 : 58.0;
+  }
+
+  double _categoryCircleSizeFor(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return _useCompactChromeFor(size) ? 34.0 : 38.0;
   }
 
   _SalesResponsiveMetrics _salesMetricsFor(Size size) {
@@ -604,6 +611,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
   bool _isSearching = false;
 
   ElectronicCompanyModel? _electronicCompany;
+  FiscalReceiptSettingsModel _fiscalReceiptSettings =
+      const FiscalReceiptSettingsModel(enabled: false);
+  List<FiscalReceiptTypeModel> _fiscalReceiptTypes = const [];
   List<CategoryModel> _categories = [];
   final Set<int> _selectedCategoryIds = <int>{};
   bool _isCategorySidebarExpanded = false;
@@ -801,6 +811,25 @@ class _SalesPageState extends ConsumerState<SalesPage>
     } else {
       cart.documentType = _SalesDocumentType.consumidorFinal;
     }
+    cart.fiscalReceiptTypeId = _fiscalReceiptSettings.enabled
+        ? _resolveDefaultFiscalReceiptTypeId()
+        : null;
+  }
+
+  int? _resolveDefaultFiscalReceiptTypeId() {
+    final configured = _fiscalReceiptSettings.defaultReceiptTypeId;
+    if (configured != null &&
+        _fiscalReceiptTypes.any(
+          (type) => type.id == configured && type.isAvailable,
+        )) {
+      return configured;
+    }
+    final defaults = _fiscalReceiptTypes.where(
+      (type) => type.isDefault && type.isAvailable,
+    );
+    if (defaults.isNotEmpty) return defaults.first.id;
+    final active = _fiscalReceiptTypes.where((type) => type.isAvailable);
+    return active.isEmpty ? null : active.first.id;
   }
 
   BoxConstraints _ticketPanelConstraints(double width) {
@@ -1213,6 +1242,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
         tempCartRepo.getAllCarts(),
         SettingsRepository.getAppSettings(),
         ElectronicCompanyRepository.getOrCreate(),
+        FiscalReceiptRepository.getSettings(),
+        FiscalReceiptRepository.getActiveTypes(),
       ]);
       if (!mounted || token != _initialLoadToken) return;
 
@@ -1223,8 +1254,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
       final tempCarts = results[4] as List<Map<String, dynamic>>;
       final appSettings = results[5] as AppSettingsModel;
       final electronicCompany = results[6] as ElectronicCompanyModel;
+      final fiscalReceiptSettings = results[7] as FiscalReceiptSettingsModel;
+      final fiscalReceiptTypes = results[8] as List<FiscalReceiptTypeModel>;
       final electronicInvoicingFeatureEnabled =
           _isElectronicInvoicingFeatureEnabled;
+
+      _fiscalReceiptSettings = fiscalReceiptSettings;
+      _fiscalReceiptTypes = fiscalReceiptTypes;
 
       final loadedCarts = <_Cart>[];
 
@@ -1354,6 +1390,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
         _clients = clients;
         _appSettings = appSettings;
         _electronicCompany = electronicCompany;
+        _fiscalReceiptSettings = fiscalReceiptSettings;
+        _fiscalReceiptTypes = fiscalReceiptTypes;
         if (loadedCarts.isNotEmpty) {
           _carts.clear();
           _carts.addAll(loadedCarts);
@@ -4254,6 +4292,38 @@ class _SalesPageState extends ConsumerState<SalesPage>
               : _currentCart.selectedClient?.nombre);
       final resolvedCustomerPhone = effectiveClient?.telefono;
       final resolvedCustomerId = effectiveClient?.id;
+      final fiscalReceiptTypeId = _currentCart.fiscalReceiptTypeId;
+      if (_fiscalReceiptSettings.enabled && fiscalReceiptTypeId != null) {
+        final fiscalType = _fiscalReceiptTypes
+            .where((type) => type.id == fiscalReceiptTypeId)
+            .firstOrNull;
+        if (fiscalType == null || !fiscalType.isAvailable) {
+          FullPosNotifications.error(
+            'El comprobante seleccionado no está disponible.',
+            title: 'Comprobante fiscal',
+            deduplicationKey: 'ncf-type-unavailable',
+          );
+          return;
+        }
+        if (fiscalType.requiresCustomerTaxId &&
+            (selectedClientTaxId ?? '').trim().isEmpty) {
+          FullPosNotifications.error(
+            'Este comprobante requiere cliente con RNC/Cédula.',
+            title: 'Comprobante fiscal',
+            deduplicationKey: 'ncf-customer-tax-id-required',
+          );
+          return;
+        }
+        if (fiscalType.requiresCustomerName &&
+            (resolvedCustomerName ?? '').trim().isEmpty) {
+          FullPosNotifications.error(
+            'Este comprobante requiere nombre fiscal del cliente.',
+            title: 'Comprobante fiscal',
+            deduplicationKey: 'ncf-customer-name-required',
+          );
+          return;
+        }
+      }
       try {
         if (isLayaway) {
           saleId = await LayawayRepository.createLayawaySale(
@@ -4302,6 +4372,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
             electronicInvoiceCode: electronicInvoiceCode,
             electronicDocumentType: electronicDocumentType,
             electronicInvoiceEnabled: electronicInvoiceRequested,
+            fiscalReceiptTypeId: fiscalReceiptTypeId,
             paidAmount: receivedAmount,
             changeAmount: changeAmount > 0 ? changeAmount : 0,
             enforceLocalCodeIdempotency:
@@ -4362,6 +4433,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
             electronicInvoiceCode: electronicInvoiceCode,
             electronicDocumentType: electronicDocumentType,
             electronicInvoiceEnabled: electronicInvoiceRequested,
+            fiscalReceiptTypeId: fiscalReceiptTypeId,
             paidAmount: receivedAmount,
             changeAmount: changeAmount > 0 ? changeAmount : 0,
             enforceLocalCodeIdempotency:
@@ -4386,8 +4458,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
         _applyStockAdjustments(itemsPayload);
       }
 
+      final refreshedFiscalTypes = _fiscalReceiptSettings.enabled
+          ? await FiscalReceiptRepository.getActiveTypes()
+          : _fiscalReceiptTypes;
+
       if (!mounted) return;
       setState(() {
+        _fiscalReceiptTypes = refreshedFiscalTypes;
         if (cartIndexToRemove >= 0 && cartIndexToRemove < _carts.length) {
           _carts[cartIndexToRemove].isCompleted = true;
           _carts.removeAt(cartIndexToRemove);
@@ -5601,12 +5678,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final displayPrice = 'RD\$$formattedPrice';
 
     final cardBorderColor = isSelected
-        ? tealAccent
-        : isHovered
         ? tealAccent.withOpacity(0.55)
+        : isHovered
+        ? tealAccent.withOpacity(0.45)
         : const Color(0xFFE2E8F0);
 
-    final cardShadowColor = tealAccent.withOpacity(isHovered ? 0.18 : 0.07);
+    final cardShadowColor = tealAccent.withOpacity(isHovered ? 0.15 : 0.055);
 
     const cardRadius = BorderRadius.only(
       topLeft: Radius.circular(28),
@@ -5620,6 +5697,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final imageBoxSize = m.productImageBoxSize;
     final nameFontSize = m.productNameFontSize;
     final priceFontSize = m.productPriceFontSize;
+    final nameBlockHeight = isCompact ? 33.0 : 37.0;
+    final priceBlockHeight = isCompact ? 19.0 : 22.0;
     final cardPadding = isCompact
         ? const EdgeInsets.fromLTRB(14, 9, 14, 7)
         : const EdgeInsets.fromLTRB(18, 12, 18, 9);
@@ -5649,11 +5728,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
             curve: Curves.easeOutCubic,
             transform: Matrix4.translationValues(0, isHovered ? -3 : 0, 0),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isSelected ? const Color(0xFFF8FBFF) : Colors.white,
               borderRadius: cardRadius,
               border: Border.all(
                 color: cardBorderColor,
-                width: isSelected ? 1.5 : 1,
+                width: isSelected ? 1.15 : 1,
               ),
               boxShadow: [
                 BoxShadow(
@@ -5733,35 +5812,47 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               ),
                               const SizedBox(height: 4),
                               SizedBox(
-                                height: isCompact ? 28 : 31,
-                                child: Text(
-                                  product.name,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: nameColor.withOpacity(
-                                      isOutOfStock ? 0.62 : 1,
+                                height: nameBlockHeight,
+                                width: double.infinity,
+                                child: Center(
+                                  child: Text(
+                                    product.name,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: false,
+                                    style: TextStyle(
+                                      color: nameColor.withOpacity(
+                                        isOutOfStock ? 0.62 : 1,
+                                      ),
+                                      fontSize: nameFontSize,
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: 'Inter',
+                                      height: 1.1,
                                     ),
-                                    fontSize: nameFontSize,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.2,
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                displayPrice,
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: priceColorResolved.withOpacity(
-                                    isOutOfStock ? 0.72 : 1,
+                              SizedBox(
+                                height: priceBlockHeight,
+                                width: double.infinity,
+                                child: Align(
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    displayPrice,
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: priceColorResolved.withOpacity(
+                                        isOutOfStock ? 0.72 : 1,
+                                      ),
+                                      fontSize: priceFontSize,
+                                      fontWeight: FontWeight.w800,
+                                      fontFamily: 'Inter',
+                                      height: 1,
+                                    ),
                                   ),
-                                  fontSize: priceFontSize,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1,
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -5819,10 +5910,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
-                  border: Border.all(color: tealAccent, width: 1.6),
+                  border: Border.all(
+                    color: tealAccent.withOpacity(0.78),
+                    width: 1.35,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: tealAccent.withOpacity(0.16),
+                      color: tealAccent.withOpacity(0.13),
                       blurRadius: 8,
                       spreadRadius: -3,
                       offset: const Offset(0, 4),
@@ -6344,116 +6438,72 @@ class _SalesPageState extends ConsumerState<SalesPage>
         curve: Curves.easeOutCubic,
         width: isExpanded ? expandedWidth : collapsedWidth,
         decoration: const BoxDecoration(
-          color: Colors.white,
+          color: Color(0xFFF7FAFC),
           border: Border(
-            top: BorderSide(color: Color(0xFFE2E8F0), width: 1),
-            right: BorderSide(color: Color(0xFFE2E8F0), width: 1),
+            top: BorderSide(color: Color(0xFFE8EEF6), width: 1),
+            right: BorderSide(color: Color(0xFFDCE5F0), width: 1),
           ),
-        ),
-        child: Column(
-          children: [
-            if (_selectedCategoryIds.isNotEmpty)
-              _buildClearCategoryFilterButton(isExpanded: isExpanded),
-            Expanded(
-              child: ListView.separated(
-                padding: EdgeInsets.fromLTRB(
-                  isExpanded ? 0 : 0,
-                  topPadding,
-                  isExpanded ? 0 : 0,
-                  useCompactChrome ? 2 : 4,
-                ),
-                itemCount: _categories.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 0),
-                itemBuilder: (context, index) {
-                  final category = _categories[index];
-                  final isSelected =
-                      category.id != null &&
-                      _selectedCategoryIds.contains(category.id);
-                  final avatarColor = _categorySidebarColor(index);
-                  final normalizedPath = (category.imagePath ?? '').trim();
-                  final hasImage =
-                      normalizedPath.isNotEmpty &&
-                      File(normalizedPath).existsSync();
-                  final trimmedName = category.name.trim();
-                  final initial = trimmedName.isEmpty
-                      ? '?'
-                      : trimmedName.substring(0, 1).toUpperCase();
-
-                  return Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () => _onCategorySelected(category.id),
-                      borderRadius: BorderRadius.zero,
-                      splashColor: Colors.transparent,
-                      highlightColor: Colors.transparent,
-                      hoverColor: isExpanded
-                          ? const Color(0xFFF8FAFC)
-                          : Colors.transparent,
-                      overlayColor: WidgetStateProperty.all(Colors.transparent),
-                      child: SizedBox(
-                        width: isExpanded ? expandedWidth : collapsedWidth,
-                        height: categoryItemHeight,
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final showExpandedLayout =
-                                isExpanded && constraints.maxWidth >= 140;
-                            if (!showExpandedLayout) {
-                              return Center(
-                                child: _buildCategoryAvatar(
-                                  hasImage: hasImage,
-                                  imagePath: normalizedPath,
-                                  initial: initial,
-                                  isSelected: isSelected,
-                                  fillColor: avatarColor,
-                                ),
-                              );
-                            }
-
-                            return Padding(
-                              padding: EdgeInsets.only(
-                                right: useCompactChrome ? 10 : 12,
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    width: avatarLaneWidth,
-                                    child: Center(
-                                      child: _buildCategoryAvatar(
-                                        hasImage: hasImage,
-                                        imagePath: normalizedPath,
-                                        initial: initial,
-                                        isSelected: isSelected,
-                                        fillColor: avatarColor,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: useCompactChrome ? 8 : 12),
-                                  Expanded(
-                                    child: Text(
-                                      category.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      softWrap: false,
-                                      style: TextStyle(
-                                        color: const Color(0xFF172033),
-                                        fontSize: useCompactChrome ? 13 : 14,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x080F172A),
+              blurRadius: 12,
+              offset: Offset(2, 0),
             ),
           ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: useCompactChrome ? 3 : 5),
+          child: Column(
+            children: [
+              if (_selectedCategoryIds.isNotEmpty)
+                _buildClearCategoryFilterButton(isExpanded: isExpanded),
+              Expanded(
+                child: ListView.separated(
+                  padding: EdgeInsets.fromLTRB(
+                    useCompactChrome ? 4 : 6,
+                    topPadding,
+                    useCompactChrome ? 5 : 7,
+                    useCompactChrome ? 2 : 4,
+                  ),
+                  itemCount: _categories.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 0),
+                  itemBuilder: (context, index) {
+                    final category = _categories[index];
+                    final isSelected =
+                        category.id != null &&
+                        _selectedCategoryIds.contains(category.id);
+                    final avatarColor = _categorySidebarColor(index);
+                    final normalizedPath = (category.imagePath ?? '').trim();
+                    final hasImage =
+                        normalizedPath.isNotEmpty &&
+                        File(normalizedPath).existsSync();
+                    final trimmedName = category.name.trim();
+                    final initial = trimmedName.isEmpty
+                        ? '?'
+                        : trimmedName.substring(0, 1).toUpperCase();
+
+                    return _CategorySidebarItem(
+                      isSelected: isSelected,
+                      categoryItemHeight: categoryItemHeight,
+                      isExpanded: isExpanded,
+                      useCompactChrome: useCompactChrome,
+                      avatarLaneWidth: avatarLaneWidth,
+                      onTap: () => _onCategorySelected(category.id),
+                      avatar: _buildCategoryAvatar(
+                        hasImage: hasImage,
+                        imagePath: normalizedPath,
+                        initial: initial,
+                        isSelected: isSelected,
+                        fillColor: avatarColor,
+                      ),
+                      name: category.name,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -6469,62 +6519,88 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final screenSize = MediaQuery.sizeOf(context);
     final useCompactChrome = _useCompactChromeFor(screenSize);
 
-    final outerSize = _categoryAvatarOuterSizeFor(context);
-    final innerSize = _categoryAvatarInnerSizeFor(context);
-    final padding = useCompactChrome ? 2.0 : 2.5;
-    final ringWidth = useCompactChrome ? 1.8 : 2.2;
-    final fontSize = useCompactChrome ? 14.5 : 18.0;
+    // Tamaños para la mini tarjeta (usando métodos responsive)
+    final cardWidth = _categoryCardWidthFor(context);
+    final cardHeight = _categoryCardHeightFor(context);
+    final circleSize = _categoryCircleSizeFor(context);
+    final iconSize = useCompactChrome ? 18.0 : 20.0;
+    final borderRadius = 14.0;
 
-    final selectedFillColor = Color.alphaBlend(
-      Colors.black.withOpacity(0.18),
-      fillColor,
-    );
-    final ringColor = fillColor.withOpacity(0.34);
+    // Colores del diseño
+    const Color primaryBlue = Color(0xFF1A56DB);
+    const Color softBlueBg = Color(0xFFEFF6FF);
+    const Color softBlueBorder = Color(0xFFBFDBFE);
+    const Color cardBorder = Color(0xFFD9E3F0);
 
     return Container(
-      width: outerSize,
-      height: outerSize,
-      padding: EdgeInsets.all(padding),
-      alignment: Alignment.center,
+      width: cardWidth,
+      height: cardHeight,
       decoration: BoxDecoration(
-        color: Colors.transparent,
-        shape: BoxShape.circle,
-        border: isSelected
-            ? Border.all(color: ringColor, width: ringWidth)
-            : null,
-      ),
-      child: Container(
-        width: innerSize,
-        height: innerSize,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? selectedFillColor : fillColor,
-          shape: BoxShape.circle,
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: selectedFillColor.withOpacity(0.18),
-                    blurRadius: 10,
-                    spreadRadius: -2,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : null,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(
+          color: isSelected ? primaryBlue : cardBorder,
+          width: isSelected ? 1.5 : 1.0,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: hasImage
-            ? Image.file(File(imagePath), fit: BoxFit.cover)
-            : Text(
-                initial,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: fontSize,
-                  fontWeight: FontWeight.w500,
-                  height: 1.3,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Barra lateral azul cuando está seleccionado
+          if (isSelected)
+            Positioned(
+              left: 0,
+              top: 4,
+              bottom: 4,
+              child: Container(
+                width: 3,
+                decoration: BoxDecoration(
+                  color: primaryBlue,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
+            ),
+          Center(
+            child: Container(
+              width: circleSize,
+              height: circleSize,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFFDBEAFE) : softBlueBg,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected ? primaryBlue : softBlueBorder,
+                  width: isSelected ? 1.5 : 1.0,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: hasImage
+                  ? ClipOval(
+                      child: Image.file(
+                        File(imagePath),
+                        width: circleSize,
+                        height: circleSize,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) =>
+                            _buildCategoryFallbackIcon(primaryBlue, iconSize),
+                      ),
+                    )
+                  : _buildCategoryFallbackIcon(primaryBlue, iconSize),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _buildCategoryFallbackIcon(Color color, double size) {
+    return Icon(Icons.category_outlined, color: color, size: size);
   }
 
   Widget _build3DControlBar({_SalesResponsiveMetrics? metrics}) {
@@ -7552,16 +7628,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
         );
 
     const fullposBlue = Color(0xFF1A56DB);
-    const borderColor = Color(0xFFD7E0EA);
     const panelBackground = Color(0xFFF8FAFC);
     const activeGreen = Color(0xFF16A34A);
-
-    const headerRadius = BorderRadius.only(
-      topLeft: Radius.circular(18),
-      topRight: Radius.circular(7),
-      bottomLeft: Radius.circular(7),
-      bottomRight: Radius.circular(18),
-    );
 
     const statusRadius = BorderRadius.only(
       topLeft: Radius.circular(9),
@@ -7577,200 +7645,142 @@ class _SalesPageState extends ConsumerState<SalesPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(hp - 6, vp, hp - 6, 0),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: headerRadius,
-              border: Border.all(color: borderColor, width: 0.9),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.035),
-                  blurRadius: 12,
-                  spreadRadius: -4,
-                  offset: const Offset(0, 5),
-                ),
-              ],
+        Container(
+          padding: EdgeInsets.fromLTRB(hp - 2, vp, hp - 2, isCompact ? 9 : 11),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
             ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              children: [
-                Positioned(
-                  left: 0,
-                  top: 13,
-                  bottom: 13,
-                  child: Container(
-                    width: 4,
-                    decoration: const BoxDecoration(
-                      color: fullposBlue,
-                      borderRadius: BorderRadius.horizontal(
-                        right: Radius.circular(8),
-                      ),
-                    ),
-                  ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 3,
+                height: isCompact ? 34 : 38,
+                decoration: const BoxDecoration(
+                  color: fullposBlue,
+                  borderRadius: BorderRadius.all(Radius.circular(999)),
                 ),
-
-                Positioned(
-                  right: -34,
-                  bottom: -34,
-                  child: IgnorePointer(
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: fullposBlue.withOpacity(0.035),
-                      ),
-                    ),
-                  ),
-                ),
-
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    isCompact ? 14 : 18,
-                    isCompact ? 10 : 13,
-                    isCompact ? 10 : 14,
-                    isCompact ? 10 : 13,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
+              ),
+              SizedBox(width: isCompact ? 10 : 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Factura de venta',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: salesDetailTextColor,
+                              fontSize: isCompact ? 15.2 : 16.6,
+                              fontWeight: FontWeight.w700,
+                              height: 1.05,
+                              letterSpacing: -0.28,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Tooltip(
+                          message: 'Venta activa',
+                          waitDuration: const Duration(milliseconds: 350),
+                          child: Container(
+                            width: isCompact ? 23 : 25,
+                            height: isCompact ? 23 : 25,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: statusRadius,
+                              border: Border.all(
+                                color: activeGreen.withOpacity(0.20),
+                                width: 0.8,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Stack(
+                              alignment: Alignment.center,
                               children: [
-                                Flexible(
-                                  child: Text(
-                                    'Factura de venta',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: salesDetailTextColor,
-                                      fontSize: isCompact ? 15 : 16.5,
-                                      fontWeight: FontWeight.w800,
-                                      height: 1.05,
-                                      letterSpacing: -0.28,
-                                    ),
-                                  ),
+                                Icon(
+                                  Icons.point_of_sale_rounded,
+                                  size: isCompact ? 13 : 14,
+                                  color: fullposBlue.withOpacity(0.82),
                                 ),
-
-                                const SizedBox(width: 7),
-
-                                Tooltip(
-                                  message: 'Venta activa',
-                                  waitDuration: const Duration(
-                                    milliseconds: 350,
-                                  ),
+                                Positioned(
+                                  right: 3,
+                                  top: 3,
                                   child: Container(
-                                    width: isCompact ? 24 : 26,
-                                    height: isCompact ? 24 : 26,
+                                    width: 5,
+                                    height: 5,
                                     decoration: BoxDecoration(
-                                      color: Color.alphaBlend(
-                                        activeGreen.withOpacity(0.08),
-                                        Colors.white,
-                                      ),
-                                      borderRadius: statusRadius,
+                                      color: activeGreen,
+                                      shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: activeGreen.withOpacity(0.18),
-                                        width: 0.9,
+                                        color: Colors.white,
+                                        width: 0.8,
                                       ),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.point_of_sale_rounded,
-                                          size: isCompact ? 14 : 15,
-                                          color: fullposBlue.withOpacity(0.88),
-                                        ),
-                                        Positioned(
-                                          right: 3,
-                                          top: 3,
-                                          child: Container(
-                                            width: 6,
-                                            height: 6,
-                                            decoration: BoxDecoration(
-                                              color: activeGreen,
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: Colors.white,
-                                                width: 1,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
                                     ),
                                   ),
                                 ),
                               ],
                             ),
-
-                            const SizedBox(height: 5),
-
-                            Text(
-                              'Cliente, comprobante y productos de la venta',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: salesDetailMutedTextColor,
-                                fontSize: isCompact ? 10 : 10.8,
-                                fontWeight: FontWeight.w500,
-                                height: 1.15,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Cliente, comprobante y productos de la venta',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: salesDetailMutedTextColor,
+                        fontSize: isCompact ? 9.8 : 10.6,
+                        fontWeight: FontWeight.w500,
+                        height: 1.15,
                       ),
-
-                      const SizedBox(width: 8),
-
-                      _buildQuickDiscountButton(),
-
-                      const SizedBox(width: 6),
-
-                      _buildQuoteHeaderIconAction(
-                        id: 'save-quote-header',
-                        icon: Icons.description_outlined,
-                        tooltip: 'Convertir venta en cotización PDF',
-                        onTap:
-                            _currentCart.items.isEmpty || _isQuotePdfFlowRunning
-                            ? null
-                            : () => unawaited(
-                                _saveQuoteFromHeaderAndShowDialog(),
-                              ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              _buildQuickDiscountButton(),
+              const SizedBox(width: 6),
+              _buildQuoteHeaderIconAction(
+                id: 'save-quote-header',
+                icon: Icons.description_outlined,
+                tooltip: 'Convertir venta en cotización PDF',
+                onTap: _currentCart.items.isEmpty || _isQuotePdfFlowRunning
+                    ? null
+                    : () => unawaited(_saveQuoteFromHeaderAndShowDialog()),
+              ),
+            ],
           ),
         ),
 
-        Padding(
-          padding: EdgeInsets.fromLTRB(hp - 6, isCompact ? 6 : 8, hp - 6, 0),
+        Container(
+          color: Colors.white,
+          padding: EdgeInsets.fromLTRB(
+            hp - 2,
+            isCompact ? 8 : 10,
+            hp - 2,
+            isCompact ? 8 : 10,
+          ),
           child: Container(
             padding: EdgeInsets.fromLTRB(
               isCompact ? 8 : 10,
-              isCompact ? 7 : 9,
+              isCompact ? 7 : 8,
               isCompact ? 8 : 10,
-              isCompact ? 8 : 10,
+              isCompact ? 7 : 8,
             ),
             decoration: BoxDecoration(
               color: panelBackground,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(13),
-                topRight: Radius.circular(6),
-                bottomLeft: Radius.circular(6),
-                bottomRight: Radius.circular(13),
-              ),
-              border: Border.all(color: borderColor, width: 0.85),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 0.75),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -7806,8 +7816,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   Widget _buildQuickDiscountButton() {
     const fullposBlue = Color(0xFF1A56DB);
-    const softBlueBg = Color(0xFFDBE5FF);
-    const borderColor = Color(0xFFBFD1FF);
+    const softBlueBg = Color(0xFFF8FAFC);
+    const borderColor = Color(0xFFD9E3F0);
     const size = 36.0;
 
     return Tooltip(
@@ -7817,18 +7827,18 @@ class _SalesPageState extends ConsumerState<SalesPage>
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _showQuickDiscountMenu(),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(11),
           child: Container(
             width: size,
             height: size,
             decoration: BoxDecoration(
               color: softBlueBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: borderColor, width: 1),
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: borderColor, width: 0.9),
             ),
             child: const Icon(
               Icons.flash_on_rounded,
-              size: 18,
+              size: 17,
               color: fullposBlue,
             ),
           ),
@@ -8169,8 +8179,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final isDisabled = onTap == null;
 
     const brandColor = Color(0xFF1A56DB);
-    const softBrandBg = Color(0xFFDBE5FF);
-    const borderColor = Color(0xFFBFD1FF);
+    const softBrandBg = Color(0xFFEFF6FF);
+    const borderColor = Color(0xFFD9E3F0);
 
     return MouseRegion(
       cursor: isDisabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
@@ -8194,31 +8204,35 @@ class _SalesPageState extends ConsumerState<SalesPage>
             color: Colors.transparent,
             child: InkWell(
               onTap: onTap,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(11),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 160),
                 width: 36,
                 height: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isHovered ? softBrandBg : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  color: isHovered
+                      ? softBrandBg.withOpacity(0.75)
+                      : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(11),
                   border: Border.all(
-                    color: isHovered ? brandColor : borderColor,
-                    width: 1,
+                    color: isHovered
+                        ? brandColor.withOpacity(0.30)
+                        : borderColor,
+                    width: 0.9,
                   ),
                   boxShadow: [
                     if (isHovered && !isDisabled)
                       BoxShadow(
-                        color: brandColor.withOpacity(0.14),
-                        blurRadius: 12,
+                        color: brandColor.withOpacity(0.08),
+                        blurRadius: 9,
                         offset: const Offset(0, 4),
                       ),
                   ],
                 ),
                 child: Icon(
                   icon,
-                  size: 20,
+                  size: 19,
                   color: isDisabled ? const Color(0xFF94A3B8) : brandColor,
                 ),
               ),
@@ -9596,6 +9610,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   Widget _buildPanelDocumentTypeDropdown() {
+    if (_fiscalReceiptSettings.enabled) {
+      return _buildPanelFiscalReceiptDropdown();
+    }
+
     final currentType = _currentSalesDocumentType;
     final availableTypes = <_SalesDocumentType>[
       _SalesDocumentType.consumidorFinal,
@@ -9628,6 +9646,80 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           unawaited(_setSalesDocumentType(type));
                         },
                       ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPanelFiscalReceiptDropdown() {
+    final activeTypes = _fiscalReceiptTypes
+        .where((type) => type.isAvailable)
+        .toList(growable: false);
+    final selectedId = _currentCart.fiscalReceiptTypeId;
+    final selected = activeTypes
+        .where((type) => type.id == selectedId)
+        .firstOrNull;
+    final label = selected == null
+        ? 'Sin comprobante'
+        : '${selected.name} · ${selected.nextReceiptNumber}';
+
+    return Builder(
+      builder: (fieldContext) => _buildProfessionalDropdownField(
+        supportingText: 'Comprobante fiscal',
+        value: activeTypes.isEmpty ? 'Configura comprobantes' : label,
+        onTap: () => unawaited(
+          _showAnchoredPopover<void>(
+            anchorContext: fieldContext,
+            width: 340,
+            maxHeight: 320,
+            childBuilder: (dialogContext, close) {
+              return _buildProfessionalDropdownSurface(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shrinkWrap: true,
+                  children: [
+                    _buildDropdownGroupHeader('NCF locales'),
+                    if (activeTypes.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 10, 16, 14),
+                        child: Text(
+                          'Configura comprobantes fiscales en Configuración > Comprobantes.',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12.5,
+                            height: 1.25,
+                          ),
+                        ),
+                      )
+                    else ...[
+                      _buildDropdownOptionTile(
+                        title: 'Sin comprobante',
+                        selected: selectedId == null,
+                        onTap: () {
+                          close();
+                          _updateCurrentCart(() {
+                            _currentCart.fiscalReceiptTypeId = null;
+                          });
+                        },
+                      ),
+                      for (final type in activeTypes)
+                        _buildDropdownOptionTile(
+                          title: '${type.name} (${type.code})',
+                          trailingText: type.nextReceiptNumber,
+                          selected: type.id == selectedId,
+                          onTap: () {
+                            close();
+                            _updateCurrentCart(() {
+                              _currentCart.fiscalReceiptTypeId = type.id;
+                            });
+                          },
+                        ),
+                    ],
                   ],
                 ),
               );
@@ -10383,8 +10475,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
     const listKey = ValueKey<String>('ticket_items_list');
 
     const panelBackground = Color(0xFFF8FAFC);
-    const listBackground = Colors.white;
-    const panelBorderColor = Color(0xFFD3DCE6);
+    const listBackground = Color(0xFFFAFCFE);
+    const panelBorderColor = Color(0xFFD9E3F0);
 
     final m =
         metrics ??
@@ -10433,7 +10525,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           primary: false,
           shrinkWrap: embedded,
           physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(0, 2, 0, 2),
+          padding: const EdgeInsets.fromLTRB(0, 3, 0, 3),
           itemCount: _currentCart.items.length,
           separatorBuilder: (context, index) {
             return const SizedBox.shrink();
@@ -10486,7 +10578,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
               bottomRight: Radius.circular(12),
             ),
             border: hasItems
-                ? Border.all(color: panelBorderColor, width: 0.8)
+                ? Border.all(color: panelBorderColor, width: 0.75)
                 : null,
           ),
           clipBehavior: Clip.antiAlias,
@@ -10586,9 +10678,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final isHovered = _hoveredCartItemIndexes.contains(index);
     final animationToken = _cartItemAnimationTokens[index] ?? 0;
     final subtotal = (item.qty * item.unitPrice) - item.discountLine;
-    final rowDividerColor = salesDetailBorderColor;
+    const rowDividerColor = Color(0xFFE8EEF6);
     final showActions = isHovered;
-    final rowBackground = Colors.white;
+    final rowBackground = isHovered ? const Color(0xFFFAFCFF) : Colors.white;
     final isNewItem = animationToken > 0;
 
     return TweenAnimationBuilder<double>(
@@ -10666,8 +10758,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
             padding: EdgeInsets.symmetric(
-              horizontal: isCompact ? 6 : 8,
-              vertical: isCompact ? 8 : 12,
+              horizontal: isCompact ? 8 : 10,
+              vertical: isCompact ? 8.5 : 10.5,
             ),
             decoration: BoxDecoration(
               color: rowBackground,
@@ -10678,7 +10770,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // LEFT: Product name (2 lines max, no truncated unit price)
+                // LEFT: Product name and unit price.
                 Expanded(
                   flex: isCompact ? 5 : 4,
                   child: Column(
@@ -10688,22 +10780,22 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       Text(
                         item.productNameSnapshot,
                         style: TextStyle(
-                          fontSize: isCompact ? 12.8 : 14.5,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF0F172A),
-                          height: 1.2,
-                          letterSpacing: -0.2,
+                          fontSize: isCompact ? 12.6 : 13.8,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF111827),
+                          height: 1.12,
+                          letterSpacing: -0.12,
                         ),
-                        maxLines: isCompact ? 2 : 1,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        softWrap: false,
                       ),
-                      // Unit price below product name (visible in all modes)
-                      SizedBox(height: isCompact ? 5 : 7),
+                      SizedBox(height: isCompact ? 4 : 6),
                       Text(
                         'RD\$${CurrencyDisplay.formatPlain(item.unitPrice, decimalDigits: 2)}',
                         style: TextStyle(
-                          fontSize: isCompact ? 11 : 12,
-                          fontWeight: FontWeight.w500,
+                          fontSize: isCompact ? 10.6 : 11.5,
+                          fontWeight: FontWeight.w600,
                           color: const Color(0xFF64748B),
                           height: 1.0,
                         ),
@@ -10713,11 +10805,20 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     ],
                   ),
                 ),
-                SizedBox(width: isCompact ? 8 : 18),
+                SizedBox(width: isCompact ? 8 : 14),
 
-                // MIDDLE: Compact quantity controls
-                SizedBox(
-                  width: isCompact ? 82 : 118,
+                // MIDDLE: Compact quantity controls.
+                Container(
+                  width: isCompact ? 84 : 112,
+                  height: isCompact ? 30 : 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: const Color(0xFFE2E8F0),
+                      width: 0.85,
+                    ),
+                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -10734,50 +10835,51 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         },
                         borderRadius: BorderRadius.circular(8),
                         child: SizedBox(
-                          width: isCompact ? 24 : 22,
-                          height: isCompact ? 24 : 22,
+                          width: isCompact ? 24 : 26,
+                          height: isCompact ? 24 : 26,
                           child: Icon(
                             Icons.remove,
-                            size: isCompact ? 16 : 18,
-                            color: const Color(0xFFC1C9D6),
+                            size: isCompact ? 15 : 16,
+                            color: const Color(0xFF64748B),
                           ),
                         ),
                       ),
-                      SizedBox(width: isCompact ? 6 : 14),
-                      Text(
-                        item.qty == item.qty.roundToDouble()
-                            ? item.qty.toStringAsFixed(0)
-                            : item.qty.toStringAsFixed(2),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: isCompact ? 13.5 : 14.5,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF0F172A),
-                          height: 1.0,
+                      SizedBox(
+                        width: isCompact ? 24 : 28,
+                        child: Text(
+                          item.qty == item.qty.roundToDouble()
+                              ? item.qty.toStringAsFixed(0)
+                              : item.qty.toStringAsFixed(2),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: isCompact ? 13.2 : 14,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF111827),
+                            height: 1.0,
+                          ),
                         ),
                       ),
-                      SizedBox(width: isCompact ? 6 : 14),
                       InkWell(
                         onTap: () => _incrementCartItemQty(item, index),
                         borderRadius: BorderRadius.circular(8),
                         child: SizedBox(
-                          width: isCompact ? 24 : 22,
-                          height: isCompact ? 24 : 22,
+                          width: isCompact ? 24 : 26,
+                          height: isCompact ? 24 : 26,
                           child: Icon(
                             Icons.add,
-                            size: isCompact ? 16 : 18,
-                            color: const Color(0xFFC1C9D6),
+                            size: isCompact ? 15 : 16,
+                            color: const Color(0xFF2563EB),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                SizedBox(width: isCompact ? 8 : 16),
+                SizedBox(width: isCompact ? 8 : 12),
 
-                // RIGHT: Total line price + hover actions
+                // RIGHT: Total line price + hover actions.
                 SizedBox(
-                  width: isCompact ? 95 : 182,
+                  width: isCompact ? 92 : 150,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     mainAxisSize: MainAxisSize.min,
@@ -10791,10 +10893,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             'RD\$${CurrencyDisplay.formatPlain(subtotal, decimalDigits: 2)}',
                             textAlign: TextAlign.right,
                             style: TextStyle(
-                              fontSize: isCompact ? 14 : 14.5,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF0F172A),
+                              fontSize: isCompact ? 13.4 : 14.2,
+                              fontWeight: FontWeight.w800,
+                              color: const Color(0xFF111827),
                               height: 1.0,
+                              letterSpacing: -0.18,
                             ),
                           ),
                         ),
@@ -11069,11 +11172,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 6,
                 isCompact ? 5 : 6,
               ),
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: Colors.white,
                 borderRadius: secondaryRadius,
-                border: Border.all(color: borderColor, width: 0.85),
+                border: Border.all(color: const Color(0xFFE2E8F0), width: 0.85),
               ),
               child: Column(
                 children: [
@@ -11128,7 +11231,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         EdgeInsets.fromLTRB(
                           isCompact ? 16 : 20,
                           8,
-                          isCompact ? 16 : 20,
+                          isCompact ? 20 : 24,
                           8,
                         ),
                       ),
@@ -11170,19 +11273,22 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              totalLabel,
-                              maxLines: 1,
-                              softWrap: false,
-                              textAlign: TextAlign.right,
-                              style: TextStyle(
-                                fontSize: isCompact ? 24 : 26,
-                                fontWeight: FontWeight.w900,
-                                height: 1,
-                                letterSpacing: -0.45,
+                          child: Padding(
+                            padding: EdgeInsets.only(right: isCompact ? 2 : 4),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                totalLabel,
+                                maxLines: 1,
+                                softWrap: false,
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  fontSize: isCompact ? 24 : 26,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1,
+                                  letterSpacing: -0.45,
+                                ),
                               ),
                             ),
                           ),
@@ -11234,7 +11340,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     style: TextStyle(
                                       color: fullposBlue,
                                       fontSize: 10.5,
-                                      fontWeight: FontWeight.w900,
+                                      fontWeight: FontWeight.w800,
                                       height: 1,
                                     ),
                                   ),
@@ -11357,7 +11463,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       style: TextStyle(
                         color: canSell ? scheme.error : const Color(0xFF94A3B8),
                         fontSize: isCompact ? 12 : 12.5,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         height: 1,
                       ),
                     ),
@@ -11392,7 +11498,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     Color? color,
   }) {
     final labelColor = color ?? const Color(0xFF64748B);
-    final valueColor = color ?? const Color(0xFF334155);
+    final valueColor = color ?? const Color(0xFF111827);
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -11402,7 +11508,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
             label,
             style: TextStyle(
               fontSize: isTotal ? 14.5 : 13.2,
-              fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500,
+              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
               color: labelColor,
               height: 1.18,
               letterSpacing: 0.1,
@@ -11414,7 +11520,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           CurrencyDisplay.format(amount, decimalDigits: 2),
           style: TextStyle(
             fontSize: isTotal ? 17 : 15.2,
-            fontWeight: isTotal ? FontWeight.w600 : FontWeight.w500,
+            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w700,
             color: valueColor,
             height: 1.12,
             letterSpacing: 0.05,
@@ -12194,6 +12300,7 @@ class _Cart {
   bool itbisEnabled = true;
   double itbisRate = 0.18;
   bool electronicInvoiceEnabled = false;
+  int? fiscalReceiptTypeId;
   _SalesDocumentType documentType = _SalesDocumentType.consumidorFinal;
   ClientModel? selectedClient;
 
@@ -12289,6 +12396,7 @@ class _Cart {
     selectedClient = null;
     documentType = _SalesDocumentType.consumidorFinal;
     electronicInvoiceEnabled = false;
+    fiscalReceiptTypeId = null;
   }
 
   double calculateGrossSubtotal() {
@@ -12387,6 +12495,125 @@ class IncreaseQuantityIntent extends Intent {
 
 class DecreaseQuantityIntent extends Intent {
   const DecreaseQuantityIntent();
+}
+
+/// Widget para cada item del sidebar de categorías con hover elegante.
+class _CategorySidebarItem extends StatefulWidget {
+  final bool isSelected;
+  final double categoryItemHeight;
+  final bool isExpanded;
+  final bool useCompactChrome;
+  final double avatarLaneWidth;
+  final VoidCallback onTap;
+  final Widget avatar;
+  final String name;
+
+  const _CategorySidebarItem({
+    required this.isSelected,
+    required this.categoryItemHeight,
+    required this.isExpanded,
+    required this.useCompactChrome,
+    required this.avatarLaneWidth,
+    required this.onTap,
+    required this.avatar,
+    required this.name,
+  });
+
+  @override
+  State<_CategorySidebarItem> createState() => _CategorySidebarItemState();
+}
+
+class _CategorySidebarItemState extends State<_CategorySidebarItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = widget.isSelected;
+    final isHovered = _isHovered;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        width: double.infinity,
+        height: widget.categoryItemHeight,
+        decoration: BoxDecoration(
+          color: isHovered
+              ? const Color(0xFFEFF6FF)
+              : Colors.transparent,
+          border: Border(
+            left: BorderSide(
+              color: isSelected
+                  ? const Color(0xFF1A56DB)
+                  : (isHovered
+                      ? const Color(0xFF1A56DB).withOpacity(0.3)
+                      : Colors.transparent),
+              width: isSelected ? 3 : 1.5,
+            ),
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.zero,
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            child: SizedBox(
+              width: double.infinity,
+              height: widget.categoryItemHeight,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final showExpandedLayout =
+                      widget.isExpanded && constraints.maxWidth >= 140;
+                  if (!showExpandedLayout) {
+                    return Center(
+                      child: widget.avatar,
+                    );
+                  }
+
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      right: widget.useCompactChrome ? 10 : 12,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: widget.avatarLaneWidth,
+                          child: Center(
+                            child: widget.avatar,
+                          ),
+                        ),
+                        SizedBox(width: widget.useCompactChrome ? 8 : 12),
+                        Expanded(
+                          child: Text(
+                            widget.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: TextStyle(
+                              color: const Color(0xFF172033),
+                              fontSize: widget.useCompactChrome ? 13 : 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Widget que envuelve un nuevo item del carrito y le aplica un efecto

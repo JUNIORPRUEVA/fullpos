@@ -57,6 +57,12 @@ class TicketData {
   /// Codigo de documento electronico
   final String? electronicInvoiceCode;
 
+  /// Comprobante fiscal local/NCF (no e-CF).
+  final String? fiscalReceiptNumber;
+  final String? fiscalReceiptName;
+  final String? fiscalReceiptCode;
+  final DateTime? fiscalReceiptExpirationDate;
+
   /// Tipo de documento electronico/fiscal cuando aplica.
   final String? electronicDocumentType;
 
@@ -112,6 +118,10 @@ class TicketData {
     this.creditDueDate,
     this.creditNote,
     this.electronicInvoiceCode,
+    this.fiscalReceiptNumber,
+    this.fiscalReceiptName,
+    this.fiscalReceiptCode,
+    this.fiscalReceiptExpirationDate,
     this.electronicDocumentType,
     this.electronicDgiiStatus,
     this.electronicTrackId,
@@ -168,6 +178,10 @@ class TicketData {
     required double changeAmount,
     required double discountTotal,
     String? electronicInvoiceCode,
+    String? fiscalReceiptNumber,
+    String? fiscalReceiptName,
+    String? fiscalReceiptCode,
+    DateTime? fiscalReceiptExpirationDate,
     String? electronicDocumentType,
     String? electronicDgiiStatus,
     String? electronicTrackId,
@@ -214,6 +228,10 @@ class TicketData {
       creditDueDate: creditDueDate,
       creditNote: creditNote,
       electronicInvoiceCode: electronicInvoiceCode,
+      fiscalReceiptNumber: fiscalReceiptNumber,
+      fiscalReceiptName: fiscalReceiptName,
+      fiscalReceiptCode: fiscalReceiptCode,
+      fiscalReceiptExpirationDate: fiscalReceiptExpirationDate,
       electronicDocumentType: electronicDocumentType,
       electronicDgiiStatus: electronicDgiiStatus,
       electronicTrackId: electronicTrackId,
@@ -268,6 +286,10 @@ class TicketData {
     DateTime? creditDueDate,
     String? creditNote,
     String? electronicInvoiceCode,
+    String? fiscalReceiptNumber,
+    String? fiscalReceiptName,
+    String? fiscalReceiptCode,
+    DateTime? fiscalReceiptExpirationDate,
     String? electronicDocumentType,
     String? electronicDgiiStatus,
     String? electronicTrackId,
@@ -303,6 +325,11 @@ class TicketData {
       creditNote: creditNote ?? this.creditNote,
       electronicInvoiceCode:
           electronicInvoiceCode ?? this.electronicInvoiceCode,
+      fiscalReceiptNumber: fiscalReceiptNumber ?? this.fiscalReceiptNumber,
+      fiscalReceiptName: fiscalReceiptName ?? this.fiscalReceiptName,
+      fiscalReceiptCode: fiscalReceiptCode ?? this.fiscalReceiptCode,
+      fiscalReceiptExpirationDate:
+          fiscalReceiptExpirationDate ?? this.fiscalReceiptExpirationDate,
       electronicDocumentType:
           electronicDocumentType ?? this.electronicDocumentType,
       electronicDgiiStatus: electronicDgiiStatus ?? this.electronicDgiiStatus,

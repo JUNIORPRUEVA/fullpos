@@ -10,6 +10,7 @@ import '../backup/backup_zip.dart';
 import '../config/app_config.dart';
 import '../database/migrations/migration_safety.dart';
 import '../utils/color_utils.dart';
+import '../../features/fiscal_receipts/data/fiscal_receipt_repository.dart';
 import 'db_init.dart';
 import 'tables.dart';
 
@@ -4423,6 +4424,7 @@ class AppDb {
     await _ensureSecurityTables(db);
     await _ensureBackupTables(db);
     await _ensureElectronicInvoicingTables(db);
+    await FiscalReceiptRepository.ensureSchema(db);
     await _ensureProductCodeIndex(db);
     // Crear tablas críticas si faltan
     await db.execute('''

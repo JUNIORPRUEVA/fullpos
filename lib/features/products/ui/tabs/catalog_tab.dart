@@ -23,15 +23,15 @@ import '../../utils/products_exporter.dart';
 import '../../utils/products_importer.dart';
 import '../../utils/catalog_pdf_launcher.dart';
 import '../../../../core/sync/product_sync_event_bus.dart';
+import '../dialogs/bulk_edit_dialog.dart';
 import '../dialogs/product_filters_dialog.dart';
 import '../dialogs/product_form_dialog.dart';
 import '../dialogs/stock_adjust_dialog.dart';
 import '../widgets/products_surface.dart';
 import '../../../../theme/app_colors.dart' as ui_colors;
+import '../../../../widgets/success_toast.dart';
 
-enum _CatalogSelectionAction { edit, delete, exportPdf }
-
-enum _CatalogOverflowAction { exportExcel, catalogActions }
+enum _CatalogSelectionAction { edit, bulkEdit, delete, exportPdf }
 
 /// Tab de Catálogo de Productos
 class CatalogTab extends StatefulWidget {
@@ -766,6 +766,9 @@ class _CatalogTabState extends State<CatalogTab> {
       case _CatalogSelectionAction.delete:
         await _deleteProducts(selectedProducts);
         return;
+      case _CatalogSelectionAction.bulkEdit:
+        await _handleBulkEdit(selectedProducts);
+        return;
       case _CatalogSelectionAction.exportPdf:
         await CatalogPdfLauncher.openForProducts(
           context,
@@ -775,6 +778,88 @@ class _CatalogTabState extends State<CatalogTab> {
         );
         return;
     }
+  }
+
+  Future<void> _handleBulkEdit(List<ProductModel> selectedProducts) async {
+    if (selectedProducts.isEmpty) return;
+
+    final canEdit = await _authorizeAction(
+      AppActions.updateProduct,
+      resourceType: 'product',
+      resourceId: 'batch:${selectedProducts.length}',
+    );
+    if (!canEdit) return;
+
+    if (!mounted) return;
+    final result = await showDialog<BulkEditResult>(
+      context: context,
+      builder: (context) => BulkEditDialog(
+        productCount: selectedProducts.length,
+        categories: _categories,
+        suppliers: _suppliers,
+      ),
+    );
+
+    if (result == null || !mounted) return;
+    if (!result.hasChanges) return;
+
+    // Actualizar localmente sin recargar toda la lista ni mostrar loading
+    final ids = selectedProducts
+        .where((p) => p.id != null)
+        .map((p) => p.id!)
+        .toList();
+
+    // Actualizar inmediatamente en memoria para feedback instantáneo
+    setState(() {
+      _products = _products.map((p) {
+        if (p.id != null && ids.contains(p.id)) {
+          return p.copyWith(
+            categoryId: result.categoryId ?? p.categoryId,
+            supplierId: result.supplierId ?? p.supplierId,
+            stockMin: result.stockMin ?? p.stockMin,
+          );
+        }
+        return p;
+      }).toList();
+      // Deseleccionar todos los productos editados
+      _selectedProductIds.removeAll(ids.toSet());
+    });
+
+    // Mostrar notificación tipo tarjeta en la esquina superior derecha
+    if (mounted) {
+      SuccessToast.show(
+        context,
+        message: '${ids.length} productos actualizados',
+        subtitle: 'Los cambios se guardaron correctamente',
+        icon: Icons.check_circle_rounded,
+        backgroundColor: const Color(0xFF065F46),
+        iconColor: const Color(0xFF34D399),
+      );
+    }
+
+    // Ejecutar la operación en background sin bloquear
+    unawaited(
+      _productsRepo
+          .batchUpdate(
+            ids: ids,
+            categoryId: result.categoryId,
+            supplierId: result.supplierId,
+            stockMin: result.stockMin,
+          )
+          .catchError((e) {
+            if (mounted) {
+              SuccessToast.show(
+                context,
+                message: 'Error al actualizar productos',
+                subtitle: e.toString(),
+                icon: Icons.error_outline_rounded,
+                backgroundColor: const Color(0xFF991B1B),
+                iconColor: const Color(0xFFFCA5A5),
+              );
+            }
+            return 0;
+          }),
+    );
   }
 
   Future<bool> _confirmDeleteProducts(List<ProductModel> products) async {
@@ -893,18 +978,24 @@ class _CatalogTabState extends State<CatalogTab> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final theme = Theme.of(context);
-        final scheme = theme.colorScheme;
 
         const pageBackground = Color(0xFFEFF4FA);
-        const maxContentWidth = 1400.0;
+        const maxContentWidth = 1540.0;
+
         final widthFactor = constraints.maxWidth >= 1600
-            ? 0.88
+            ? 0.94
             : constraints.maxWidth >= 1200
-            ? 0.92
-            : 0.96;
+            ? 0.95
+            : 0.97;
+
         final contentWidth = math.min(
           constraints.maxWidth * widthFactor,
           maxContentWidth,
+        );
+
+        final tableHeight = math.min(
+          660.0,
+          math.max(470.0, constraints.maxHeight - 245),
         );
 
         final canViewPurchasePrice =
@@ -934,26 +1025,102 @@ class _CatalogTabState extends State<CatalogTab> {
           _currentFilters?.isOutOfStock,
         ].where((value) => value != null).length;
 
+        Widget buildSquareButton({
+          required IconData icon,
+          required String label,
+          required VoidCallback? onPressed,
+          bool primary = false,
+          bool danger = false,
+          bool selected = false,
+        }) {
+          final bgColor = primary
+              ? ui_colors.AppColors.primaryBlue
+              : danger
+              ? const Color(0xFFFFF1F2)
+              : selected
+              ? const Color(0xFFEFF6FF)
+              : Colors.white;
+
+          final fgColor = primary
+              ? Colors.white
+              : danger
+              ? const Color(0xFFB42318)
+              : selected
+              ? ui_colors.AppColors.primaryBlue
+              : const Color(0xFF1F2937);
+
+          final borderColor = primary
+              ? ui_colors.AppColors.primaryBlue
+              : danger
+              ? const Color(0xFFFCA5A5)
+              : selected
+              ? ui_colors.AppColors.primaryBlue.withOpacity(0.25)
+              : const Color(0xFFD7E1EC);
+
+          return Opacity(
+            opacity: onPressed == null ? 0.48 : 1,
+            child: Material(
+              color: bgColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(9),
+                side: BorderSide(color: borderColor, width: 1.1),
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(9),
+                onTap: onPressed,
+                child: SizedBox(
+                  height: 42,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, size: 18, color: fgColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12.7,
+                            fontWeight: FontWeight.w900,
+                            height: 1,
+                          ).copyWith(color: fgColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
         Widget buildSearchField() {
           return SizedBox(
-            height: 40,
+            height: 46,
             child: TextField(
               controller: _searchController,
               textInputAction: TextInputAction.search,
               textAlignVertical: TextAlignVertical.center,
               onSubmitted: _handleCatalogSearchSubmit,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
+              style: const TextStyle(
                 fontFamily: 'Inter',
-                fontSize: 14,
-                color: scheme.onSurface,
+                fontSize: 14.4,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF111827),
               ),
               decoration: InputDecoration(
                 hintText: 'Buscar producto, código o referencia',
-                prefixIcon: Icon(
+                hintStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13.4,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF94A3B8),
+                ),
+                prefixIcon: const Icon(
                   Icons.search_rounded,
-                  size: 20,
-                  color: scheme.onSurfaceVariant,
+                  size: 21,
+                  color: Color(0xFF64748B),
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -967,166 +1134,27 @@ class _CatalogTabState extends State<CatalogTab> {
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 14,
-                  vertical: 11,
+                  vertical: 13,
                 ),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: scheme.outlineVariant.withOpacity(0.60),
-                    width: 1.5,
+                  borderRadius: BorderRadius.circular(9),
+                  borderSide: const BorderSide(
+                    color: Color(0xFFD7E1EC),
+                    width: 1.35,
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: scheme.outlineVariant.withOpacity(0.60),
-                    width: 1.5,
+                  borderRadius: BorderRadius.circular(9),
+                  borderSide: const BorderSide(
+                    color: Color(0xFFD7E1EC),
+                    width: 1.35,
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(9),
                   borderSide: BorderSide(
                     color: ui_colors.AppColors.primaryBlue.withOpacity(0.85),
-                    width: 2,
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-
-        Widget buildSelectionActionsButton() {
-          final actionsLabel = 'Acciones ($selectedVisibleCount)';
-
-          return PopupMenuButton<_CatalogSelectionAction>(
-            onSelected: _handleSelectionAction,
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: _CatalogSelectionAction.edit,
-                enabled: selectedVisibleCount == 1,
-                child: const Text('Editar'),
-              ),
-              const PopupMenuItem(
-                value: _CatalogSelectionAction.delete,
-                child: Text('Eliminar'),
-              ),
-              const PopupMenuItem(
-                value: _CatalogSelectionAction.exportPdf,
-                child: Text('Exportar PDF'),
-              ),
-            ],
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: ui_colors.AppColors.lightBlueHover,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: ui_colors.AppColors.primaryBlue.withOpacity(0.14),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.bolt_outlined,
-                    size: 17,
-                    color: ui_colors.AppColors.primaryBlue,
-                  ),
-                  const SizedBox(width: 7),
-                  Text(
-                    actionsLabel,
-                    style: const TextStyle(
-                      color: ui_colors.AppColors.primaryBlue,
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'Inter',
-                      fontSize: 12.5,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  const Icon(
-                    Icons.expand_more_rounded,
-                    size: 17,
-                    color: ui_colors.AppColors.primaryBlue,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        Widget buildUtilityIconButton({
-          required IconData icon,
-          required String tooltip,
-          required VoidCallback? onPressed,
-          String? label,
-          String? description,
-          Color? foregroundColor,
-          Color? backgroundColor,
-          Color? borderColor,
-        }) {
-          final effectiveForeground =
-              foregroundColor ?? scheme.onSurfaceVariant;
-
-          return Tooltip(
-            message: tooltip,
-            child: Material(
-              color: backgroundColor ?? Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: borderColor ?? scheme.outlineVariant.withOpacity(0.70),
-                ),
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: onPressed,
-                child: SizedBox(
-                  height: 40,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: label == null ? 0 : 12,
-                    ),
-                    child: label == null
-                        ? SizedBox(
-                            width: 40,
-                            child: Icon(
-                              icon,
-                              size: 19,
-                              color: effectiveForeground,
-                            ),
-                          )
-                        : Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(icon, size: 18, color: effectiveForeground),
-                              const SizedBox(width: 8),
-                              Text(
-                                label,
-                                style: theme.textTheme.labelLarge?.copyWith(
-                                  color:
-                                      backgroundColor ==
-                                          ui_colors.AppColors.primaryBlue
-                                      ? Colors.white
-                                      : scheme.onSurface,
-                                  fontWeight: FontWeight.w800,
-                                  fontFamily: 'Inter',
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                              if (description != null) ...[
-                                const SizedBox(width: 6),
-                                Text(
-                                  description,
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w700,
-                                    fontFamily: 'Inter',
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
+                    width: 1.8,
                   ),
                 ),
               ),
@@ -1137,132 +1165,300 @@ class _CatalogTabState extends State<CatalogTab> {
         Widget buildFilterButton() {
           final hasActiveFilters = _currentFilters?.hasFilters == true;
 
-          return SizedBox(
-            height: 40,
-            child: OutlinedButton.icon(
-              onPressed: _showFilters,
-              icon: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Icon(
-                    Icons.tune_rounded,
-                    size: 17,
-                    color: hasActiveFilters
-                        ? scheme.primary
-                        : scheme.onSurfaceVariant,
-                  ),
-                  if (activeFilterCount > 0)
-                    Positioned(
-                      right: -7,
-                      top: -8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: scheme.primary,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '$activeFilterCount',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: scheme.onPrimary,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 10,
-                          ),
-                        ),
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              buildSquareButton(
+                icon: Icons.tune_rounded,
+                label: hasActiveFilters ? 'Filtros activos' : 'Filtrar',
+                selected: hasActiveFilters,
+                onPressed: _showFilters,
+              ),
+              if (activeFilterCount > 0)
+                Positioned(
+                  top: -7,
+                  right: -6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: ui_colors.AppColors.primaryBlue,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: Text(
+                      '$activeFilterCount',
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        height: 1,
                       ),
                     ),
-                ],
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                side: BorderSide(
-                  color: hasActiveFilters
-                      ? scheme.primary.withOpacity(0.28)
-                      : scheme.outlineVariant.withOpacity(0.65),
+                  ),
                 ),
-                backgroundColor: hasActiveFilters
-                    ? scheme.primary.withOpacity(0.06)
-                    : Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+            ],
+          );
+        }
+
+        Widget buildTopActionsLine() {
+          return Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                buildSquareButton(
+                  icon: Icons.table_chart_rounded,
+                  label: 'Exportar',
+                  onPressed: _exportProductsToExcel,
                 ),
-              ),
-              label: Text(
-                hasActiveFilters ? 'Filtros activos' : 'Filtrar',
-                style: TextStyle(
-                  color: hasActiveFilters ? scheme.primary : scheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'Inter',
-                  fontSize: 12.5,
+                buildSquareButton(
+                  icon: Icons.drive_folder_upload_rounded,
+                  label: 'Importar',
+                  onPressed: _importProductsFromExcel,
                 ),
-              ),
+                buildSquareButton(
+                  icon: Icons.settings_suggest_rounded,
+                  label: 'Catálogo',
+                  onPressed: _showCatalogActions,
+                ),
+                buildSquareButton(
+                  icon: Icons.add_rounded,
+                  label: 'Nuevo producto',
+                  primary: true,
+                  onPressed: () => _showProductForm(),
+                ),
+              ],
             ),
           );
         }
 
-        Widget buildOverflowButton() {
-          return PopupMenuButton<_CatalogOverflowAction>(
-            tooltip: 'Más opciones',
-            padding: EdgeInsets.zero,
-            onSelected: (action) {
-              switch (action) {
-                case _CatalogOverflowAction.exportExcel:
-                  _exportProductsToExcel();
-                  break;
-                case _CatalogOverflowAction.catalogActions:
-                  _showCatalogActions();
-                  break;
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: _CatalogOverflowAction.exportExcel,
-                child: Text('Exportar Excel'),
+        Widget buildSelectionActions() {
+          if (selectedVisibleCount <= 0) {
+            return const SizedBox.shrink();
+          }
+
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              if (selectedVisibleCount == 1)
+                buildSquareButton(
+                  icon: Icons.edit_rounded,
+                  label: 'Editar',
+                  selected: true,
+                  onPressed: () =>
+                      _handleSelectionAction(_CatalogSelectionAction.edit),
+                ),
+              if (selectedVisibleCount > 1)
+                buildSquareButton(
+                  icon: Icons.edit_note_rounded,
+                  label: 'Editar selección',
+                  selected: true,
+                  onPressed: () =>
+                      _handleSelectionAction(_CatalogSelectionAction.bulkEdit),
+                ),
+              buildSquareButton(
+                icon: Icons.picture_as_pdf_rounded,
+                label: 'PDF',
+                selected: true,
+                onPressed: () =>
+                    _handleSelectionAction(_CatalogSelectionAction.exportPdf),
               ),
-              PopupMenuItem(
-                value: _CatalogOverflowAction.catalogActions,
-                child: Text('Acciones del catálogo'),
+              buildSquareButton(
+                icon: Icons.delete_outline_rounded,
+                label: 'Eliminar',
+                danger: true,
+                onPressed: () =>
+                    _handleSelectionAction(_CatalogSelectionAction.delete),
               ),
             ],
-            child: Material(
+          );
+        }
+
+        Widget buildControlBar() {
+          return Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
               color: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: BorderSide(
-                  color: scheme.outlineVariant.withOpacity(0.65),
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: const Color(0xFFD7E1EC)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.025),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
-              ),
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(
-                  Icons.more_horiz_rounded,
-                  size: 19,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
+              ],
+            ),
+            child: LayoutBuilder(
+              builder: (context, toolbarConstraints) {
+                if (toolbarConstraints.maxWidth >= 920) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(child: buildSearchField()),
+                      const SizedBox(width: 10),
+                      buildFilterButton(),
+                      if (selectedVisibleCount > 0) ...[
+                        const SizedBox(width: 8),
+                        Flexible(child: buildSelectionActions()),
+                      ],
+                    ],
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    buildSearchField(),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.start,
+                      children: [buildFilterButton(), buildSelectionActions()],
+                    ),
+                  ],
+                );
+              },
             ),
           );
         }
 
-        Widget buildToolbarActions() {
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+        Widget buildHeaderChip({
+          required IconData icon,
+          required String label,
+          required String value,
+        }) {
+          return Container(
+            height: 46,
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: const Color(0xFFD7E1EC)),
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                buildFilterButton(),
-                if (selectedVisibleCount > 0) ...[
-                  const SizedBox(width: 8),
-                  buildSelectionActionsButton(),
-                ],
-                const SizedBox(width: 8),
-                buildOverflowButton(),
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 17,
+                    color: ui_colors.AppColors.primaryBlue,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      value,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF111827),
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF64748B),
+                        height: 1,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
+          );
+        }
+
+        Widget buildPageHeader() {
+          final titleBlock = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Productos',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontFamily: 'Inter',
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  height: 1.05,
+                  color: const Color(0xFF111827),
+                  letterSpacing: -0.4,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Inventario y servicios',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                  height: 1.2,
+                ),
+              ),
+            ],
+          );
+
+          final chips = Wrap(
+            spacing: 9,
+            runSpacing: 9,
+            alignment: WrapAlignment.end,
+            children: [
+              buildHeaderChip(
+                icon: Icons.inventory_2_outlined,
+                label: 'productos',
+                value: '${_products.length}',
+              ),
+              buildHeaderChip(
+                icon: Icons.checklist_rounded,
+                label: 'seleccionados',
+                value: '$selectedVisibleCount',
+              ),
+            ],
+          );
+
+          return LayoutBuilder(
+            builder: (context, headerConstraints) {
+              if (headerConstraints.maxWidth >= 780) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(child: titleBlock),
+                    const SizedBox(width: 18),
+                    chips,
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [titleBlock, const SizedBox(height: 14), chips],
+              );
+            },
           );
         }
 
@@ -1274,127 +1470,64 @@ class _CatalogTabState extends State<CatalogTab> {
           return Expanded(
             flex: flex,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 7),
               child: Text(
                 label,
                 textAlign: textAlign,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(
+                style: const TextStyle(
                   fontFamily: 'Inter',
-                  fontSize: 11.8,
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurfaceVariant,
+                  fontSize: 11.3,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF64748B),
                   letterSpacing: 0.35,
+                  height: 1,
                 ),
               ),
             ),
           );
         }
 
-        final headerActions = Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          alignment: WrapAlignment.end,
-          children: [
-            buildUtilityIconButton(
-              icon: Icons.drive_folder_upload_rounded,
-              tooltip: 'Importar productos',
-              label: 'Importar productos',
-              onPressed: _importProductsFromExcel,
-              foregroundColor: ui_colors.AppColors.primaryBlue,
-              borderColor: ui_colors.AppColors.primaryBlue.withOpacity(0.18),
-              backgroundColor: Colors.white,
+        Widget buildFixedHeaderCell(
+          String label, {
+          required double width,
+          TextAlign textAlign = TextAlign.left,
+        }) {
+          return SizedBox(
+            width: width,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 7),
+              child: Text(
+                label,
+                textAlign: textAlign,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 11.3,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF64748B),
+                  letterSpacing: 0.35,
+                  height: 1,
+                ),
+              ),
             ),
-            buildUtilityIconButton(
-              icon: Icons.add_rounded,
-              tooltip: 'Nuevo producto',
-              label: 'Nuevo producto',
-              onPressed: () => _showProductForm(),
-              foregroundColor: Colors.white,
-              borderColor: ui_colors.AppColors.primaryBlue,
-              backgroundColor: ui_colors.AppColors.primaryBlue,
-            ),
-          ],
-        );
-
-        Widget buildPageHeader() {
-          return LayoutBuilder(
-            builder: (context, headerConstraints) {
-              const title = 'Productos y servicios';
-              const subtitle =
-                  'Crea, edita y administra cada detalle de los productos o servicios que vendes.';
-
-              if (headerConstraints.maxWidth >= 820) {
-                return ProductsSectionHeader(
-                  title: title,
-                  subtitle: subtitle,
-                  trailing: headerActions,
-                );
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const ProductsSectionHeader(title: title, subtitle: subtitle),
-                  const SizedBox(height: 14),
-                  Align(alignment: Alignment.centerRight, child: headerActions),
-                ],
-              );
-            },
           );
         }
-
-        Widget buildControlsRow() {
-          return LayoutBuilder(
-            builder: (context, toolbarConstraints) {
-              if (toolbarConstraints.maxWidth >= 720) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(child: buildSearchField()),
-                    const SizedBox(width: 10),
-                    Flexible(child: buildToolbarActions()),
-                  ],
-                );
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  buildSearchField(),
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: buildToolbarActions(),
-                  ),
-                ],
-              );
-            },
-          );
-        }
-
-        final headerContent = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            buildPageHeader(),
-            const SizedBox(height: 20),
-            buildControlsRow(),
-          ],
-        );
 
         Widget tableFrame({required Widget child}) {
           return Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFD8E0EA)),
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: const Color(0xFFD4DEE9)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.045),
-                  blurRadius: 14,
-                  offset: const Offset(0, 4),
+                  color: Colors.black.withOpacity(0.055),
+                  blurRadius: 22,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
@@ -1426,7 +1559,7 @@ class _CatalogTabState extends State<CatalogTab> {
 
           return LayoutBuilder(
             builder: (context, tableConstraints) {
-              final tableWidth = math.max(tableConstraints.maxWidth, 780.0);
+              final tableWidth = math.max(tableConstraints.maxWidth, 1180.0);
 
               return Scrollbar(
                 controller: _tableHorizontalController,
@@ -1440,10 +1573,10 @@ class _CatalogTabState extends State<CatalogTab> {
                     child: Column(
                       children: [
                         Container(
-                          height: 44,
+                          height: 50,
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           decoration: const BoxDecoration(
-                            color: Color(0xFFF1F5F9),
+                            color: Color(0xFFF8FAFC),
                             border: Border(
                               bottom: BorderSide(color: Color(0xFFE2E8F0)),
                             ),
@@ -1451,7 +1584,7 @@ class _CatalogTabState extends State<CatalogTab> {
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 38,
+                                width: 42,
                                 child: Checkbox(
                                   value: allVisibleSelected
                                       ? true
@@ -1482,16 +1615,17 @@ class _CatalogTabState extends State<CatalogTab> {
                                             _toggleSelectAllVisible(value),
                                 ),
                               ),
-                              buildHeaderCell('Nombre', flex: 28),
-                              buildHeaderCell('Código / Ref.', flex: 15),
+                              buildFixedHeaderCell('Imagen', width: 76),
+                              buildHeaderCell('Producto', flex: 32),
+                              buildHeaderCell('Código / Ref.', flex: 14),
                               buildHeaderCell(
                                 'Precio venta',
-                                flex: 12,
+                                flex: 13,
                                 textAlign: TextAlign.right,
                               ),
                               buildHeaderCell(
                                 'Costo',
-                                flex: 12,
+                                flex: 13,
                                 textAlign: TextAlign.right,
                               ),
                               buildHeaderCell(
@@ -1501,7 +1635,7 @@ class _CatalogTabState extends State<CatalogTab> {
                               ),
                               buildHeaderCell(
                                 'Stock mín.',
-                                flex: 10,
+                                flex: 9,
                                 textAlign: TextAlign.right,
                               ),
                             ],
@@ -1548,18 +1682,32 @@ class _CatalogTabState extends State<CatalogTab> {
           );
         }
 
+        final headerContent = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            buildPageHeader(),
+            const SizedBox(height: 14),
+            buildTopActionsLine(),
+            const SizedBox(height: 12),
+            buildControlBar(),
+          ],
+        );
+
         return ColoredBox(
           color: pageBackground,
           child: Center(
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: contentWidth),
               child: Padding(
-                padding: const EdgeInsets.only(top: 28, bottom: 26),
+                padding: const EdgeInsets.only(top: 24, bottom: 24),
                 child: Column(
                   children: [
                     headerContent,
                     const SizedBox(height: 14),
-                    Expanded(child: tableFrame(child: tableContent())),
+                    SizedBox(
+                      height: tableHeight,
+                      child: tableFrame(child: tableContent()),
+                    ),
                   ],
                 ),
               ),
@@ -1593,6 +1741,73 @@ class _CatalogProductRow extends StatefulWidget {
 }
 
 class _CatalogProductRowState extends State<_CatalogProductRow> {
+  String? _productImagePath(ProductModel product) {
+    final localPath = product.imagePath?.trim();
+    if (localPath != null && localPath.isNotEmpty) {
+      return localPath;
+    }
+
+    final remoteUrl = product.imageUrl?.trim();
+    if (remoteUrl != null && remoteUrl.isNotEmpty) {
+      return remoteUrl;
+    }
+
+    return null;
+  }
+
+  ImageProvider? _imageProviderFromPath(String? rawPath) {
+    if (rawPath == null || rawPath.trim().isEmpty) return null;
+
+    final path = rawPath.trim();
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      return NetworkImage(path);
+    }
+
+    final file = File(path);
+    if (file.existsSync()) {
+      return FileImage(file);
+    }
+
+    return null;
+  }
+
+  Widget _buildProductImage(ProductModel product) {
+    final provider = _imageProviderFromPath(_productImagePath(product));
+
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: provider == null
+          ? _buildProductImagePlaceholder()
+          : Image(
+              image: provider,
+              width: 44,
+              height: 44,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  _buildProductImagePlaceholder(),
+            ),
+    );
+  }
+
+  Widget _buildProductImagePlaceholder() {
+    return Container(
+      alignment: Alignment.center,
+      color: const Color(0xFFEFF6FF),
+      child: const Icon(
+        Icons.image_outlined,
+        size: 20,
+        color: ui_colors.AppColors.primaryBlue,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1686,6 +1901,13 @@ class _CatalogProductRowState extends State<_CatalogProductRow> {
                     onChanged: product.id == null
                         ? null
                         : widget.onToggleSelected,
+                  ),
+                ),
+                SizedBox(
+                  width: 76,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _buildProductImage(product),
                   ),
                 ),
                 Expanded(

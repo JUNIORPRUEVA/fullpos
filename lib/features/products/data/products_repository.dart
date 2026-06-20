@@ -931,6 +931,77 @@ class ProductsRepository {
     return rows;
   }
 
+  /// Actualiza múltiples productos en lote (solo campos permitidos: categoryId, supplierId, stockMin)
+  Future<int> batchUpdate({
+    required List<int> ids,
+    int? categoryId,
+    int? supplierId,
+    double? stockMin,
+  }) async {
+    if (ids.isEmpty) return 0;
+    final db = await AppDb.database;
+    final syncContext = await _loadSyncContext();
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    final updates = <String, dynamic>{};
+    if (categoryId != null) updates['category_id'] = categoryId;
+    if (supplierId != null) updates['supplier_id'] = supplierId;
+    if (stockMin != null) updates['stock_min'] = stockMin;
+
+    if (updates.isEmpty) return 0;
+
+    updates['sync_status'] = 'pending';
+    updates['local_updated_at_ms'] = now;
+    updates['updated_at_ms'] = now;
+    updates['needs_sync'] = 1;
+    updates['last_modified_by'] = syncContext.lastModifiedBy;
+
+    final rows = await db.transaction<int>((txn) async {
+      final affected = await txn.update(
+        DbTables.products,
+        updates,
+        where: 'id IN (${ids.map((_) => '?').join(',')})',
+        whereArgs: ids,
+      );
+
+      if (affected > 0) {
+        for (final id in ids) {
+          final existing = await getById(id);
+          if (existing != null) {
+            final updated = _withPendingSync(
+              existing.copyWith(
+                categoryId: categoryId ?? existing.categoryId,
+                supplierId: supplierId ?? existing.supplierId,
+                stockMin: stockMin ?? existing.stockMin,
+                updatedAtMs: now,
+              ),
+              context: syncContext,
+              now: now,
+            );
+            await _enqueueProductSync(
+              txn,
+              updated,
+              operationType: 'upsert',
+              highPriority: false,
+            );
+          }
+        }
+      }
+      return affected;
+    });
+
+    if (rows > 0) {
+      _triggerCloudProductsSyncSoon();
+      ProductSyncEventBus.instance.emit(
+        ProductSyncChange(
+          localProductId: ids.first,
+          reason: 'batch_update',
+        ),
+      );
+    }
+    return rows;
+  }
+
   /// Actualiza solo el stock de un producto
   Future<int> updateStock(int id, double newStock) async {
     final db = await AppDb.database;

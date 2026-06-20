@@ -12,6 +12,7 @@ import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/utils/app_event_bus.dart';
 import '../../../core/validation/business_rules.dart';
 import '../../facturacion_electronica/services/facturacion_electronica_service.dart';
+import '../../fiscal_receipts/data/fiscal_receipt_repository.dart';
 import 'sales_model.dart';
 import 'sale_item_model.dart' as new_models;
 
@@ -138,6 +139,7 @@ class SalesRepository {
     String? electronicInvoiceCode,
     String? electronicDocumentType,
     bool electronicInvoiceEnabled = false,
+    int? fiscalReceiptTypeId,
     String? customerName,
     String? customerPhone,
     String? customerRnc,
@@ -413,6 +415,7 @@ class SalesRepository {
           electronicInvoiceEnabled: electronicInvoiceEnabled ? 1 : 0,
           electronicInvoiceCode: electronicInvoiceCode,
           electronicDocumentType: electronicDocumentType,
+          fiscalReceiptTypeId: fiscalReceiptTypeId,
           sessionId: sessionId,
           items: convertedItems,
           allowNegativeStock: allowNegativeStock,
@@ -524,6 +527,7 @@ class SalesRepository {
     required int electronicInvoiceEnabled,
     String? electronicInvoiceCode,
     String? electronicDocumentType,
+    int? fiscalReceiptTypeId,
     int? sessionId,
     required List<Map<String, dynamic>> items,
     bool allowNegativeStock = false,
@@ -565,10 +569,22 @@ class SalesRepository {
           'electronic_invoice_enabled': electronicInvoiceEnabled,
           'electronic_invoice_code': electronicInvoiceCode,
           'electronic_document_type': electronicDocumentType,
+          'fiscal_enabled': fiscalReceiptTypeId == null ? 0 : 1,
           'session_id': sessionId,
           'created_at_ms': now,
           'updated_at_ms': now,
         });
+
+        if (fiscalReceiptTypeId != null) {
+          await FiscalReceiptRepository.reserveNextReceiptForSale(
+            txn: txn,
+            receiptTypeId: fiscalReceiptTypeId,
+            saleId: saleId,
+            customerId: customerId,
+            customerName: customerName,
+            customerTaxId: customerRnc,
+          );
+        }
 
         if (paymentMethod == 'credit' && customerId != null) {
           await txn.update(

@@ -1574,6 +1574,17 @@ class CloudSyncService {
             ).toUtc().toIso8601String(),
           'creditInstallments': sale.creditInstallments,
           'creditNote': sale.creditNote,
+          'fiscalEnabled': sale.fiscalEnabled == 1,
+          'fiscalReceiptTypeId': sale.fiscalReceiptTypeId,
+          'fiscalReceiptName': sale.fiscalReceiptName,
+          'fiscalReceiptPrefix': sale.fiscalReceiptPrefix,
+          'ncfFull': sale.ncfFull,
+          'ncfType': sale.ncfType,
+          'fiscalSequenceNumber': sale.fiscalSequenceNumber,
+          if (sale.fiscalReceiptExpirationDateMs != null)
+            'fiscalReceiptExpirationDate': DateTime.fromMillisecondsSinceEpoch(
+              sale.fiscalReceiptExpirationDateMs!,
+            ).toUtc().toIso8601String(),
           'electronicInvoiceEnabled': sale.electronicInvoiceEnabled == 1,
           'electronicInvoiceCode': sale.electronicInvoiceCode,
           'electronicDocumentType': sale.electronicDocumentType,

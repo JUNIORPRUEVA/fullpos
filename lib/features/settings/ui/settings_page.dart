@@ -5,6 +5,7 @@ import 'backup_database_page.dart';
 import 'business_sections_settings_page.dart';
 import 'database_settings_page.dart';
 import 'device_hardware_settings_page.dart';
+import 'fiscal_receipts_settings_page.dart';
 import 'permissions_page.dart';
 import 'printer_settings_page.dart';
 import 'settings_layout.dart';
@@ -77,6 +78,12 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: 'Comportamiento comercial y ajustes base.',
             icon: Icons.tune_outlined,
             onTap: _openPosGeneralSettingsPage,
+          ),
+          _SettingsItemData(
+            title: 'Comprobantes',
+            subtitle: 'NCF locales, secuencias y uso fiscal.',
+            icon: Icons.receipt_long_outlined,
+            onTap: _openFiscalReceiptsSettingsPage,
           ),
         ],
       ),
@@ -297,6 +304,13 @@ class _SettingsPageState extends State<SettingsPage> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const PosGeneralSettingsPage()),
+    );
+  }
+
+  void _openFiscalReceiptsSettingsPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FiscalReceiptsSettingsPage()),
     );
   }
 
