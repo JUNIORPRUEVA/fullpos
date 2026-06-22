@@ -1,13 +1,49 @@
-# Task Progress - Responsive Sales Screen
+# Transformación Visual - Pantalla Rendimiento Comercial
 
-- [x] Analyze current code structure
-- [x] Identify hardcoded values that need responsive treatment
-- [ ] Update `_buildInvoicePanelHeader` to use `m.ticketHorizontalPadding` and `m.ticketHeaderVerticalPadding`
-- [ ] Update `_buildTotalAndActionsCard` to use `m.ticketHorizontalPadding` and `m.totalAreaHeight`
-- [ ] Update `_buildItemsListCard` to use `m.ticketHorizontalPadding`
-- [ ] Update `_buildRecentSalesPanel` to use responsive padding
-- [ ] Update `_buildRecentSalesPanelHeader` to use responsive padding
-- [ ] Verify `_build3DControlBar` already uses `m.controlBarRightPadding` and `m.controlBarHeight`
-- [ ] Verify `_buildModernProductCard` and `_buildQuickSaleCard` already use metrics
-- [ ] Run `flutter analyze`
-- [ ] Verify no regressions
+## Checklist de Implementación
+
+- [x] Analizar estructura actual del archivo reports_page.dart (1581 líneas)
+- [x] Leer widgets auxiliares (bar_chart, pie_chart, date_range_selector)
+- [x] **PARTE 1**: Transformación tipográfica completa
+  - [x] Títulos principales: w700/w800, mejor letter-spacing, line-height
+  - [x] Subtítulos: w500, color gris azulado elegante
+  - [x] KPIs/números: refinados, menos toscos
+  - [x] Etiquetas pequeñas: w500/w600, más legibles
+  - [x] Reducir w900 en toda la pantalla
+- [x] **PARTE 2**: Contenedor principal más cuadrado
+  - [x] Reducir border radius (22 → 12)
+  - [x] Mejor padding superior e inferior
+  - [x] Marco más ejecutivo
+- [x] **PARTE 3**: Reestructurar layout
+  - [x] Reducir sensación de tarjetas fragmentadas
+  - [x] Agrupar visualmente bloques relacionados
+  - [x] Layout más unificado tipo dashboard ejecutivo
+- [x] **PARTE 4**: Bloque principal de rendimiento (Hero Panel)
+  - [x] Mejor estructura y espaciado
+  - [x] Integrar mejor gráficos y métricas
+  - [x] Mini métricas (Margen/Órdenes/Utilidad) más integradas
+  - [x] Dona y leyenda más liviana
+- [x] **PARTE 5**: KPIs inferiores (Total vendido, Utilidad, Costo)
+  - [x] Menos sensación de "cajita"
+  - [x] Más aire interior
+  - [x] Tipografía más elegante
+- [x] **PARTE 6**: Productos más vendidos
+  - [x] Mejor jerarquía de título
+  - [x] Lista más limpia y ejecutiva
+  - [x] Mejor alineación ranking/nombre/unidades/monto
+- [x] **PARTE 7**: Bloques laterales secundarios
+  - [x] Más consistentes visualmente
+  - [x] Menos borde pesado
+  - [x] Mejor agrupación
+- [x] **PARTE 8**: Scroll corregido
+  - [x] Contenedor principal NO hace scroll
+  - [x] Contenido interior es el que desplaza
+  - [x] Experiencia más tipo app de escritorio
+- [x] **PARTE 9**: Radios, bordes y superficies
+  - [x] Reducir radios excesivos
+  - [x] Bordes más sutiles
+  - [x] Superficies más planas y elegantes
+- [x] **PARTE 10**: Iconos y microdetalles consistentes
+- [x] **PARTE 11**: Encabezado y barra de acciones refinados
+- [x] **PARTE 12**: Validación visual final
+- [x] **PARTE 13**: Ejecutar flutter analyze y corregir errores

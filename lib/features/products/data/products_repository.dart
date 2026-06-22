@@ -327,10 +327,7 @@ class ProductsRepository {
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.update(
       DbTables.products,
-      {
-        'is_featured': isFeatured ? 1 : 0,
-        'updated_at_ms': now,
-      },
+      {'is_featured': isFeatured ? 1 : 0, 'updated_at_ms': now},
       where: 'id = ?',
       whereArgs: [productId],
     );
@@ -934,8 +931,11 @@ class ProductsRepository {
   /// Actualiza múltiples productos en lote (solo campos permitidos: categoryId, supplierId, stockMin)
   Future<int> batchUpdate({
     required List<int> ids,
+    bool updateCategory = false,
     int? categoryId,
+    bool updateSupplier = false,
     int? supplierId,
+    bool updateStockMin = false,
     double? stockMin,
   }) async {
     if (ids.isEmpty) return 0;
@@ -944,9 +944,9 @@ class ProductsRepository {
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final updates = <String, dynamic>{};
-    if (categoryId != null) updates['category_id'] = categoryId;
-    if (supplierId != null) updates['supplier_id'] = supplierId;
-    if (stockMin != null) updates['stock_min'] = stockMin;
+    if (updateCategory) updates['category_id'] = categoryId;
+    if (updateSupplier) updates['supplier_id'] = supplierId;
+    if (updateStockMin) updates['stock_min'] = stockMin;
 
     if (updates.isEmpty) return 0;
 
@@ -957,6 +957,23 @@ class ProductsRepository {
     updates['last_modified_by'] = syncContext.lastModifiedBy;
 
     final rows = await db.transaction<int>((txn) async {
+      final existingRows = await txn.query(
+        DbTables.products,
+        where: 'id IN (${ids.map((_) => '?').join(',')})',
+        whereArgs: ids,
+      );
+
+      if (existingRows.length != ids.length) {
+        final existingIds = existingRows
+            .map((row) => row['id'] as int?)
+            .whereType<int>()
+            .toSet();
+        final missingIds = ids.where((id) => !existingIds.contains(id));
+        throw StateError(
+          'No se encontraron productos para actualizar: ${missingIds.join(', ')}',
+        );
+      }
+
       final affected = await txn.update(
         DbTables.products,
         updates,
@@ -964,39 +981,34 @@ class ProductsRepository {
         whereArgs: ids,
       );
 
-      if (affected > 0) {
-        for (final id in ids) {
-          final existing = await getById(id);
-          if (existing != null) {
-            final updated = _withPendingSync(
-              existing.copyWith(
-                categoryId: categoryId ?? existing.categoryId,
-                supplierId: supplierId ?? existing.supplierId,
-                stockMin: stockMin ?? existing.stockMin,
-                updatedAtMs: now,
-              ),
-              context: syncContext,
-              now: now,
-            );
-            await _enqueueProductSync(
-              txn,
-              updated,
-              operationType: 'upsert',
-              highPriority: false,
-            );
-          }
-        }
+      if (affected != ids.length) {
+        throw StateError(
+          'Solo se actualizaron $affected de ${ids.length} productos',
+        );
       }
+
+      final updatedRows = await txn.query(
+        DbTables.products,
+        where: 'id IN (${ids.map((_) => '?').join(',')})',
+        whereArgs: ids,
+      );
+
+      for (final row in updatedRows) {
+        await _enqueueProductSync(
+          txn,
+          ProductModel.fromMap(row),
+          operationType: 'upsert',
+          highPriority: false,
+        );
+      }
+
       return affected;
     });
 
     if (rows > 0) {
       _triggerCloudProductsSyncSoon();
       ProductSyncEventBus.instance.emit(
-        ProductSyncChange(
-          localProductId: ids.first,
-          reason: 'batch_update',
-        ),
+        ProductSyncChange(localProductId: ids.first, reason: 'batch_update'),
       );
     }
     return rows;

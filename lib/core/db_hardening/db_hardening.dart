@@ -28,6 +28,15 @@ class DbHardening {
           return await action();
         } on DatabaseException catch (error, trace) {
           final message = error.toString().toLowerCase();
+          if (_isClosedError(message) && attempts < 3) {
+            attempts++;
+            await DatabaseManager.instance.reopen(
+              reason: 'db_hardening_closed',
+            );
+            await Future.delayed(Duration(milliseconds: 50 * attempts));
+            continue;
+          }
+
           if (_isLockError(message) && attempts < 3) {
             attempts++;
             await Future.delayed(Duration(milliseconds: 100 * attempts));
@@ -37,16 +46,6 @@ class DbHardening {
           final repaired = await DbRepair.instance.tryFix(error, trace);
           if (repaired && attempts < 1) {
             attempts++;
-            continue;
-          }
-
-          if (_isClosedError(message) && attempts < 2) {
-            // Si el handle fue cerrado inesperadamente, reintentar con un handle válido.
-            // Importante: NO cerrar agresivamente aquí (puede afectar otras operaciones).
-            attempts++;
-            await DatabaseManager.instance.reopen(
-              reason: 'db_hardening_closed',
-            );
             continue;
           }
 

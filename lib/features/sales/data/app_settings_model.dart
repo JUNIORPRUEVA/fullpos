@@ -28,8 +28,7 @@ class AppSettingsModel {
       itbisEnabledDefault: (map['itbis_enabled_default'] as int) == 1,
       electronicInvoiceEnabledDefault:
           (map['electronic_invoice_enabled_default'] as int? ?? 0) == 1,
-      fiscalEnabledDefault:
-          (map['fiscal_enabled_default'] as int? ?? 0) == 1,
+      fiscalEnabledDefault: (map['fiscal_enabled_default'] as int? ?? 0) == 1,
       defaultNcfBookId: map['default_ncf_book_id'] as int?,
       itbisRate: (map['itbis_rate'] as num).toDouble(),
       ticketSize: map['ticket_size'] as String,
@@ -41,8 +40,9 @@ class AppSettingsModel {
     return {
       if (id != null) 'id': id,
       'itbis_enabled_default': itbisEnabledDefault ? 1 : 0,
-      'electronic_invoice_enabled_default':
-          electronicInvoiceEnabledDefault ? 1 : 0,
+      'electronic_invoice_enabled_default': electronicInvoiceEnabledDefault
+          ? 1
+          : 0,
       'fiscal_enabled_default': fiscalEnabledDefault ? 1 : 0,
       'default_ncf_book_id': defaultNcfBookId,
       'itbis_rate': itbisRate,
@@ -68,8 +68,7 @@ class AppSettingsModel {
       electronicInvoiceEnabledDefault:
           electronicInvoiceEnabledDefault ??
           this.electronicInvoiceEnabledDefault,
-      fiscalEnabledDefault:
-          fiscalEnabledDefault ?? this.fiscalEnabledDefault,
+      fiscalEnabledDefault: fiscalEnabledDefault ?? this.fiscalEnabledDefault,
       defaultNcfBookId: clearDefaultNcfBookId
           ? null
           : defaultNcfBookId ?? this.defaultNcfBookId,

@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
+import '../../../core/db/database_manager.dart';
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import 'business_settings_model.dart';
@@ -13,6 +14,7 @@ class BusinessSettingsRepository {
   // Problema observado: múltiples cargas en paralelo pueden ejecutar
   // CREATE TABLE / ALTER TABLE simultáneamente.
   static Future<void>? _ensureInFlight;
+  static Database? _ensureInFlightDb;
 
   /// Lista de todas las columnas esperadas con sus definiciones
   static const Map<String, String> _expectedColumns = {
@@ -69,8 +71,19 @@ class BusinessSettingsRepository {
     String stage,
     Future<T> Function(Database db) callback,
   ) => DbHardening.instance.runDbSafe(() async {
-    final db = await AppDb.database;
-    return callback(db);
+    var db = await AppDb.database;
+    if (!db.isOpen) {
+      db = await DatabaseManager.instance.reopen(reason: stage);
+    }
+
+    try {
+      return await callback(db);
+    } on DatabaseException catch (error) {
+      if (!_isClosedDatabaseError(error)) rethrow;
+      _clearEnsureInFlight();
+      final reopened = await DatabaseManager.instance.reopen(reason: stage);
+      return callback(reopened);
+    }
   }, stage: stage);
 
   static Future<T> _withTable<T>(
@@ -81,15 +94,28 @@ class BusinessSettingsRepository {
     return callback(db);
   });
 
-  static Future<void> _ensureTable(Database db) {
+  static Future<void> _ensureTable(Database db) async {
+    if (!db.isOpen) {
+      _clearEnsureInFlight();
+      db = await DatabaseManager.instance.reopen(
+        reason: 'business_settings_ensure_table',
+      );
+    }
+
     final existing = _ensureInFlight;
-    if (existing != null) return existing;
+    if (existing != null && identical(_ensureInFlightDb, db) && db.isOpen) {
+      return existing;
+    }
+    if (existing != null && (!identical(_ensureInFlightDb, db) || !db.isOpen)) {
+      _clearEnsureInFlight();
+    }
 
     final inFlight = _ensureTableImpl(db);
     _ensureInFlight = inFlight;
+    _ensureInFlightDb = db;
     inFlight.whenComplete(() {
       if (identical(_ensureInFlight, inFlight)) {
-        _ensureInFlight = null;
+        _clearEnsureInFlight();
       }
     });
     return inFlight;
@@ -109,6 +135,19 @@ class BusinessSettingsRepository {
     );
 
     await _migrateTableColumns(db);
+  }
+
+  static void _clearEnsureInFlight() {
+    _ensureInFlight = null;
+    _ensureInFlightDb = null;
+  }
+
+  static bool _isClosedDatabaseError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('database_closed') ||
+        message.contains('database is closed') ||
+        message.contains('database has already been closed') ||
+        message.contains('bad state: this database has already been closed');
   }
 
   /// Inicializar tabla de configuración del negocio
@@ -220,9 +259,7 @@ class BusinessSettingsRepository {
       if (existingColumns.isEmpty) {
         await _ensureTable(db);
         tableInfo = await db.rawQuery('PRAGMA table_info($_tableName)');
-        existingColumns = tableInfo
-            .map((row) => row['name'] as String)
-            .toSet();
+        existingColumns = tableInfo.map((row) => row['name'] as String).toSet();
       }
 
       final map = settings.toMap();

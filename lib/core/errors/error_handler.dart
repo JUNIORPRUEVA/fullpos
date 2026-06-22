@@ -20,11 +20,37 @@ class ErrorHandler {
   DateTime? _lastShownAt;
   String? _lastSignature;
 
-  BuildContext? get _fallbackContext => navigatorKey.currentContext;
+  BuildContext? get _fallbackContext =>
+      navigatorKey.currentState?.overlay?.context ??
+      navigatorKey.currentContext;
 
   static bool isTransientFlutterLayoutError(String message) {
     return message.contains('!_debugDuringDeviceUpdate') ||
-        message.contains('mouse_tracker.dart');
+        message.contains('mouse_tracker.dart') ||
+        message.contains('referenceBox.attached') ||
+        message.contains('InkFeature._paint') ||
+        message.contains('!_skipMarkNeedsLayout') ||
+        message.contains('_RenderTheater._addDeferredChild') ||
+        message.contains('_OverlayPortalElement') ||
+        message.contains(
+          "Looking up a deactivated widget's ancestor is unsafe",
+        );
+  }
+
+  static bool _isNonBlockingFlutterFrameworkAssertion(
+    String message,
+    StackTrace stackTrace,
+  ) {
+    if (!message.contains('Failed assertion') &&
+        !message.contains('_AssertionError')) {
+      return false;
+    }
+
+    final stack = stackTrace.toString();
+    return stack.contains('package:flutter/src/widgets/overlay.dart') ||
+        stack.contains('package:flutter/src/material/material.dart') ||
+        stack.contains('package:flutter/src/widgets/framework.dart') ||
+        stack.contains('package:flutter/src/rendering/object.dart');
   }
 
   bool _shouldSuppressPresentation(AppException ex) {
@@ -81,7 +107,8 @@ class ErrorHandler {
       // Evita asserts de navegación (ej. Navigator bloqueado) y mostrar UI
       // dentro del mismo frame/transición.
       await WidgetsBinding.instance.endOfFrame;
-      await AppErrorDialog.show(ctx, exception: ex, onRetry: onRetry);
+      final safeContext = _fallbackContext ?? ctx;
+      await AppErrorDialog.show(safeContext, exception: ex, onRetry: onRetry);
     } catch (_) {
       // Fallback: si mostrar dialog falla, empuja una página de error.
       try {
@@ -162,6 +189,11 @@ class ErrorHandler {
       return;
     }
     if (isTransientFlutterLayoutError(msg)) {
+      return;
+    }
+    if (_isNonBlockingFlutterFrameworkAssertion(msg, st)) {
+      final ex = ErrorMapper.map(details, details.stack, module ?? 'flutter');
+      unawaited(AppLogger.instance.logError(ex, module: module ?? 'flutter'));
       return;
     }
     unawaited(handle(error, stackTrace: st, module: module ?? 'flutter'));

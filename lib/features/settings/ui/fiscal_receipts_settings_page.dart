@@ -16,8 +16,9 @@ class FiscalReceiptsSettingsPage extends StatefulWidget {
 class _FiscalReceiptsSettingsPageState
     extends State<FiscalReceiptsSettingsPage> {
   bool _loading = true;
-  FiscalReceiptSettingsModel _settings =
-      const FiscalReceiptSettingsModel(enabled: false);
+  FiscalReceiptSettingsModel _settings = const FiscalReceiptSettingsModel(
+    enabled: false,
+  );
   List<FiscalReceiptTypeModel> _types = const [];
 
   @override
@@ -162,9 +163,7 @@ class _FiscalReceiptsSettingsPageState
                           Expanded(
                             child: Text(
                               'Comprobantes',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
+                              style: Theme.of(context).textTheme.headlineSmall
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                           ),
@@ -200,7 +199,9 @@ class _FiscalReceiptsSettingsPageState
                                   value: null,
                                   child: Text('Ninguno'),
                                 ),
-                                for (final type in _types.where((t) => t.isAvailable))
+                                for (final type in _types.where(
+                                  (t) => t.isAvailable,
+                                ))
                                   DropdownMenuItem<int?>(
                                     value: type.id,
                                     child: Text('${type.name} (${type.code})'),
@@ -381,6 +382,7 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
   late final TextEditingController _start;
   late final TextEditingController _next;
   late final TextEditingController _end;
+  late final TextEditingController _digits;
   late final TextEditingController _note;
   DateTime? _expiration;
   bool _active = true;
@@ -399,6 +401,9 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
     _start = TextEditingController(text: (type?.startNumber ?? 1).toString());
     _next = TextEditingController(text: (type?.nextNumber ?? 1).toString());
     _end = TextEditingController(text: (type?.endNumber ?? 100).toString());
+    _digits = TextEditingController(
+      text: (type?.sequenceDigits ?? 9).toString(),
+    );
     _note = TextEditingController(text: type?.note ?? '');
     _expiration = type?.expiresAtMs == null
         ? null
@@ -407,18 +412,30 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
     _requiresTaxId = type?.requiresCustomerTaxId ?? false;
     _requiresName = type?.requiresCustomerName ?? false;
     _allowFinalConsumer = type?.allowFinalConsumer ?? true;
+    if (type == null) {
+      _start.addListener(_syncNewNextWithStart);
+    }
   }
 
   @override
   void dispose() {
+    _start.removeListener(_syncNewNextWithStart);
     _name.dispose();
     _code.dispose();
     _prefix.dispose();
     _start.dispose();
     _next.dispose();
     _end.dispose();
+    _digits.dispose();
     _note.dispose();
     super.dispose();
+  }
+
+  void _syncNewNextWithStart() {
+    if (widget.type != null) return;
+    final start = _start.text.trim();
+    if (_next.text == start) return;
+    _next.text = start;
   }
 
   Future<void> _pickDate() async {
@@ -437,18 +454,23 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
       final base = widget.type;
+      final startNumber = int.parse(_start.text.trim());
       final type = FiscalReceiptTypeModel(
         id: base?.id,
         name: _name.text.trim(),
         code: _code.text.trim().toUpperCase(),
         prefix: _prefix.text.trim().toUpperCase(),
-        startNumber: int.parse(_start.text.trim()),
-        nextNumber: int.parse(_next.text.trim()),
+        startNumber: startNumber,
+        nextNumber: base == null ? startNumber : int.parse(_next.text.trim()),
         endNumber: int.parse(_end.text.trim()),
+        sequenceDigits: int.parse(_digits.text.trim()),
         expiresAtMs: _expiration == null
             ? null
-            : DateTime(_expiration!.year, _expiration!.month, _expiration!.day)
-                .millisecondsSinceEpoch,
+            : DateTime(
+                _expiration!.year,
+                _expiration!.month,
+                _expiration!.day,
+              ).millisecondsSinceEpoch,
         requiresCustomerTaxId: _requiresTaxId,
         requiresCustomerName: _requiresName,
         allowFinalConsumer: _allowFinalConsumer,
@@ -462,9 +484,9 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.toString())));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -473,7 +495,9 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.type == null ? 'Nuevo comprobante' : 'Editar comprobante'),
+      title: Text(
+        widget.type == null ? 'Nuevo comprobante' : 'Editar comprobante',
+      ),
       content: SizedBox(
         width: 620,
         child: Form(
@@ -484,7 +508,9 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
               children: [
                 TextFormField(
                   controller: _name,
-                  decoration: const InputDecoration(labelText: 'Nombre visible'),
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre visible',
+                  ),
                   validator: _required,
                 ),
                 const SizedBox(height: 10),
@@ -493,7 +519,9 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
                     Expanded(
                       child: TextFormField(
                         controller: _code,
-                        decoration: const InputDecoration(labelText: 'Código fiscal'),
+                        decoration: const InputDecoration(
+                          labelText: 'Código fiscal',
+                        ),
                         validator: _required,
                       ),
                     ),
@@ -512,10 +540,35 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
                   children: [
                     Expanded(child: _numberField(_start, 'Desde')),
                     const SizedBox(width: 10),
-                    Expanded(child: _numberField(_next, 'Próximo')),
+                    Expanded(
+                      child: _numberField(
+                        _next,
+                        'Próximo',
+                        readOnly: widget.type == null,
+                        helperText: widget.type == null
+                            ? 'Se toma del inicio'
+                            : null,
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(child: _numberField(_end, 'Hasta')),
                   ],
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: _digits,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Dígitos de secuencia',
+                    helperText: 'Ejemplo: B01 + 000000001 = B01000000001',
+                  ),
+                  validator: (value) {
+                    final parsed = int.tryParse((value ?? '').trim());
+                    if (parsed == null || parsed < 1 || parsed > 12) {
+                      return 'Usa un valor entre 1 y 12';
+                    }
+                    return null;
+                  },
                 ),
                 const SizedBox(height: 10),
                 ListTile(
@@ -579,11 +632,17 @@ class _FiscalReceiptTypeDialogState extends State<_FiscalReceiptTypeDialog> {
     );
   }
 
-  Widget _numberField(TextEditingController controller, String label) {
+  Widget _numberField(
+    TextEditingController controller,
+    String label, {
+    bool readOnly = false,
+    String? helperText,
+  }) {
     return TextFormField(
       controller: controller,
+      readOnly: readOnly,
       keyboardType: TextInputType.number,
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(labelText: label, helperText: helperText),
       validator: (value) {
         final parsed = int.tryParse((value ?? '').trim());
         if (parsed == null || parsed < 1) return 'Número válido requerido';
@@ -619,7 +678,7 @@ class _SettingsCard extends StatelessWidget {
 
 String _formatMs(int? value) {
   if (value == null) return '';
-  return DateFormat('dd/MM/yyyy HH:mm').format(
-    DateTime.fromMillisecondsSinceEpoch(value),
-  );
+  return DateFormat(
+    'dd/MM/yyyy HH:mm',
+  ).format(DateTime.fromMillisecondsSinceEpoch(value));
 }

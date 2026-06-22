@@ -247,8 +247,7 @@ class SaleModel {
     fiscalReceiptPrefix: fiscalReceiptPrefix ?? this.fiscalReceiptPrefix,
     ncfFull: ncfFull ?? this.ncfFull,
     ncfType: ncfType ?? this.ncfType,
-    fiscalSequenceNumber:
-        fiscalSequenceNumber ?? this.fiscalSequenceNumber,
+    fiscalSequenceNumber: fiscalSequenceNumber ?? this.fiscalSequenceNumber,
     fiscalReceiptExpirationDateMs:
         fiscalReceiptExpirationDateMs ?? this.fiscalReceiptExpirationDateMs,
     electronicInvoiceEnabled:

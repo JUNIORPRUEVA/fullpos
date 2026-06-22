@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -69,6 +70,7 @@ import '../data/quote_model.dart';
 import '../data/quotes_repository.dart';
 import '../data/sales_model.dart' as legacy_sales;
 import '../data/sales_repository.dart';
+import '../../../core/printing/sale_invoice_pdf_service.dart';
 import '../data/settings_repository.dart';
 import '../data/temp_cart_repository.dart';
 import '../data/tickets_repository.dart';
@@ -441,6 +443,50 @@ class _SalesPageState extends ConsumerState<SalesPage>
   String? _lastPersistedCartToken;
   String? _scheduledCartToken;
 
+  bool get _isUnsafeOverlayMutationPhase {
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    return phase == SchedulerPhase.transientCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks ||
+        phase == SchedulerPhase.persistentCallbacks;
+  }
+
+  void _insertOverlayEntrySafely(
+    OverlayState overlayState,
+    OverlayEntry entry, {
+    bool Function()? shouldInsert,
+  }) {
+    void insertEntry() {
+      if (_isDisposingSalesPage || !mounted) return;
+      if (shouldInsert != null && !shouldInsert()) return;
+      if (!overlayState.mounted || entry.mounted) return;
+      try {
+        overlayState.insert(entry);
+      } catch (_) {}
+    }
+
+    if (_isUnsafeOverlayMutationPhase) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => insertEntry());
+      return;
+    }
+
+    insertEntry();
+  }
+
+  void _removeOverlayEntrySafely(OverlayEntry entry) {
+    void removeEntry() {
+      try {
+        if (entry.mounted) entry.remove();
+      } catch (_) {}
+    }
+
+    if (_isUnsafeOverlayMutationPhase) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => removeEntry());
+      return;
+    }
+
+    removeEntry();
+  }
+
   // Optimización: índice de cantidades por producto para evitar O(n*m)
   // (cada tarjeta de producto recorriendo todos los items del carrito).
   Map<int, double> _qtyByProductId = const <int, double>{};
@@ -811,9 +857,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
     } else {
       cart.documentType = _SalesDocumentType.consumidorFinal;
     }
-    cart.fiscalReceiptTypeId = _fiscalReceiptSettings.enabled
+    final defaultFiscalReceiptTypeId = _fiscalReceiptSettings.enabled
         ? _resolveDefaultFiscalReceiptTypeId()
         : null;
+    cart.fiscalReceiptTypeId = defaultFiscalReceiptTypeId;
+    // Si hay un comprobante fiscal por defecto, activar ITBIS automáticamente.
+    if (defaultFiscalReceiptTypeId != null) {
+      cart.itbisEnabled = true;
+    }
   }
 
   int? _resolveDefaultFiscalReceiptTypeId() {
@@ -1051,12 +1102,18 @@ class _SalesPageState extends ConsumerState<SalesPage>
       },
     );
 
-    overlayState.insert(_clientSearchOverlay!);
+    final entry = _clientSearchOverlay!;
+    _insertOverlayEntrySafely(
+      overlayState,
+      entry,
+      shouldInsert: () => _clientSearchOverlay == entry,
+    );
   }
 
   void _closeClientSearchOverlay() {
-    _clientSearchOverlay?.remove();
+    final entry = _clientSearchOverlay;
     _clientSearchOverlay = null;
+    if (entry != null) _removeOverlayEntrySafely(entry);
   }
 
   bool _handleGlobalShortcutKey(KeyEvent event) {
@@ -2951,6 +3008,71 @@ class _SalesPageState extends ConsumerState<SalesPage>
     }
   }
 
+  Future<void> _openSalePdfPreview(legacy_sales.SaleModel sale) async {
+    final saleId = sale.id;
+    if (saleId == null) return;
+    try {
+      // Mostrar loading discreto
+      if (!mounted) return;
+      final scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
+      scaffoldMessenger?.showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Text('Generando factura PDF...'),
+            ],
+          ),
+          duration: Duration(seconds: 30),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      final bytes = await SaleInvoicePdfService.generateLetterPdf(
+        saleId: saleId,
+        brandColorArgb: Theme.of(context).colorScheme.primary.value,
+      );
+
+      if (!mounted) return;
+      scaffoldMessenger?.hideCurrentSnackBar();
+
+      final clientName = (sale.customerNameSnapshot ?? '').trim();
+      final fileName = SaleInvoicePdfService.buildFileName(
+        saleCode: sale.localCode,
+        clientName: clientName.isNotEmpty ? clientName : 'CLIENTE',
+      );
+
+      await SaleInvoicePdfService.showPdfPreview(
+        context: context,
+        bytes: bytes,
+        title: 'Factura ${sale.localCode}',
+        fileName: fileName,
+      );
+    } catch (e, st) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+      await ErrorHandler.instance.handle(
+        e,
+        stackTrace: st,
+        context: context,
+        onRetry: () => _openSalePdfPreview(sale),
+        module: 'sales/recent_sales/pdf_preview',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo generar el PDF.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   String _recentSaleTitle(legacy_sales.SaleModel sale) {
     final code = sale.localCode.trim();
     final prefix = sale.electronicInvoiceEnabled == 1 ? 'e-Factura' : 'Factura';
@@ -4661,12 +4783,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
     _searchController.dispose();
     _searchFocusNode.dispose();
     _clientFocusNode.dispose();
-    _clientSearchOverlay?.remove();
+    final clientOverlay = _clientSearchOverlay;
+    _clientSearchOverlay = null;
+    if (clientOverlay != null) {
+      _removeOverlayEntrySafely(clientOverlay);
+    }
     _clientSearchController.dispose();
     _clientSearchFocusNode.removeListener(_handleClientSearchFocus);
     _clientSearchFocusNode.dispose();
     for (final entry in _transientOverlayEntries.toList()) {
-      if (entry.mounted) entry.remove();
+      _removeOverlayEntrySafely(entry);
     }
     _transientOverlayEntries.clear();
     _ticketItemsScrollController.dispose();
@@ -6646,9 +6772,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
         removed = true;
         _transientOverlayEntries.remove(entry);
 
-        if (entry.mounted) {
-          entry.remove();
-        }
+        _removeOverlayEntrySafely(entry);
       }
 
       entry = OverlayEntry(
@@ -6726,8 +6850,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
         },
       );
 
-      overlayState.insert(entry);
       _transientOverlayEntries.add(entry);
+      _insertOverlayEntrySafely(
+        overlayState,
+        entry,
+        shouldInsert: () => _transientOverlayEntries.contains(entry),
+      );
 
       Future<void>.delayed(const Duration(milliseconds: 1700), removeEntry);
     }
@@ -7561,9 +7689,31 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: 'Ver PDF carta',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: sale.id == null
+                            ? null
+                            : () => unawaited(_openSalePdfPreview(sale)),
+                        borderRadius: BorderRadius.circular(10),
+                        child: const SizedBox(
+                          width: 26,
+                          height: 30,
+                          child: Icon(
+                            Icons.picture_as_pdf_rounded,
+                            size: 17,
+                            color: Color(0xFFDC2626),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                   if (sale.id != null &&
                       sale.status.toUpperCase() != 'REFUNDED') ...[
-                    const SizedBox(width: 0),
+                    const SizedBox(width: 6),
                     Tooltip(
                       message: 'Reembolsar factura',
                       child: Material(
@@ -9704,6 +9854,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           close();
                           _updateCurrentCart(() {
                             _currentCart.fiscalReceiptTypeId = null;
+                            // Al quitar el comprobante fiscal, restaurar ITBIS según configuración global.
+                            _currentCart.itbisEnabled = _isGlobalItbisEnabled;
                           });
                         },
                       ),
@@ -9716,6 +9868,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             close();
                             _updateCurrentCart(() {
                               _currentCart.fiscalReceiptTypeId = type.id;
+                              // Al seleccionar un comprobante fiscal, activar ITBIS automáticamente.
+                              _currentCart.itbisEnabled = true;
                             });
                           },
                         ),
@@ -11148,7 +11302,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 .calculateTotalDiscountsCombined();
 
             final shouldShowFiscalTax =
-                _currentSalesDocumentType == _SalesDocumentType.creditoFiscal &&
+                (_currentSalesDocumentType ==
+                        _SalesDocumentType.creditoFiscal ||
+                    _currentCart.fiscalReceiptTypeId != null) &&
                 _currentCart.itbisEnabled;
 
             final itbisAmount = shouldShowFiscalTax
@@ -12541,16 +12697,14 @@ class _CategorySidebarItemState extends State<_CategorySidebarItem> {
         width: double.infinity,
         height: widget.categoryItemHeight,
         decoration: BoxDecoration(
-          color: isHovered
-              ? const Color(0xFFEFF6FF)
-              : Colors.transparent,
+          color: isHovered ? const Color(0xFFEFF6FF) : Colors.transparent,
           border: Border(
             left: BorderSide(
               color: isSelected
                   ? const Color(0xFF1A56DB)
                   : (isHovered
-                      ? const Color(0xFF1A56DB).withOpacity(0.3)
-                      : Colors.transparent),
+                        ? const Color(0xFF1A56DB).withOpacity(0.3)
+                        : Colors.transparent),
               width: isSelected ? 3 : 1.5,
             ),
           ),
@@ -12571,9 +12725,7 @@ class _CategorySidebarItemState extends State<_CategorySidebarItem> {
                   final showExpandedLayout =
                       widget.isExpanded && constraints.maxWidth >= 140;
                   if (!showExpandedLayout) {
-                    return Center(
-                      child: widget.avatar,
-                    );
+                    return Center(child: widget.avatar);
                   }
 
                   return Padding(
@@ -12585,9 +12737,7 @@ class _CategorySidebarItemState extends State<_CategorySidebarItem> {
                       children: [
                         SizedBox(
                           width: widget.avatarLaneWidth,
-                          child: Center(
-                            child: widget.avatar,
-                          ),
+                          child: Center(child: widget.avatar),
                         ),
                         SizedBox(width: widget.useCompactChrome ? 8 : 12),
                         Expanded(

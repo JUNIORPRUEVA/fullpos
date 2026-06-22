@@ -44,6 +44,7 @@ class _StockAdjustmentWorkspacePageState
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   final FocusNode _quantityFocusNode = FocusNode();
+  final ScrollController _productsScrollController = ScrollController();
   final NumberFormat _numberFormat = NumberFormat.decimalPattern('en_US');
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
@@ -55,6 +56,7 @@ class _StockAdjustmentWorkspacePageState
   _InventoryStockFilter _stockFilter = _InventoryStockFilter.all;
   _StockWorkspaceView _workspaceView = _StockWorkspaceView.products;
   _InventoryAdjustmentMode _mode = _InventoryAdjustmentMode.increase;
+  bool _showAllProducts = false;
   bool _loading = true;
   bool _saving = false;
 
@@ -77,6 +79,7 @@ class _StockAdjustmentWorkspacePageState
     _quantityController.dispose();
     _notesController.dispose();
     _quantityFocusNode.dispose();
+    _productsScrollController.dispose();
     super.dispose();
   }
 
@@ -97,7 +100,6 @@ class _StockAdjustmentWorkspacePageState
           );
         _categories = results[1] as List<CategoryModel>;
         _recentAdjustments = results[2] as List<StockMovementDetail>;
-        _selectedProduct ??= _products.isNotEmpty ? _products.first : null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -110,6 +112,7 @@ class _StockAdjustmentWorkspacePageState
   }
 
   List<ProductModel> _visibleProducts() {
+    if (!_hasActiveProductFilter) return const [];
     final query = _searchController.text.trim().toLowerCase();
     return _products.where((product) {
       final matchesQuery =
@@ -131,6 +134,12 @@ class _StockAdjustmentWorkspacePageState
       return matchesQuery && matchesCategory && matchesStock;
     }).toList();
   }
+
+  bool get _hasActiveProductFilter =>
+      _showAllProducts ||
+      _searchController.text.trim().isNotEmpty ||
+      _selectedCategoryId != null ||
+      _stockFilter != _InventoryStockFilter.all;
 
   void _selectProduct(ProductModel product, {bool fillSearch = true}) {
     setState(() {
@@ -297,206 +306,70 @@ class _StockAdjustmentWorkspacePageState
         return RefreshIndicator(
           onRefresh: _loadData,
           child: ListView(
-            padding: productsResponsivePagePadding(constraints),
+            padding: productsResponsivePagePadding(
+              constraints,
+              top: 10,
+              bottom: 14,
+            ),
             children: [
-              ProductsSurface(
-                padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildWorkspaceHeader(
-                      theme,
-                      scheme,
-                      visibleProducts.length,
-                    ),
-                    const SizedBox(height: 20),
-                    if (_products.isEmpty && !_loading)
-                      ProductsEmptyState(
-                        icon: Icons.inventory_2_outlined,
-                        title: 'No hay productos disponibles',
-                        message:
-                            'Crea un producto activo antes de registrar movimientos de stock.',
-                        action: OutlinedButton.icon(
-                          onPressed: _loadData,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Actualizar'),
-                        ),
-                      )
-                    else
-                      _buildSearchAndFilters(theme, scheme),
-                    if (selectedProduct != null) ...[
-                      const SizedBox(height: 16),
-                      _buildSelectedProduct(theme, scheme, selectedProduct),
-                    ],
-                    const SizedBox(height: 16),
-                    Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            crossAxisAlignment: WrapCrossAlignment.end,
-                            children: [
-                              SizedBox(
-                                width: 260,
-                                child:
-                                    DropdownButtonFormField<
-                                      _InventoryAdjustmentMode
-                                    >(
-                                      value: _mode,
-                                      onChanged: _saving
-                                          ? null
-                                          : (value) {
-                                              if (value == null) return;
-                                              setState(() => _mode = value);
-                                            },
-                                      decoration: InputDecoration(
-                                        labelText: 'Tipo de ajuste',
-                                        filled: true,
-                                        fillColor: scheme
-                                            .surfaceContainerHighest
-                                            .withOpacity(0.22),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(
-                                          value:
-                                              _InventoryAdjustmentMode.increase,
-                                          child: Text('Incrementar stock'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value:
-                                              _InventoryAdjustmentMode.decrease,
-                                          child: Text('Disminuir stock'),
-                                        ),
-                                        DropdownMenuItem(
-                                          value: _InventoryAdjustmentMode.exact,
-                                          child: Text('Fijar cantidad exacta'),
-                                        ),
-                                      ],
-                                    ),
-                              ),
-                              SizedBox(
-                                width: 190,
-                                child: TextFormField(
-                                  controller: _quantityController,
-                                  focusNode: _quantityFocusNode,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: InputDecoration(
-                                    labelText:
-                                        _mode == _InventoryAdjustmentMode.exact
-                                        ? 'Cantidad exacta'
-                                        : 'Cantidad',
-                                    filled: true,
-                                    fillColor: scheme.surfaceContainerHighest
-                                        .withOpacity(0.22),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  validator: (value) {
-                                    final parsed = double.tryParse(
-                                      value?.trim().replaceAll(',', '.') ?? '',
-                                    );
-                                    if (parsed == null) {
-                                      return 'Ingresa una cantidad válida';
-                                    }
-                                    if (parsed <= 0) {
-                                      return 'Debe ser mayor que 0';
-                                    }
-                                    return null;
-                                  },
-                                  onChanged: (_) => setState(() {}),
-                                  onFieldSubmitted: (_) {
-                                    if (_parsedQuantity() != null &&
-                                        selectedProduct != null &&
-                                        !_saving) {
-                                      _saveAdjustment();
-                                    }
-                                  },
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1040),
+                  child: Column(
+                    children: [
+                      ProductsSurface(
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                        radius: 14,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildWorkspaceHeader(
+                              theme,
+                              scheme,
+                              _products.length,
+                            ),
+                            const SizedBox(height: 10),
+                            if (_products.isEmpty && !_loading)
+                              ProductsEmptyState(
+                                icon: Icons.inventory_2_outlined,
+                                title: 'No hay productos disponibles',
+                                message:
+                                    'Crea un producto activo antes de registrar movimientos de stock.',
+                                action: OutlinedButton.icon(
+                                  onPressed: _loadData,
+                                  icon: const Icon(Icons.refresh_rounded),
+                                  label: const Text('Actualizar'),
                                 ),
-                              ),
-                              SizedBox(
-                                width: 360,
-                                child: TextFormField(
-                                  controller: _notesController,
-                                  minLines: 1,
-                                  maxLines: 2,
-                                  decoration: InputDecoration(
-                                    labelText: 'Razón o notas',
-                                    hintText:
-                                        'Ejemplo: corrección por conteo físico',
-                                    filled: true,
-                                    fillColor: scheme.surfaceContainerHighest
-                                        .withOpacity(0.22),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              FilledButton.icon(
-                                onPressed:
-                                    _loading ||
-                                        _saving ||
-                                        selectedProduct == null
-                                    ? null
-                                    : _saveAdjustment,
-                                icon: _saving
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.save_rounded),
-                                label: const Text('Guardar ajuste'),
-                                style: FilledButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                    vertical: 18,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (previewStock != null &&
-                              selectedProduct != null) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              'Stock actual: ${_numberFormat.format(selectedProduct.stock)}  →  '
-                              'Nuevo stock: ${_numberFormat.format(previewStock)}',
-                              style: theme.textTheme.labelLarge?.copyWith(
-                                color: scheme.primary,
-                                fontWeight: FontWeight.w800,
+                              )
+                            else
+                              _buildSearchAndFilters(theme, scheme),
+                            const SizedBox(height: 10),
+                            Form(
+                              key: _formKey,
+                              child: _buildAdjustmentStrip(
+                                theme,
+                                scheme,
+                                selectedProduct,
+                                previewStock,
                               ),
                             ),
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: _workspaceView == _StockWorkspaceView.products
+                            ? _buildProductsSection(
+                                theme,
+                                scheme,
+                                visibleProducts,
+                              )
+                            : _buildMovementsSection(theme, scheme),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: _workspaceView == _StockWorkspaceView.products
-                    ? _buildProductsSection(theme, scheme, visibleProducts)
-                    : _buildMovementsSection(theme, scheme),
               ),
             ],
           ),
@@ -510,242 +383,683 @@ class _StockAdjustmentWorkspacePageState
     ColorScheme scheme,
     int productCount,
   ) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final actions = Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.end,
+          children: [
+            Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: const Color(0xFFD9E3F0)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.inventory_2_rounded,
+                    size: 16,
+                    color: scheme.primary,
+                  ),
+                  const SizedBox(width: 7),
+                  Text(
+                    '$productCount productos',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: const Color(0xFF0F172A),
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 40,
+              child: OutlinedButton.icon(
+                onPressed: () => setState(() {
+                  _workspaceView =
+                      _workspaceView == _StockWorkspaceView.products
+                      ? _StockWorkspaceView.movements
+                      : _StockWorkspaceView.products;
+                }),
+                icon: Icon(
+                  _workspaceView == _StockWorkspaceView.products
+                      ? Icons.history_rounded
+                      : Icons.inventory_2_outlined,
+                  size: 17,
+                ),
+                label: Text(
+                  _workspaceView == _StockWorkspaceView.products
+                      ? 'Ver movimientos'
+                      : 'Ver productos',
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF0F172A),
+                  side: const BorderSide(color: Color(0xFFD9E3F0)),
+                  padding: const EdgeInsets.symmetric(horizontal: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+
+        final title = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'INVENTARIO',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: const Color(0xFF1A56DB),
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+                fontFamily: 'Inter',
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Ajuste de stock',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: const Color(0xFF0F172A),
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Inter',
+                letterSpacing: 0,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Ajusta inventario con trazabilidad.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: const Color(0xFF64748B),
+                fontFamily: 'Inter',
+                height: 1.2,
+              ),
+            ),
+          ],
+        );
+
+        if (constraints.maxWidth < 720) {
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'INVENTARIO',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: const Color(0xFF1A56DB),
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Ajuste de stock',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  color: const Color(0xFF0F172A),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Busca un producto, ajusta la cantidad y guarda el movimiento con trazabilidad.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        Chip(label: Text('$productCount productos')),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: () => setState(() {
-            _workspaceView = _workspaceView == _StockWorkspaceView.products
-                ? _StockWorkspaceView.movements
-                : _StockWorkspaceView.products;
-          }),
-          icon: Icon(
-            _workspaceView == _StockWorkspaceView.products
-                ? Icons.history_rounded
-                : Icons.inventory_2_outlined,
-            size: 18,
-          ),
-          label: Text(
-            _workspaceView == _StockWorkspaceView.products
-                ? 'Ver movimientos'
-                : 'Ver productos',
-          ),
-        ),
-      ],
+            children: [title, const SizedBox(height: 10), actions],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: 16),
+            actions,
+          ],
+        );
+      },
     );
   }
 
   Widget _buildSearchAndFilters(ThemeData theme, ColorScheme scheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              width: 390,
-              child: TextField(
-                controller: _searchController,
-                onSubmitted: _submitProductSearch,
-                decoration: InputDecoration(
-                  hintText: 'Buscar por código o nombre...',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: _searchController.text.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Limpiar búsqueda',
-                          onPressed: _searchController.clear,
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                  filled: true,
-                  fillColor: scheme.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+    final fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(5),
+      borderSide: const BorderSide(color: Color(0xFFD9E3F0)),
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFFD9E3F0)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760;
+          final search = SizedBox(
+            height: 42,
+            width: compact ? constraints.maxWidth : 390,
+            child: TextField(
+              controller: _searchController,
+              onSubmitted: _submitProductSearch,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Buscar por código o nombre...',
+                hintStyle: const TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 13,
+                ),
+                prefixIcon: const Icon(Icons.search_rounded, size: 19),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Limpiar búsqueda',
+                        onPressed: _searchController.clear,
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                      ),
+                isDense: true,
+                filled: true,
+                fillColor: scheme.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                border: fieldBorder,
+                enabledBorder: fieldBorder,
+                focusedBorder: fieldBorder.copyWith(
+                  borderSide: BorderSide(color: scheme.primary, width: 1.2),
                 ),
               ),
             ),
-            SizedBox(
-              width: 230,
-              child: DropdownButtonFormField<int?>(
-                value: _selectedCategoryId,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: 'Categoría',
-                  filled: true,
-                  fillColor: scheme.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+          );
+
+          final category = SizedBox(
+            height: 42,
+            width: compact ? constraints.maxWidth : 230,
+            child: DropdownButtonFormField<int?>(
+              value: _selectedCategoryId,
+              isExpanded: true,
+              elevation: 0,
+              menuMaxHeight: 220,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(5),
+              itemHeight: 48,
+              selectedItemBuilder: (context) => [
+                const Text('Todas', overflow: TextOverflow.ellipsis),
+                ..._categories
+                    .where((item) => item.id != null)
+                    .map(
+                      (category) =>
+                          Text(category.name, overflow: TextOverflow.ellipsis),
+                    ),
+              ],
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13.5,
+                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.w500,
+                height: 1.25,
+              ),
+              decoration: InputDecoration(
+                labelText: 'Categoría',
+                floatingLabelBehavior: FloatingLabelBehavior.never,
+                isDense: true,
+                filled: true,
+                fillColor: scheme.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
                 ),
-                items: [
-                  const DropdownMenuItem<int?>(
-                    value: null,
-                    child: Text('Todas'),
-                  ),
-                  ..._categories
-                      .where((item) => item.id != null)
-                      .map(
-                        (category) => DropdownMenuItem<int?>(
-                          value: category.id,
+                border: fieldBorder,
+                enabledBorder: fieldBorder,
+                focusedBorder: fieldBorder.copyWith(
+                  borderSide: BorderSide(color: scheme.primary, width: 1.2),
+                ),
+              ),
+              items: [
+                const DropdownMenuItem<int?>(value: null, child: Text('Todas')),
+                ..._categories
+                    .where((item) => item.id != null)
+                    .map(
+                      (category) => DropdownMenuItem<int?>(
+                        value: category.id,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
                           child: Text(
                             category.name,
                             overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(height: 1.15),
                           ),
                         ),
                       ),
-                ],
-                onChanged: (value) =>
-                    setState(() => _selectedCategoryId = value),
-              ),
+                    ),
+              ],
+              onChanged: (value) => setState(() {
+                _selectedCategoryId = value;
+                _showAllProducts = value == null;
+              }),
             ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
-          children: _InventoryStockFilter.values.map((filter) {
-            final labels = {
-              _InventoryStockFilter.all: 'Todos',
-              _InventoryStockFilter.available: 'Disponibles',
-              _InventoryStockFilter.low: 'Stock bajo',
-              _InventoryStockFilter.out: 'Agotados',
-              _InventoryStockFilter.high: 'Stock alto',
-              _InventoryStockFilter.priority: 'Prioridad',
-            };
-            return ChoiceChip(
-              label: Text(labels[filter]!),
-              selected: _stockFilter == filter,
-              onSelected: (_) => setState(() => _stockFilter = filter),
-              visualDensity: VisualDensity.compact,
-            );
-          }).toList(),
-        ),
-      ],
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [search, category],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _InventoryStockFilter.values.map((filter) {
+                  final labels = {
+                    _InventoryStockFilter.all: 'Todos',
+                    _InventoryStockFilter.available: 'Disponibles',
+                    _InventoryStockFilter.low: 'Stock bajo',
+                    _InventoryStockFilter.out: 'Agotados',
+                    _InventoryStockFilter.high: 'Stock alto',
+                    _InventoryStockFilter.priority: 'Prioridad',
+                  };
+                  final selected = _stockFilter == filter;
+                  return ChoiceChip(
+                    label: Text(labels[filter]!),
+                    selected: selected,
+                    onSelected: (_) => setState(() {
+                      _stockFilter = filter;
+                      _showAllProducts = filter == _InventoryStockFilter.all;
+                    }),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    labelStyle: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 12.5,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                      color: selected
+                          ? scheme.primary
+                          : const Color(0xFF475569),
+                    ),
+                    side: BorderSide(
+                      color: selected
+                          ? scheme.primary.withOpacity(0.35)
+                          : const Color(0xFFD9E3F0),
+                    ),
+                    backgroundColor: Colors.white,
+                    selectedColor: scheme.primary.withOpacity(0.10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildSelectedProduct(
+  Widget _buildAdjustmentStrip(
     ThemeData theme,
     ColorScheme scheme,
-    ProductModel product,
+    ProductModel? product,
+    double? previewStock,
   ) {
-    final status = _stockStatus(product, scheme);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+    final status = product == null ? null : _stockStatus(product, scheme);
+    final fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(5),
+      borderSide: const BorderSide(color: Color(0xFFD9E3F0)),
+    );
+    final inputDecoration = InputDecoration(
+      isDense: true,
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      border: fieldBorder,
+      enabledBorder: fieldBorder,
+      focusedBorder: fieldBorder.copyWith(
+        borderSide: BorderSide(color: scheme.primary, width: 1.2),
       ),
-      child: Row(
-        children: [
-          ProductThumbnail.fromProduct(
-            product,
-            size: 46,
-            showBorder: false,
-            showShadow: false,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFFD9E3F0)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 960;
+          final productInfo = SizedBox(
+            width: compact ? constraints.maxWidth : 420,
+            child: Row(
               children: [
-                Text(
-                  product.name,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+                if (product != null)
+                  ProductThumbnail.fromProduct(
+                    product,
+                    size: 42,
+                    showBorder: false,
+                    showShadow: false,
+                    borderRadius: BorderRadius.circular(10),
+                  )
+                else
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.inventory_2_outlined,
+                      size: 20,
+                      color: Color(0xFF94A3B8),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${product.code}  ·  ${_categoryName(product)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF64748B),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        product?.name ?? 'Selecciona un producto',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: const Color(0xFF0F172A),
+                          fontFamily: 'Inter',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        product == null
+                            ? 'Elige una fila para preparar el ajuste.'
+                            : '${product.code}  ·  ${_categoryName(product)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF64748B),
+                          fontFamily: 'Inter',
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-          _summaryValue('Stock actual', _numberFormat.format(product.stock)),
-          _summaryValue('Mínimo', _numberFormat.format(product.stockMin)),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: status.$2.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              status.$1,
-              style: TextStyle(
-                color: status.$2,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+          );
+
+          final metrics = product == null
+              ? const SizedBox.shrink()
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _compactSummaryValue(
+                      'Stock',
+                      _numberFormat.format(product.stock),
+                    ),
+                    _compactSummaryValue(
+                      'Mínimo',
+                      _numberFormat.format(product.stockMin),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: status!.$2.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: status.$2.withOpacity(0.16)),
+                      ),
+                      child: Text(
+                        status.$1,
+                        style: TextStyle(
+                          color: status.$2,
+                          fontSize: 11,
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+
+          final formFields = Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              SizedBox(
+                width: compact ? 220 : 190,
+                child: DropdownButtonFormField<_InventoryAdjustmentMode>(
+                  value: _mode,
+                  elevation: 0,
+                  menuMaxHeight: 180,
+                  dropdownColor: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  itemHeight: 48,
+                  selectedItemBuilder: (context) => const [
+                    Text('Incrementar', overflow: TextOverflow.ellipsis),
+                    Text('Disminuir', overflow: TextOverflow.ellipsis),
+                    Text('Fijar exacto', overflow: TextOverflow.ellipsis),
+                  ],
+                  onChanged: _saving
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          setState(() => _mode = value);
+                        },
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13.5,
+                    color: Color(0xFF0F172A),
+                    fontWeight: FontWeight.w500,
+                    height: 1.25,
+                  ),
+                  decoration: inputDecoration.copyWith(
+                    labelText: 'Tipo',
+                    floatingLabelBehavior: FloatingLabelBehavior.never,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _InventoryAdjustmentMode.increase,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Incrementar stock',
+                          style: TextStyle(height: 1.15),
+                        ),
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: _InventoryAdjustmentMode.decrease,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Disminuir stock',
+                          style: TextStyle(height: 1.15),
+                        ),
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: _InventoryAdjustmentMode.exact,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Fijar stock exacto',
+                          style: TextStyle(height: 1.15),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-        ],
+              SizedBox(
+                width: compact ? 150 : 116,
+                child: TextFormField(
+                  controller: _quantityController,
+                  focusNode: _quantityFocusNode,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    height: 1.25,
+                  ),
+                  decoration: inputDecoration.copyWith(
+                    labelText: _mode == _InventoryAdjustmentMode.exact
+                        ? 'Exacto'
+                        : 'Cantidad',
+                    floatingLabelBehavior: FloatingLabelBehavior.never,
+                  ),
+                  validator: (value) {
+                    final parsed = double.tryParse(
+                      value?.trim().replaceAll(',', '.') ?? '',
+                    );
+                    if (parsed == null) return 'Cantidad inválida';
+                    if (parsed <= 0) return 'Debe ser mayor que 0';
+                    return null;
+                  },
+                  onChanged: (_) => setState(() {}),
+                  onFieldSubmitted: (_) {
+                    if (_parsedQuantity() != null &&
+                        product != null &&
+                        !_saving) {
+                      _saveAdjustment();
+                    }
+                  },
+                ),
+              ),
+              SizedBox(
+                width: compact ? constraints.maxWidth : 220,
+                child: TextFormField(
+                  controller: _notesController,
+                  minLines: 1,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    height: 1.25,
+                  ),
+                  decoration: inputDecoration.copyWith(
+                    labelText: 'Razón o notas',
+                    floatingLabelBehavior: FloatingLabelBehavior.never,
+                    hintText: 'Conteo físico, merma...',
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: 42,
+                child: FilledButton.icon(
+                  onPressed: _loading || _saving || product == null
+                      ? null
+                      : _saveAdjustment,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_rounded, size: 17),
+                  label: const Text('Aplicar ajuste'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: scheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+
+          final preview = previewStock == null || product == null
+              ? null
+              : Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'Nuevo stock: ${_numberFormat.format(previewStock)}',
+                    style: TextStyle(
+                      color: scheme.primary,
+                      fontFamily: 'Inter',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                );
+
+          return Wrap(
+            spacing: 14,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              productInfo,
+              if (product != null) metrics,
+              ?preview,
+              formFields,
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _summaryValue(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _compactSummaryValue(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            label,
+            '$label ',
             style: const TextStyle(
               color: Color(0xFF64748B),
-              fontSize: 10,
+              fontSize: 10.5,
+              fontFamily: 'Inter',
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 3),
           Text(
             value,
             style: const TextStyle(
               color: Color(0xFF0F172A),
-              fontSize: 14,
+              fontSize: 12.5,
+              fontFamily: 'Inter',
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -758,119 +1072,219 @@ class _StockAdjustmentWorkspacePageState
     ThemeData theme,
     ColorScheme scheme,
     List<ProductModel> products,
-   ) {
+  ) {
+    final waitingForFilter = !_hasActiveProductFilter;
     return ProductsSurface(
-      key: const ValueKey('products'),
+      key: ValueKey('products-$waitingForFilter'),
       padding: EdgeInsets.zero,
-      radius: 16,
+      radius: 14,
       child: Column(
         children: [
           _sectionTitle(
             theme,
             'Productos',
-            '${products.length} resultados disponibles',
+            waitingForFilter
+                ? 'Busca o aplica un filtro para mostrar productos'
+                : '${products.length} resultados disponibles',
           ),
-          Container(
-            color: const Color(0xFFF8FAFC),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-            child: const Row(
-              children: [
-                Expanded(flex: 5, child: Text('PRODUCTO')),
-                Expanded(flex: 2, child: Text('CÓDIGO')),
-                Expanded(child: Text('STOCK')),
-                Expanded(child: Text('MÍNIMO')),
-                Expanded(flex: 2, child: Text('ESTADO')),
-              ],
-            ),
-          ),
-          if (products.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(28),
-              child: Text('No hay productos con estos filtros.'),
+          if (waitingForFilter)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 22,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.manage_search_rounded,
+                      size: 34,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Filtra para seleccionar un producto',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Escribe un código, nombre o elige una categoría. La lista queda oculta por defecto para mantener la pantalla limpia.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'Inter',
+                        color: const Color(0xFF64748B),
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             )
-          else
-            ...products.take(12).map((product) {
-              final status = _stockStatus(product, scheme);
-              return InkWell(
-                hoverColor: const Color(0xFFF8FAFC),
-                onTap: () => _selectProduct(product),
-                child: Container(
-                  constraints: const BoxConstraints(minHeight: 56),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 7,
-                  ),
-                  decoration: const BoxDecoration(
-                    border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 5,
-                        child: Row(
-                          children: [
-                            ProductThumbnail.fromProduct(
-                              product,
-                              size: 38,
-                              showBorder: false,
-                              showShadow: false,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                product.name,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          product.code,
-                          style: const TextStyle(color: Color(0xFF64748B)),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(_numberFormat.format(product.stock)),
-                      ),
-                      Expanded(
-                        child: Text(_numberFormat.format(product.stockMin)),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: status.$2.withOpacity(0.10),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              status.$1,
-                              style: TextStyle(
-                                color: status.$2,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                              ),
+          else ...[
+            Container(
+              color: const Color(0xFFF8FAFC),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              child: Row(
+                children: [
+                  _inventoryHeaderCell('PRODUCTO', flex: 5),
+                  _inventoryHeaderCell('CÓDIGO', flex: 2),
+                  _inventoryHeaderCell('STOCK'),
+                  _inventoryHeaderCell('MÍNIMO'),
+                  _inventoryHeaderCell('ESTADO', flex: 2),
+                ],
+              ),
+            ),
+            if (products.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(28),
+                child: Text('No hay productos con estos filtros.'),
+              )
+            else
+              SizedBox(
+                height: 430,
+                child: Scrollbar(
+                  controller: _productsScrollController,
+                  thumbVisibility: true,
+                  child: ListView.builder(
+                    controller: _productsScrollController,
+                    primary: false,
+                    padding: EdgeInsets.zero,
+                    itemCount: products.length,
+                    itemBuilder: (context, index) {
+                      final product = products[index];
+                      final status = _stockStatus(product, scheme);
+                      final selected = _selectedProduct?.id == product.id;
+                      return InkWell(
+                        hoverColor: const Color(0xFFF8FAFC),
+                        onTap: () => _selectProduct(product),
+                        child: Container(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? scheme.primary.withOpacity(0.06)
+                                : Colors.transparent,
+                            border: const Border(
+                              top: BorderSide(color: Color(0xFFF1F5F9)),
                             ),
                           ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 5,
+                                child: Row(
+                                  children: [
+                                    ProductThumbnail.fromProduct(
+                                      product,
+                                      size: 32,
+                                      showBorder: false,
+                                      showShadow: false,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    const SizedBox(width: 9),
+                                    Expanded(
+                                      child: Text(
+                                        product.name,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 12.8,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  product.code,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontFamily: 'Inter',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _numberFormat.format(product.stock),
+                                  style: TextStyle(
+                                    color: status.$2,
+                                    fontFamily: 'Inter',
+                                    fontSize: 12.3,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _numberFormat.format(product.stockMin),
+                                  style: const TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontFamily: 'Inter',
+                                    fontSize: 12.3,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: status.$2.withOpacity(0.10),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: status.$2.withOpacity(0.14),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      status.$1,
+                                      style: TextStyle(
+                                        color: status.$2,
+                                        fontSize: 10.5,
+                                        fontFamily: 'Inter',
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                     
-                    ],
+                      );
+                    },
                   ),
                 ),
-              );
-            }),
+              ),
+          ],
         ],
       ),
     );
@@ -968,9 +1382,27 @@ class _StockAdjustmentWorkspacePageState
     );
   }
 
+  Widget _inventoryHeaderCell(String label, {int flex = 1}) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Color(0xFF64748B),
+          fontFamily: 'Inter',
+          fontSize: 10.8,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.35,
+        ),
+      ),
+    );
+  }
+
   Widget _sectionTitle(ThemeData theme, String title, String subtitle) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 13),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 11),
       child: Row(
         children: [
           Expanded(
@@ -980,14 +1412,18 @@ class _StockAdjustmentWorkspacePageState
                 Text(
                   title,
                   style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Inter',
+                    color: const Color(0xFF0F172A),
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: const Color(0xFF64748B),
+                    fontFamily: 'Inter',
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -1525,11 +1961,15 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
               switch (action) {
                 case _ReportAction.exportPdf:
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Exportar PDF - próximamente')),
+                    const SnackBar(
+                      content: Text('Exportar PDF - próximamente'),
+                    ),
                   );
                 case _ReportAction.exportExcel:
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Exportar Excel - próximamente')),
+                    const SnackBar(
+                      content: Text('Exportar Excel - próximamente'),
+                    ),
                   );
                 case _ReportAction.print:
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -1553,9 +1993,20 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                 height: 42,
                 child: Row(
                   children: [
-                    Icon(Icons.picture_as_pdf_rounded, size: 18, color: scheme.error),
+                    Icon(
+                      Icons.picture_as_pdf_rounded,
+                      size: 18,
+                      color: scheme.error,
+                    ),
                     const SizedBox(width: 10),
-                    Text('Exportar PDF', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A))),
+                    Text(
+                      'Exportar PDF',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1564,9 +2015,20 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                 height: 42,
                 child: Row(
                   children: [
-                    Icon(Icons.table_chart_outlined, size: 18, color: Colors.green.shade700),
+                    Icon(
+                      Icons.table_chart_outlined,
+                      size: 18,
+                      color: Colors.green.shade700,
+                    ),
                     const SizedBox(width: 10),
-                    Text('Exportar Excel', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A))),
+                    Text(
+                      'Exportar Excel',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1577,7 +2039,14 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                   children: [
                     Icon(Icons.print_rounded, size: 18, color: scheme.primary),
                     const SizedBox(width: 10),
-                    Text('Imprimir', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A))),
+                    Text(
+                      'Imprimir',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1587,9 +2056,20 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                 height: 42,
                 child: Row(
                   children: [
-                    Icon(Icons.refresh_rounded, size: 18, color: scheme.onSurfaceVariant),
+                    Icon(
+                      Icons.refresh_rounded,
+                      size: 18,
+                      color: scheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 10),
-                    Text('Actualizar datos', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A))),
+                    Text(
+                      'Actualizar datos',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF0F172A),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1600,7 +2080,9 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
               decoration: BoxDecoration(
                 color: scheme.surfaceContainerHighest.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: scheme.outlineVariant.withOpacity(0.5)),
+                border: Border.all(
+                  color: scheme.outlineVariant.withOpacity(0.5),
+                ),
               ),
               child: Icon(
                 Icons.more_horiz_rounded,
@@ -1861,15 +2343,47 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                             name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
-                      DataCell(Text(_unitsFormat.format(count), style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(_unitsFormat.format(units), style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(_currencyFormat.format(invValue), style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(_currencyFormat.format(revValue), style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(_currencyFormat.format(profit), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.green.shade700))),
+                      DataCell(
+                        Text(
+                          _unitsFormat.format(count),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          _unitsFormat.format(units),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          _currencyFormat.format(invValue),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          _currencyFormat.format(revValue),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          _currencyFormat.format(profit),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ),
                     ],
                   );
                 }).toList(),
@@ -1976,15 +2490,47 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                             name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
-                      DataCell(Text(_unitsFormat.format(count), style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(_unitsFormat.format(units), style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(_currencyFormat.format(invValue), style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(_currencyFormat.format(revValue), style: const TextStyle(fontSize: 13))),
-                      DataCell(Text(_currencyFormat.format(profit), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.green.shade700))),
+                      DataCell(
+                        Text(
+                          _unitsFormat.format(count),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          _unitsFormat.format(units),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          _currencyFormat.format(invValue),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          _currencyFormat.format(revValue),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          _currencyFormat.format(profit),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ),
                     ],
                   );
                 }).toList(),

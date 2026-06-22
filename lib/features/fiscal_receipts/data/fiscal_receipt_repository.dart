@@ -34,8 +34,12 @@ class FiscalReceiptRepository {
       )
     ''');
 
-    await _addColumnIfMissing(db, DbTables.appSettings, 'fiscal_enabled_default',
-        'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(
+      db,
+      DbTables.appSettings,
+      'fiscal_enabled_default',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
     await _addColumnIfMissing(
       db,
       DbTables.appSettings,
@@ -45,14 +49,15 @@ class FiscalReceiptRepository {
     await _addColumnIfMissing(db, DbTables.ncfBooks, 'name', 'TEXT');
     await _addColumnIfMissing(db, DbTables.ncfBooks, 'code', 'TEXT');
     await _addColumnIfMissing(db, DbTables.ncfBooks, 'prefix', 'TEXT');
+    await _addColumnIfMissing(db, DbTables.ncfBooks, 'start_number', 'INTEGER');
+    await _addColumnIfMissing(db, DbTables.ncfBooks, 'end_number', 'INTEGER');
+    await _addColumnIfMissing(db, DbTables.ncfBooks, 'next_number', 'INTEGER');
     await _addColumnIfMissing(
       db,
       DbTables.ncfBooks,
-      'start_number',
-      'INTEGER',
+      'sequence_digits',
+      'INTEGER NOT NULL DEFAULT 9',
     );
-    await _addColumnIfMissing(db, DbTables.ncfBooks, 'end_number', 'INTEGER');
-    await _addColumnIfMissing(db, DbTables.ncfBooks, 'next_number', 'INTEGER');
     await _addColumnIfMissing(
       db,
       DbTables.ncfBooks,
@@ -115,8 +120,12 @@ class FiscalReceiptRepository {
       'TEXT',
     );
 
-    await _addColumnIfMissing(db, DbTables.sales, 'fiscal_enabled',
-        'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(
+      db,
+      DbTables.sales,
+      'fiscal_enabled',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
     await _addColumnIfMissing(db, DbTables.sales, 'ncf_full', 'TEXT');
     await _addColumnIfMissing(db, DbTables.sales, 'ncf_type', 'TEXT');
     await _addColumnIfMissing(
@@ -158,7 +167,8 @@ class FiscalReceiptRepository {
         name = COALESCE(NULLIF(name, ''), type),
         start_number = COALESCE(start_number, from_n),
         end_number = COALESCE(end_number, to_n),
-        next_number = COALESCE(next_number, next_n)
+        next_number = COALESCE(next_number, next_n),
+        sequence_digits = COALESCE(sequence_digits, 9)
     ''');
   }
 
@@ -187,7 +197,7 @@ class FiscalReceiptRepository {
       'updated_at_ms': now,
     };
     if (rows.isEmpty) {
-      await db.insert(DbTables.appSettings, values);
+      await db.insert(DbTables.appSettings, _appSettingsInsertValues(values));
     } else {
       await db.update(
         DbTables.appSettings,
@@ -235,7 +245,9 @@ class FiscalReceiptRepository {
     }
     final active = await getActiveTypes();
     final marked = active.where((type) => type.isDefault);
-    return marked.isNotEmpty ? marked.first : (active.isEmpty ? null : active.first);
+    return marked.isNotEmpty
+        ? marked.first
+        : (active.isEmpty ? null : active.first);
   }
 
   static Future<int> saveType(FiscalReceiptTypeModel type) async {
@@ -244,6 +256,7 @@ class FiscalReceiptRepository {
     await ensureSchema(db);
     final now = DateTime.now().millisecondsSinceEpoch;
     await _validateNoConflict(db, type);
+    await _validateSequenceMutation(db, type);
     final values = type
         .copyWith(
           createdAtMs: type.createdAtMs == 0 ? now : type.createdAtMs,
@@ -279,10 +292,10 @@ class FiscalReceiptRepository {
       final now = DateTime.now().millisecondsSinceEpoch;
       final values = {'default_ncf_book_id': id, 'updated_at_ms': now};
       if (rows.isEmpty) {
-        await txn.insert(DbTables.appSettings, {
-          'fiscal_enabled_default': 0,
-          ...values,
-        });
+        await txn.insert(
+          DbTables.appSettings,
+          _appSettingsInsertValues({'fiscal_enabled_default': 0, ...values}),
+        );
       } else {
         await txn.update(
           DbTables.appSettings,
@@ -349,22 +362,31 @@ class FiscalReceiptRepository {
     }
     final type = FiscalReceiptTypeModel.fromMap(rows.first);
     _validateTypeAvailability(type);
-    _validateCustomer(type, customerName: customerName, customerTaxId: customerTaxId);
+    _validateCustomer(
+      type,
+      customerName: customerName,
+      customerTaxId: customerTaxId,
+    );
 
     final receiptNumber = type.nextReceiptNumber;
     final sequence = type.nextNumber;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    await txn.update(
+    final updated = await txn.update(
       DbTables.ncfBooks,
       {
         'next_n': sequence + 1,
         'next_number': sequence + 1,
         'updated_at_ms': now,
       },
-      where: 'id = ? AND next_n = ?',
-      whereArgs: [receiptTypeId, sequence],
+      where: 'id = ? AND next_n = ? AND next_number = ?',
+      whereArgs: [receiptTypeId, sequence, sequence],
     );
+    if (updated != 1) {
+      throw StateError(
+        'No se pudo reservar el comprobante fiscal. Recarga la venta e intenta de nuevo.',
+      );
+    }
     await txn.insert(DbTables.customersNcfUsage, {
       'sale_id': saleId,
       'ncf_book_id': receiptTypeId,
@@ -414,13 +436,22 @@ class FiscalReceiptRepository {
       throw ArgumentError('El prefijo es requerido.');
     }
     if (type.endNumber < type.startNumber) {
-      throw ArgumentError('La secuencia final debe ser mayor o igual a la inicial.');
+      throw ArgumentError(
+        'La secuencia final debe ser mayor o igual a la inicial.',
+      );
     }
     if (type.nextNumber < type.startNumber) {
-      throw ArgumentError('El próximo número no puede ser menor que la secuencia inicial.');
+      throw ArgumentError(
+        'El próximo número no puede ser menor que la secuencia inicial.',
+      );
     }
     if (type.nextNumber > type.endNumber + 1) {
-      throw ArgumentError('El próximo número no puede superar la secuencia final.');
+      throw ArgumentError(
+        'El próximo número no puede superar la secuencia final.',
+      );
+    }
+    if (type.sequenceDigits < 1 || type.sequenceDigits > 12) {
+      throw ArgumentError('Los dígitos de secuencia deben estar entre 1 y 12.');
     }
   }
 
@@ -454,6 +485,45 @@ class FiscalReceiptRepository {
     }
   }
 
+  static Future<void> _validateSequenceMutation(
+    DatabaseExecutor db,
+    FiscalReceiptTypeModel type,
+  ) async {
+    if (type.id == null) {
+      if (type.nextNumber != type.startNumber) {
+        throw ArgumentError(
+          'Al crear un comprobante nuevo, el próximo número debe ser igual al inicio del rango.',
+        );
+      }
+      return;
+    }
+
+    final rows = await db.rawQuery(
+      '''
+      SELECT MAX(sequence_number) AS max_sequence
+      FROM ${DbTables.customersNcfUsage}
+      WHERE ncf_book_id = ?
+        AND voided_at_ms IS NULL
+      ''',
+      [type.id],
+    );
+    final maxSequence = rows.isEmpty
+        ? null
+        : rows.first['max_sequence'] as int?;
+    if (maxSequence == null) return;
+
+    if (type.nextNumber <= maxSequence) {
+      throw ArgumentError(
+        'El próximo número no puede ser menor o igual al último comprobante usado ($maxSequence).',
+      );
+    }
+    if (type.startNumber > maxSequence) {
+      throw ArgumentError(
+        'El inicio del rango no puede quedar por encima de comprobantes ya usados.',
+      );
+    }
+  }
+
   static Future<void> _validateNoConflict(
     DatabaseExecutor db,
     FiscalReceiptTypeModel type,
@@ -463,15 +533,13 @@ class FiscalReceiptRepository {
       columns: ['id'],
       where:
           'UPPER(TRIM(type)) = UPPER(TRIM(?)) AND UPPER(TRIM(series)) = UPPER(TRIM(?)) AND is_active = 1 AND deleted_at_ms IS NULL ${type.id == null ? '' : 'AND id <> ?'}',
-      whereArgs: [
-        type.code,
-        type.prefix,
-        if (type.id != null) type.id,
-      ],
+      whereArgs: [type.code, type.prefix, if (type.id != null) type.id],
       limit: 1,
     );
     if (rows.isNotEmpty && type.isActive) {
-      throw ArgumentError('Ya existe un comprobante activo con ese código y prefijo.');
+      throw ArgumentError(
+        'Ya existe un comprobante activo con ese código y prefijo.',
+      );
     }
   }
 
@@ -481,6 +549,21 @@ class FiscalReceiptRepository {
       [table],
     );
     return rows.isNotEmpty;
+  }
+
+  static Map<String, Object?> _appSettingsInsertValues(
+    Map<String, Object?> overrides,
+  ) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return {
+      'itbis_enabled_default': 0,
+      'electronic_invoice_enabled_default': 0,
+      'fiscal_enabled_default': 0,
+      'itbis_rate': 0.18,
+      'ticket_size': '80mm',
+      'updated_at_ms': now,
+      ...overrides,
+    };
   }
 
   static Future<void> _addColumnIfMissing(

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import 'fullpos_notification_card.dart';
 import 'fullpos_notification_controller.dart';
@@ -30,6 +31,7 @@ class _FullPosNotificationHostState extends State<FullPosNotificationHost> {
   OverlayEntry? _entry;
   OverlayState? _overlay;
   bool _syncScheduled = false;
+  bool _entryRebuildScheduled = false;
   int _overlayRetryCount = 0;
 
   FullPosNotificationController get _controller =>
@@ -73,10 +75,41 @@ class _FullPosNotificationHostState extends State<FullPosNotificationHost> {
   void _handleControllerChanged() {
     if (!mounted) return;
     if (_entry?.mounted == true) {
-      _entry!.markNeedsBuild();
+      _scheduleEntryRebuild();
     } else {
       _scheduleOverlaySync();
     }
+  }
+
+  void _scheduleEntryRebuild() {
+    if (_entryRebuildScheduled || !mounted) return;
+    if (!_isUnsafeOverlayMutationPhase) {
+      if (_entry?.mounted == true) {
+        try {
+          _entry!.markNeedsBuild();
+        } catch (_) {
+          _scheduleOverlaySync();
+        }
+      } else {
+        _scheduleOverlaySync();
+      }
+      return;
+    }
+
+    _entryRebuildScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _entryRebuildScheduled = false;
+      if (!mounted) return;
+      if (_entry?.mounted == true) {
+        try {
+          _entry!.markNeedsBuild();
+        } catch (_) {
+          _scheduleOverlaySync();
+        }
+      } else {
+        _scheduleOverlaySync();
+      }
+    });
   }
 
   void _scheduleOverlaySync() {
@@ -107,7 +140,7 @@ class _FullPosNotificationHostState extends State<FullPosNotificationHost> {
 
     _overlayRetryCount = 0;
     if (_overlay == nextOverlay && _entry?.mounted == true) {
-      _entry!.markNeedsBuild();
+      _scheduleEntryRebuild();
       return;
     }
 
@@ -118,16 +151,56 @@ class _FullPosNotificationHostState extends State<FullPosNotificationHost> {
           _FullPosNotificationViewport(controller: _controller),
     );
 
-    try {
-      nextOverlay.insert(_entry!);
-    } catch (error, stackTrace) {
-      debugPrint(
-        '[FullPosNotifications] Could not attach to root overlay: '
-        '$error\n$stackTrace',
-      );
-      _entry = null;
-      _overlay = null;
+    final entry = _entry!;
+    void insertEntry() {
+      if (!mounted || _entry != entry || !nextOverlay.mounted) return;
+      try {
+        nextOverlay.insert(entry);
+      } catch (error, stackTrace) {
+        debugPrint(
+          '[FullPosNotifications] Could not attach to root overlay: '
+          '$error\n$stackTrace',
+        );
+        if (_entry == entry) {
+          _entry = null;
+          _overlay = null;
+        }
+      }
     }
+
+    if (_isUnsafeOverlayMutationPhase) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => insertEntry());
+      return;
+    }
+
+    insertEntry();
+  }
+
+  bool get _isUnsafeOverlayMutationPhase {
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    return phase == SchedulerPhase.transientCallbacks ||
+        phase == SchedulerPhase.midFrameMicrotasks ||
+        phase == SchedulerPhase.persistentCallbacks;
+  }
+
+  void _safeRemoveEntry(OverlayEntry entry) {
+    void removeEntry() {
+      try {
+        if (entry.mounted) entry.remove();
+      } catch (error, stackTrace) {
+        debugPrint(
+          '[FullPosNotifications] Could not remove root overlay entry: '
+          '$error\n$stackTrace',
+        );
+      }
+    }
+
+    if (_isUnsafeOverlayMutationPhase) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => removeEntry());
+      return;
+    }
+
+    removeEntry();
   }
 
   void _removeEntry() {
@@ -135,7 +208,7 @@ class _FullPosNotificationHostState extends State<FullPosNotificationHost> {
     _entry = null;
     _overlay = null;
     if (entry?.mounted == true) {
-      entry!.remove();
+      _safeRemoveEntry(entry!);
     }
   }
 

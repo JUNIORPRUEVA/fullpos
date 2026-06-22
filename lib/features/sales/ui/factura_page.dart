@@ -140,7 +140,7 @@ class _FacturaPageState extends State<FacturaPage> {
   DateTime? _customDateFrom;
   DateTime? _customDateTo;
   int? _selectedSessionId;
-  _InvoiceStatusFilter _statusFilter = _InvoiceStatusFilter.all;
+  _InvoiceStatusFilter _statusFilter = _InvoiceStatusFilter.active;
 
   ColorScheme get scheme => Theme.of(context).colorScheme;
   AppStatusTheme get status =>
@@ -162,7 +162,7 @@ class _FacturaPageState extends State<FacturaPage> {
     var count = 0;
     if (_selectedFilter != DateFilter.thisMonth) count++;
     if (_selectedSessionId != null) count++;
-    if (_statusFilter != _InvoiceStatusFilter.all) count++;
+    if (_statusFilter != _InvoiceStatusFilter.active) count++;
     return count;
   }
 
@@ -198,7 +198,7 @@ class _FacturaPageState extends State<FacturaPage> {
       _customDateFrom = null;
       _customDateTo = null;
       _selectedSessionId = null;
-      _statusFilter = _InvoiceStatusFilter.all;
+      _statusFilter = _InvoiceStatusFilter.active;
       _ensureSelection();
     });
     _loadData();
@@ -264,7 +264,12 @@ class _FacturaPageState extends State<FacturaPage> {
         final from = DateTime(now.year, now.month - 1, 1);
         return (from, now);
       case DateFilter.custom:
-        return (_customDateFrom, _customDateTo);
+        final to = _customDateTo;
+        if (to == null) return (_customDateFrom, null);
+        return (
+          _customDateFrom,
+          DateTime(to.year, to.month, to.day, 23, 59, 59, 999),
+        );
     }
   }
 
@@ -427,11 +432,11 @@ class _FacturaPageState extends State<FacturaPage> {
   String _statusFilterLabel(_InvoiceStatusFilter filter) {
     switch (filter) {
       case _InvoiceStatusFilter.all:
-        return 'Todas';
+        return 'Todas incl. devueltas';
       case _InvoiceStatusFilter.active:
-        return 'Sin devolucion';
+        return 'Activas';
       case _InvoiceStatusFilter.withRefund:
-        return 'Con devolucion';
+        return 'Con devolución';
       case _InvoiceStatusFilter.partialRefund:
         return 'Parcial';
       case _InvoiceStatusFilter.refunded:
@@ -574,11 +579,11 @@ class _FacturaPageState extends State<FacturaPage> {
           );
           final verticalPadding = 10.0;
           final isWide = constraints.maxWidth >= 1200;
-          final detailWidth = constraints.maxWidth < 1100
-              ? 450.0
-              : constraints.maxWidth < 1400
-              ? 500.0
-              : 550.0;
+          final detailWidth = constraints.maxWidth < 1300
+              ? 520.0
+              : constraints.maxWidth < 1600
+              ? 590.0
+              : 640.0;
 
           final listPadding = EdgeInsets.fromLTRB(
             horizontalPadding,
@@ -604,7 +609,7 @@ class _FacturaPageState extends State<FacturaPage> {
                             ),
                           ),
                           if (_selectedSale != null) ...[
-                            const SizedBox(width: 24),
+                            const SizedBox(width: 16),
                             SizedBox(
                               width: detailWidth,
                               child: _buildDetailsPanel(),
@@ -715,7 +720,9 @@ class _FacturaPageState extends State<FacturaPage> {
                 borderRadius: BorderRadius.circular(10),
               ),
               textStyle: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w800,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w500,
+                height: 1.2,
               ),
             ),
           ),
@@ -1066,7 +1073,9 @@ class _FacturaPageState extends State<FacturaPage> {
                       Text(
                         'Listado de facturas',
                         style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w900,
+                          fontSize: 15.2,
+                          fontWeight: FontWeight.w600,
+                          height: 1.25,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1074,7 +1083,8 @@ class _FacturaPageState extends State<FacturaPage> {
                         'Selecciona una factura para ver el resumen completo a la derecha.',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w400,
+                          height: 1.35,
                         ),
                       ),
                     ],
@@ -1086,11 +1096,14 @@ class _FacturaPageState extends State<FacturaPage> {
                     child: Text(
                       _statusFilter == _InvoiceStatusFilter.all
                           ? 'Mostrando todas las facturas'
+                          : _statusFilter == _InvoiceStatusFilter.active
+                          ? 'Mostrando facturas activas'
                           : 'Filtro: ${_statusFilterLabel(_statusFilter)}',
                       textAlign: TextAlign.right,
                       style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w500,
                         color: scheme.onSurfaceVariant,
+                        height: 1.3,
                       ),
                     ),
                   ),
@@ -1147,7 +1160,7 @@ class _FacturaPageState extends State<FacturaPage> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 18,
-                          vertical: 14,
+                          vertical: 17,
                         ),
                         child: LayoutBuilder(
                           builder: (context, rowConstraints) {
@@ -1177,9 +1190,11 @@ class _FacturaPageState extends State<FacturaPage> {
                                                         .textTheme
                                                         .bodyMedium
                                                         ?.copyWith(
+                                                          fontSize: 14.2,
                                                           fontWeight:
-                                                              FontWeight.w800,
+                                                              FontWeight.w600,
                                                           fontFamily: 'Inter',
+                                                          height: 1.35,
                                                         ),
                                                   ),
                                                 ),
@@ -1200,8 +1215,10 @@ class _FacturaPageState extends State<FacturaPage> {
                                               style: theme.textTheme.bodySmall
                                                   ?.copyWith(
                                                     color: scheme.onSurface,
-                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 13.4,
+                                                    fontWeight: FontWeight.w400,
                                                     fontFamily: 'Inter',
+                                                    height: 1.35,
                                                   ),
                                             ),
                                           ],
@@ -1229,6 +1246,9 @@ class _FacturaPageState extends State<FacturaPage> {
                                             ?.copyWith(
                                               color: AppColors.textSecondary,
                                               fontFamily: 'Inter',
+                                              fontSize: 12.8,
+                                              fontWeight: FontWeight.w400,
+                                              height: 1.35,
                                             ),
                                       ),
                                       Text(
@@ -1239,6 +1259,9 @@ class _FacturaPageState extends State<FacturaPage> {
                                             ?.copyWith(
                                               color: AppColors.textSecondary,
                                               fontFamily: 'Inter',
+                                              fontSize: 12.8,
+                                              fontWeight: FontWeight.w400,
+                                              height: 1.35,
                                             ),
                                       ),
                                       if (isFiscal)
@@ -1247,8 +1270,9 @@ class _FacturaPageState extends State<FacturaPage> {
                                           style: theme.textTheme.bodySmall
                                               ?.copyWith(
                                                 color: fiscalStyle.accent,
-                                                fontWeight: FontWeight.w700,
+                                                fontWeight: FontWeight.w500,
                                                 fontFamily: 'Inter',
+                                                height: 1.3,
                                               ),
                                         ),
                                     ],
@@ -1260,14 +1284,17 @@ class _FacturaPageState extends State<FacturaPage> {
                                       amount: sale.total,
                                       bigStyle: theme.textTheme.bodyLarge
                                           ?.copyWith(
-                                            fontWeight: FontWeight.w800,
+                                            fontSize: 15.4,
+                                            fontWeight: FontWeight.w600,
                                             fontFamily: 'Inter',
+                                            height: 1.25,
                                           ),
                                       smallStyle: theme.textTheme.bodySmall
                                           ?.copyWith(
-                                            fontWeight: FontWeight.w600,
+                                            fontWeight: FontWeight.w400,
                                             fontFamily: 'Inter',
                                             color: AppColors.textSecondary,
+                                            height: 1.25,
                                           ),
                                     ),
                                   ),
@@ -1292,8 +1319,10 @@ class _FacturaPageState extends State<FacturaPage> {
                                               overflow: TextOverflow.ellipsis,
                                               style: theme.textTheme.bodyMedium
                                                   ?.copyWith(
-                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 14.2,
+                                                    fontWeight: FontWeight.w600,
                                                     fontFamily: 'Inter',
+                                                    height: 1.35,
                                                   ),
                                             ),
                                           ),
@@ -1317,6 +1346,9 @@ class _FacturaPageState extends State<FacturaPage> {
                                             ?.copyWith(
                                               color: AppColors.textSecondary,
                                               fontFamily: 'Inter',
+                                              fontSize: 12.8,
+                                              fontWeight: FontWeight.w400,
+                                              height: 1.35,
                                             ),
                                       ),
                                     ],
@@ -1330,8 +1362,10 @@ class _FacturaPageState extends State<FacturaPage> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14.0,
+                                      fontWeight: FontWeight.w400,
                                       fontFamily: 'Inter',
+                                      height: 1.35,
                                     ),
                                   ),
                                 ),
@@ -1350,6 +1384,9 @@ class _FacturaPageState extends State<FacturaPage> {
                                             ?.copyWith(
                                               color: AppColors.textSecondary,
                                               fontFamily: 'Inter',
+                                              fontSize: 12.8,
+                                              fontWeight: FontWeight.w400,
+                                              height: 1.35,
                                             ),
                                       ),
                                       if (isFiscal) ...[
@@ -1359,8 +1396,9 @@ class _FacturaPageState extends State<FacturaPage> {
                                           style: theme.textTheme.labelSmall
                                               ?.copyWith(
                                                 color: fiscalStyle.accent,
-                                                fontWeight: FontWeight.w800,
+                                                fontWeight: FontWeight.w500,
                                                 fontFamily: 'Inter',
+                                                height: 1.3,
                                               ),
                                         ),
                                       ],
@@ -1378,14 +1416,17 @@ class _FacturaPageState extends State<FacturaPage> {
                                       amount: sale.total,
                                       bigStyle: theme.textTheme.bodyLarge
                                           ?.copyWith(
-                                            fontWeight: FontWeight.w800,
+                                            fontSize: 15.4,
+                                            fontWeight: FontWeight.w600,
                                             fontFamily: 'Inter',
+                                            height: 1.25,
                                           ),
                                       smallStyle: theme.textTheme.bodySmall
                                           ?.copyWith(
-                                            fontWeight: FontWeight.w600,
+                                            fontWeight: FontWeight.w400,
                                             fontFamily: 'Inter',
                                             color: AppColors.textSecondary,
+                                            height: 1.25,
                                           ),
                                     ),
                                   ),
@@ -1562,13 +1603,19 @@ class _FacturaPageState extends State<FacturaPage> {
       height: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.borderSoft, width: 1),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
         child: DefaultTextStyle(
-          style: theme.textTheme.bodyMedium ?? const TextStyle(),
+          style:
+              theme.textTheme.bodyMedium?.copyWith(
+                fontFamily: 'Inter',
+                height: 1.35,
+                fontWeight: FontWeight.w400,
+              ) ??
+              const TextStyle(fontFamily: 'Inter', height: 1.35),
           child: _buildSaleDetailsPanel(_selectedSale),
         ),
       ),
@@ -1747,8 +1794,10 @@ class _FacturaPageState extends State<FacturaPage> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: hasNamedCustomer ? -0.1 : 0.2,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0,
+                          height: 1.25,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -1760,7 +1809,9 @@ class _FacturaPageState extends State<FacturaPage> {
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 12.8,
+                          fontWeight: FontWeight.w400,
+                          height: 1.35,
                         ),
                       ),
                     ],
@@ -1819,7 +1870,7 @@ class _FacturaPageState extends State<FacturaPage> {
             Text(
               'DETALLE',
               style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 1.0,
                 color: scheme.onSurfaceVariant,
               ),
@@ -1855,7 +1906,7 @@ class _FacturaPageState extends State<FacturaPage> {
                             Text(
                               'DEVOLUCIONES',
                               style: theme.textTheme.labelLarge?.copyWith(
-                                fontWeight: FontWeight.w900,
+                                fontWeight: FontWeight.w600,
                                 letterSpacing: 1.0,
                                 color: scheme.onSurfaceVariant,
                               ),
@@ -1950,7 +2001,9 @@ class _FacturaPageState extends State<FacturaPage> {
               label,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
+                fontSize: 12.8,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
               ),
             ),
           ),
@@ -1959,8 +2012,9 @@ class _FacturaPageState extends State<FacturaPage> {
             child: Text(
               value,
               style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                height: 1.2,
+                fontSize: 12.8,
+                fontWeight: FontWeight.w400,
+                height: 1.35,
               ),
             ),
           ),
@@ -1985,8 +2039,9 @@ class _FacturaPageState extends State<FacturaPage> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11.2,
-                fontWeight: FontWeight.w700,
+                fontSize: 12.6,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
               ),
             ),
           ),
@@ -2002,8 +2057,9 @@ class _FacturaPageState extends State<FacturaPage> {
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
-                fontSize: 10.4,
-                fontWeight: FontWeight.w600,
+                fontSize: 11.8,
+                fontWeight: FontWeight.w400,
+                height: 1.3,
               ),
             ),
           ),
@@ -2016,8 +2072,9 @@ class _FacturaPageState extends State<FacturaPage> {
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 11.2,
-                fontWeight: FontWeight.w800,
+                fontSize: 12.6,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
               ),
             ),
           ),
@@ -2042,18 +2099,20 @@ class _FacturaPageState extends State<FacturaPage> {
             child: Text(
               label,
               style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: emphasized ? 12.4 : 11.4,
-                fontWeight: emphasized ? FontWeight.w900 : FontWeight.w700,
+                fontSize: emphasized ? 13.2 : 12.2,
+                fontWeight: emphasized ? FontWeight.w600 : FontWeight.w400,
                 color: emphasized ? scheme.onSurface : scheme.onSurfaceVariant,
+                height: 1.35,
               ),
             ),
           ),
           Text(
             CurrencyDisplay.format(amount, symbol: 'RD\$'),
             style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: emphasized ? 12.6 : 11.4,
-              fontWeight: emphasized ? FontWeight.w900 : FontWeight.w800,
+              fontSize: emphasized ? 13.4 : 12.2,
+              fontWeight: emphasized ? FontWeight.w700 : FontWeight.w500,
               color: emphasized ? scheme.onSurface : scheme.onSurface,
+              height: 1.35,
             ),
           ),
         ],

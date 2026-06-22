@@ -30,9 +30,19 @@ class SuccessToast extends StatefulWidget {
     Color iconColor = const Color(0xFF34D399),
     Duration duration = const Duration(seconds: 3),
   }) {
-    // Buscar el Overlay más cercano
-    final overlay = Overlay.of(context);
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
     late OverlayEntry entry;
+    var removed = false;
+
+    void removeEntry() {
+      if (removed) return;
+      removed = true;
+      try {
+        if (entry.mounted) entry.remove();
+      } catch (_) {}
+    }
 
     entry = OverlayEntry(
       builder: (context) => _ToastWidget(
@@ -42,11 +52,16 @@ class SuccessToast extends StatefulWidget {
         backgroundColor: backgroundColor,
         iconColor: iconColor,
         duration: duration,
-        onDismiss: () => entry.remove(),
+        onDismiss: removeEntry,
       ),
     );
 
-    overlay.insert(entry);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (removed || !overlay.mounted) return;
+      try {
+        overlay.insert(entry);
+      } catch (_) {}
+    });
   }
 
   @override
@@ -67,14 +82,14 @@ class _SuccessToastState extends State<SuccessToast>
       duration: const Duration(milliseconds: 350),
     );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0.0, -1.2),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    ));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0.0, -1.2), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          ),
+        );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
@@ -150,11 +165,7 @@ class _SuccessToastState extends State<SuccessToast>
                     color: Colors.white.withOpacity(0.18),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    widget.icon,
-                    size: 22,
-                    color: widget.iconColor,
-                  ),
+                  child: Icon(widget.icon, size: 22, color: widget.iconColor),
                 ),
                 const SizedBox(width: 12),
                 Flexible(
@@ -256,14 +267,14 @@ class _ToastWidgetState extends State<_ToastWidget>
       duration: const Duration(milliseconds: 400),
     );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0.0, -1.5),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutBack,
-      reverseCurve: Curves.easeInCubic,
-    ));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0.0, -1.5), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _controller,
+            curve: Curves.easeOutBack,
+            reverseCurve: Curves.easeInCubic,
+          ),
+        );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(

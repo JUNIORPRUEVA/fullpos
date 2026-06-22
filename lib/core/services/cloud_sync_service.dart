@@ -1145,8 +1145,7 @@ class CloudSyncService {
           // IMPORTANT: backend supports `imageUrl: null` to clear previous image.
           // If the product prefers a color placeholder, we should explicitly clear
           // any previously synced imageUrl.
-          if (p.prefersImage)
-            'imageUrl': ?imageUrl,
+          if (p.prefersImage) 'imageUrl': ?imageUrl,
           if (!p.prefersImage) 'imageUrl': null,
         });
       }

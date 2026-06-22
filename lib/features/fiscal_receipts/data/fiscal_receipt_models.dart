@@ -29,6 +29,7 @@ class FiscalReceiptTypeModel {
   final int startNumber;
   final int endNumber;
   final int nextNumber;
+  final int sequenceDigits;
   final int? expiresAtMs;
   final bool requiresCustomerTaxId;
   final bool requiresCustomerName;
@@ -48,6 +49,7 @@ class FiscalReceiptTypeModel {
     required this.startNumber,
     required this.endNumber,
     required this.nextNumber,
+    this.sequenceDigits = 9,
     this.expiresAtMs,
     this.requiresCustomerTaxId = false,
     this.requiresCustomerName = false,
@@ -70,12 +72,19 @@ class FiscalReceiptTypeModel {
 
   bool get isExhausted => nextNumber > endNumber;
 
-  bool get isAvailable => isActive && deletedAtMs == null && !isExpired && !isExhausted;
+  bool get isAvailable =>
+      isActive && deletedAtMs == null && !isExpired && !isExhausted;
 
-  String get nextReceiptNumber => formatReceiptNumber(prefix, nextNumber);
+  String get nextReceiptNumber =>
+      formatReceiptNumber(prefix, nextNumber, digits: sequenceDigits);
 
-  static String formatReceiptNumber(String prefix, int sequence) {
-    return '${prefix.trim().toUpperCase()}${sequence.toString().padLeft(8, '0')}';
+  static String formatReceiptNumber(
+    String prefix,
+    int sequence, {
+    int digits = 9,
+  }) {
+    final safeDigits = digits.clamp(1, 12).toInt();
+    return '${prefix.trim().toUpperCase()}${sequence.toString().padLeft(safeDigits, '0')}';
   }
 
   factory FiscalReceiptTypeModel.fromMap(Map<String, dynamic> map) {
@@ -92,6 +101,7 @@ class FiscalReceiptTypeModel {
       startNumber: map['start_number'] as int? ?? map['from_n'] as int? ?? 1,
       endNumber: map['end_number'] as int? ?? map['to_n'] as int? ?? 1,
       nextNumber: map['next_number'] as int? ?? map['next_n'] as int? ?? 1,
+      sequenceDigits: map['sequence_digits'] as int? ?? 9,
       expiresAtMs: map['expires_at_ms'] as int?,
       requiresCustomerTaxId:
           (map['requires_customer_tax_id'] as int? ?? 0) == 1,
@@ -117,6 +127,7 @@ class FiscalReceiptTypeModel {
       'start_number': startNumber,
       'end_number': endNumber,
       'next_number': nextNumber,
+      'sequence_digits': sequenceDigits,
       'from_n': startNumber,
       'to_n': endNumber,
       'next_n': nextNumber,
@@ -141,6 +152,7 @@ class FiscalReceiptTypeModel {
     int? startNumber,
     int? endNumber,
     int? nextNumber,
+    int? sequenceDigits,
     int? expiresAtMs,
     bool clearExpiresAtMs = false,
     bool? requiresCustomerTaxId,
@@ -161,6 +173,7 @@ class FiscalReceiptTypeModel {
       startNumber: startNumber ?? this.startNumber,
       endNumber: endNumber ?? this.endNumber,
       nextNumber: nextNumber ?? this.nextNumber,
+      sequenceDigits: sequenceDigits ?? this.sequenceDigits,
       expiresAtMs: clearExpiresAtMs ? null : expiresAtMs ?? this.expiresAtMs,
       requiresCustomerTaxId:
           requiresCustomerTaxId ?? this.requiresCustomerTaxId,

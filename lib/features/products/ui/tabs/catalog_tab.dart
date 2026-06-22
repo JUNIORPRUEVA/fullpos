@@ -803,30 +803,34 @@ class _CatalogTabState extends State<CatalogTab> {
     if (result == null || !mounted) return;
     if (!result.hasChanges) return;
 
-    // Actualizar localmente sin recargar toda la lista ni mostrar loading
     final ids = selectedProducts
         .where((p) => p.id != null)
         .map((p) => p.id!)
         .toList();
 
-    // Actualizar inmediatamente en memoria para feedback instantáneo
-    setState(() {
-      _products = _products.map((p) {
-        if (p.id != null && ids.contains(p.id)) {
-          return p.copyWith(
-            categoryId: result.categoryId ?? p.categoryId,
-            supplierId: result.supplierId ?? p.supplierId,
-            stockMin: result.stockMin ?? p.stockMin,
-          );
-        }
-        return p;
-      }).toList();
-      // Deseleccionar todos los productos editados
-      _selectedProductIds.removeAll(ids.toSet());
-    });
+    try {
+      final updatedCount = await _productsRepo.batchUpdate(
+        ids: ids,
+        updateCategory: result.categoryChanged,
+        categoryId: result.categoryId,
+        updateSupplier: result.supplierChanged,
+        supplierId: result.supplierId,
+        updateStockMin: result.stockMinChanged,
+        stockMin: result.stockMin,
+      );
 
-    // Mostrar notificación tipo tarjeta en la esquina superior derecha
-    if (mounted) {
+      if (updatedCount != ids.length) {
+        throw StateError(
+          'Solo se actualizaron $updatedCount de ${ids.length} productos',
+        );
+      }
+
+      await _loadProducts();
+      if (!mounted) return;
+      setState(() {
+        _selectedProductIds.removeAll(ids.toSet());
+      });
+
       SuccessToast.show(
         context,
         message: '${ids.length} productos actualizados',
@@ -835,31 +839,17 @@ class _CatalogTabState extends State<CatalogTab> {
         backgroundColor: const Color(0xFF065F46),
         iconColor: const Color(0xFF34D399),
       );
+    } catch (e) {
+      if (!mounted) return;
+      SuccessToast.show(
+        context,
+        message: 'Error al actualizar productos',
+        subtitle: e.toString(),
+        icon: Icons.error_outline_rounded,
+        backgroundColor: const Color(0xFF991B1B),
+        iconColor: const Color(0xFFFCA5A5),
+      );
     }
-
-    // Ejecutar la operación en background sin bloquear
-    unawaited(
-      _productsRepo
-          .batchUpdate(
-            ids: ids,
-            categoryId: result.categoryId,
-            supplierId: result.supplierId,
-            stockMin: result.stockMin,
-          )
-          .catchError((e) {
-            if (mounted) {
-              SuccessToast.show(
-                context,
-                message: 'Error al actualizar productos',
-                subtitle: e.toString(),
-                icon: Icons.error_outline_rounded,
-                backgroundColor: const Color(0xFF991B1B),
-                iconColor: const Color(0xFFFCA5A5),
-              );
-            }
-            return 0;
-          }),
-    );
   }
 
   Future<bool> _confirmDeleteProducts(List<ProductModel> products) async {

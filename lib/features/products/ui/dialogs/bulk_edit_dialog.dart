@@ -9,15 +9,20 @@ class BulkEditResult {
   final int? categoryId;
   final int? supplierId;
   final double? stockMin;
+  final bool categoryChanged;
+  final bool supplierChanged;
+  final bool stockMinChanged;
 
   const BulkEditResult({
     this.categoryId,
     this.supplierId,
     this.stockMin,
+    this.categoryChanged = false,
+    this.supplierChanged = false,
+    this.stockMinChanged = false,
   });
 
-  bool get hasChanges =>
-      categoryId != null || supplierId != null || stockMin != null;
+  bool get hasChanges => categoryChanged || supplierChanged || stockMinChanged;
 }
 
 /// Diálogo para editar múltiples productos en lote
@@ -58,10 +63,10 @@ class _BulkEditDialogState extends State<BulkEditDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final activeCategories =
-        widget.categories.where((c) => c.isActive).toList();
-    final activeSuppliers =
-        widget.suppliers.where((s) => s.isActive).toList();
+    final activeCategories = widget.categories
+        .where((c) => c.isActive)
+        .toList();
+    final activeSuppliers = widget.suppliers.where((s) => s.isActive).toList();
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -75,9 +80,7 @@ class _BulkEditDialogState extends State<BulkEditDialog> {
             Container(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
               decoration: const BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: Color(0xFFE2E8F0)),
-                ),
+                border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
               ),
               child: Row(
                 children: [
@@ -175,9 +178,7 @@ class _BulkEditDialogState extends State<BulkEditDialog> {
             Container(
               padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
               decoration: const BoxDecoration(
-                border: Border(
-                  top: BorderSide(color: Color(0xFFE2E8F0)),
-                ),
+                border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -383,14 +384,9 @@ class _BulkEditDialogState extends State<BulkEditDialog> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFFEFF6FF)
-              : Colors.transparent,
+          color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
           border: Border(
-            bottom: BorderSide(
-              color: const Color(0xFFF1F5F9),
-              width: 0.5,
-            ),
+            bottom: BorderSide(color: const Color(0xFFF1F5F9), width: 0.5),
           ),
         ),
         child: Row(
@@ -485,7 +481,9 @@ class _BulkEditDialogState extends State<BulkEditDialog> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('El stock mínimo debe ser un número válido mayor o igual a 0'),
+            content: Text(
+              'El stock mínimo debe ser un número válido mayor o igual a 0',
+            ),
             backgroundColor: ui_colors.AppColors.error,
           ),
         );
@@ -496,8 +494,11 @@ class _BulkEditDialogState extends State<BulkEditDialog> {
     Navigator.pop(
       context,
       BulkEditResult(
+        categoryChanged: _categoryChanged,
         categoryId: _categoryChanged ? _selectedCategoryId : null,
+        supplierChanged: _supplierChanged,
         supplierId: _supplierChanged ? _selectedSupplierId : null,
+        stockMinChanged: _stockMinChanged,
         stockMin: stockMin,
       ),
     );

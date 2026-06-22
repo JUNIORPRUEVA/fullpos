@@ -4575,6 +4575,8 @@ class AppDb {
       )
     ''');
 
+    await FiscalReceiptRepository.ensureSchema(db);
+
     await db.execute('''
       CREATE TABLE IF NOT EXISTS ${DbTables.creditPayments} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
