@@ -5,6 +5,7 @@ import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/update/import_export_activity_tracker.dart';
 import '../models/category_model.dart';
 import '../models/product_model.dart';
 import '../models/supplier_model.dart';
@@ -18,6 +19,8 @@ class ProductsExporter {
     List<SupplierModel> suppliers = const <SupplierModel>[],
     bool includePurchasePrice = true,
   }) async {
+    ImportExportActivityTracker.instance.markStarted();
+    try {
     final excel = Excel.createExcel();
     try {
       excel.delete('Sheet1');
@@ -118,5 +121,8 @@ class ProductsExporter {
     final file = File('${downloadsDir.path}/Productos_$ts.xlsx');
     await file.writeAsBytes(Uint8List.fromList(bytes), flush: true);
     return file;
+    } finally {
+      ImportExportActivityTracker.instance.markCompleted();
+    }
   }
 }

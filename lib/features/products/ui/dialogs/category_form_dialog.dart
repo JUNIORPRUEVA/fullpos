@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../../../core/ui/app_toast.dart';
 import '../../../../core/window/window_service.dart';
 import '../../data/categories_repository.dart';
 import '../../models/category_model.dart';
@@ -110,13 +111,11 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
       );
 
       if (exists) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Ya existe una categoría con ese nombre'),
-            ),
-          );
-        }
+        AppToast.show(
+          context,
+          'Ya existe una categoría con ese nombre',
+          type: AppToastType.warning,
+        );
         return;
       }
 
@@ -147,21 +146,22 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
 
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEdit
-                  ? 'Categoría actualizada correctamente'
-                  : 'Categoría creada correctamente',
-            ),
-          ),
+        AppToast.show(
+          context,
+          _isEdit
+              ? 'Categoría actualizada correctamente'
+              : 'Categoría creada correctamente',
+          type: AppToastType.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
+        AppToast.show(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error al guardar: $e')));
+          'Error al guardar: $e',
+          type: AppToastType.error,
+          duration: const Duration(seconds: 10),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -330,6 +330,16 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
                                           const SizedBox(height: 4),
                                           Text(
                                             'Opcional. Si existe, se mostrará en ventas y en los selectores.',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color:
+                                                      scheme.onSurfaceVariant,
+                                                  height: 1.3,
+                                                ),
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            'Recomendado: fondo blanco o transparente para una imagen más limpia.',
                                             style: theme.textTheme.bodySmall
                                                 ?.copyWith(
                                                   color:

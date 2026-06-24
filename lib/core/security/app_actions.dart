@@ -127,9 +127,36 @@ class AppActions {
   );
 
   // Inventario
+  static const addStock = AppAction(
+    code: 'inventory.add_stock',
+    name: 'Agregar stock',
+    description: 'Registrar entrada de inventario para un producto.',
+    category: AppActionCategory.inventory,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
+  );
+  static const removeStock = AppAction(
+    code: 'inventory.remove_stock',
+    name: 'Restar stock',
+    description: 'Registrar salida manual de inventario para un producto.',
+    category: AppActionCategory.inventory,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
+  );
+  static const adjustInventory = AppAction(
+    code: 'inventory.adjust',
+    name: 'Ajustar inventario',
+    description: 'Fijar manualmente la existencia exacta de un producto.',
+    category: AppActionCategory.inventory,
+    risk: ActionRisk.high,
+    requiresOverrideByDefault: true,
+  );
+
+  // Compatibilidad legacy: en versiones anteriores una sola accion cubria
+  // entrada, salida y ajuste exacto de stock.
   static const adjustStock = AppAction(
     code: 'inventory.adjust_stock',
-    name: 'Ajustar stock',
+    name: 'Ajustar stock (legacy)',
     description: 'Entrada, salida o ajuste directo de stock.',
     category: AppActionCategory.inventory,
     risk: ActionRisk.high,
@@ -327,6 +354,9 @@ class AppActions {
     createLayaway,
     processReturn,
     deleteClient,
+    addStock,
+    removeStock,
+    adjustInventory,
     adjustStock,
     editCost,
     editSalePrice,

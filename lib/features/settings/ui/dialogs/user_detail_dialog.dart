@@ -819,10 +819,6 @@ class UserDetailDialog extends StatelessWidget {
                 _readBool(perms, 'canViewReports'),
               ),
               _PermissionItem(
-                'Herramientas',
-                _readBool(perms, 'canAccessTools'),
-              ),
-              _PermissionItem(
                 'Configuración',
                 _readBool(perms, 'canAccessSettings'),
               ),
@@ -869,8 +865,6 @@ class UserDetailDialog extends StatelessWidget {
           return object.canMakeCashMovements == true;
         case 'canViewReports':
           return object.canViewReports == true;
-        case 'canAccessTools':
-          return object.canAccessTools == true;
         case 'canAccessSettings':
           return object.canAccessSettings == true;
       }
@@ -1099,7 +1093,6 @@ class _EmptyPermissions {
   bool get canViewCashHistory => false;
   bool get canMakeCashMovements => false;
   bool get canViewReports => false;
-  bool get canAccessTools => false;
   bool get canAccessSettings => false;
 }
 

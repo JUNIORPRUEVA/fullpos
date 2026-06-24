@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/errors/error_handler.dart';
+import '../../../../core/ui/app_toast.dart';
 import '../../data/suppliers_repository.dart';
 import '../../models/supplier_model.dart';
 import '../widgets/products_surface.dart';
@@ -62,13 +63,11 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
       );
 
       if (exists) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Ya existe un suplidor con ese nombre'),
-            ),
-          );
-        }
+        AppToast.show(
+          context,
+          'Ya existe un suplidor con ese nombre',
+          type: AppToastType.warning,
+        );
         return;
       }
 
@@ -94,14 +93,12 @@ class _SupplierFormDialogState extends State<SupplierFormDialog> {
 
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEdit
-                  ? 'Suplidor actualizado correctamente'
-                  : 'Suplidor creado correctamente',
-            ),
-          ),
+        AppToast.show(
+          context,
+          _isEdit
+              ? 'Suplidor actualizado correctamente'
+              : 'Suplidor creado correctamente',
+          type: AppToastType.success,
         );
       }
     } catch (e, st) {

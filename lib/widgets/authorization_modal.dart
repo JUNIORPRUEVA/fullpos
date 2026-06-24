@@ -8,6 +8,7 @@ import '../core/security/app_actions.dart';
 import '../core/security/authorization_service.dart';
 import '../core/security/security_config.dart';
 import '../core/theme/app_status_theme.dart';
+import '../core/ui/app_toast.dart';
 
 class AuthorizationModal extends StatefulWidget {
   final AppAction action;
@@ -144,9 +145,7 @@ class _AuthorizationModalState extends State<AuthorizationModal> {
 
   void _showMessage(String message) {
     if (!mounted || message.trim().isEmpty) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    AppToast.show(context, message, type: AppToastType.warning);
   }
 
   Widget _buildHeader(String riskLabel) {

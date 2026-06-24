@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../db/app_db.dart';
 import '../db/tables.dart';
+import 'temporary_authorization_service.dart';
 
 enum OverrideMethod { adminCode }
 
@@ -11,11 +12,13 @@ class AuthorizationResult {
   final bool success;
   final String message;
   final OverrideMethod method;
+  final int? approvedByUserId;
 
   AuthorizationResult({
     required this.success,
     required this.message,
     required this.method,
+    this.approvedByUserId,
   });
 }
 
@@ -95,10 +98,16 @@ class AuthorizationService {
       terminalId: terminalId,
     );
 
+    TemporaryAuthorizationService.authorize(
+      scope: actionCode,
+      approvedByUserId: adminId.toString(),
+    );
+
     return AuthorizationResult(
       success: true,
       message: 'Autorización aprobada',
       method: OverrideMethod.adminCode,
+      approvedByUserId: adminId,
     );
   }
 
@@ -111,8 +120,8 @@ class AuthorizationService {
       DbTables.users,
       columns: ['id'],
       where:
-          'company_id = ? AND pin = ? AND LOWER(role) = ? AND is_active = 1 AND deleted_at_ms IS NULL',
-      whereArgs: [companyId, code, 'admin'],
+          'company_id = ? AND pin = ? AND LOWER(role) IN (?, ?) AND is_active = 1 AND deleted_at_ms IS NULL',
+      whereArgs: [companyId, code, 'admin', 'supervisor'],
       limit: 1,
     );
     if (rows.isEmpty) return null;

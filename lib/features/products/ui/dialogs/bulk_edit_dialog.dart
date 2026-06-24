@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/ui/app_toast.dart';
 import '../../models/category_model.dart';
 import '../../models/supplier_model.dart';
 import '../../../../theme/app_colors.dart' as ui_colors;
@@ -479,13 +480,10 @@ class _BulkEditDialogState extends State<BulkEditDialog> {
       if (parsed != null && parsed >= 0) {
         stockMin = parsed;
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'El stock mínimo debe ser un número válido mayor o igual a 0',
-            ),
-            backgroundColor: ui_colors.AppColors.error,
-          ),
+        AppToast.show(
+          context,
+          'El stock mínimo debe ser un número válido mayor o igual a 0',
+          type: AppToastType.warning,
         );
         return;
       }

@@ -48,6 +48,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   bool _isSubmitting = false;
   bool _showMoreData = false;
   bool _calculatorOnly = false;
+  bool _syncingCalculatorField = false;
 
   String _calcExpression = '';
   String _calcResultText = '';
@@ -56,9 +57,15 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
   void initState() {
     super.initState();
 
-    _qtyController.addListener(_refresh);
-    _priceController.addListener(_refresh);
-    _costController.addListener(_refresh);
+    _qtyController.addListener(
+      () => _handleNumberControllerChanged(_QuickFieldTarget.qty),
+    );
+    _priceController.addListener(
+      () => _handleNumberControllerChanged(_QuickFieldTarget.price),
+    );
+    _costController.addListener(
+      () => _handleNumberControllerChanged(_QuickFieldTarget.cost),
+    );
 
     _qtyFocusNode.addListener(() {
       if (_qtyFocusNode.hasFocus) _setActiveField(_QuickFieldTarget.qty);
@@ -98,30 +105,34 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     if (mounted) setState(() {});
   }
 
+  void _handleNumberControllerChanged(_QuickFieldTarget field) {
+    if (_syncingCalculatorField) return;
+
+    if (!_calculatorOnly && _activeField == field) {
+      _calcExpression = _controllerForField(field).text.trim();
+      _calcResultText = '';
+    }
+
+    _refresh();
+  }
+
   void _setActiveField(_QuickFieldTarget field) {
     if (_activeField == field) return;
     setState(() => _activeField = field);
   }
 
   TextEditingController get _activeController {
-    switch (_activeField) {
+    return _controllerForField(_activeField);
+  }
+
+  TextEditingController _controllerForField(_QuickFieldTarget field) {
+    switch (field) {
       case _QuickFieldTarget.qty:
         return _qtyController;
       case _QuickFieldTarget.price:
         return _priceController;
       case _QuickFieldTarget.cost:
         return _costController;
-    }
-  }
-
-  FocusNode get _activeFocusNode {
-    switch (_activeField) {
-      case _QuickFieldTarget.qty:
-        return _qtyFocusNode;
-      case _QuickFieldTarget.price:
-        return _priceFocusNode;
-      case _QuickFieldTarget.cost:
-        return _costFocusNode;
     }
   }
 
@@ -160,6 +171,20 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     _keyboardFocusNode.requestFocus();
   }
 
+  void _writeActiveFieldText(String text) {
+    final controller = _activeController;
+
+    _syncingCalculatorField = true;
+    try {
+      controller.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    } finally {
+      _syncingCalculatorField = false;
+    }
+  }
+
   void _toggleCalculatorOnly(bool value) {
     if (_calculatorOnly == value) return;
 
@@ -190,24 +215,15 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       _calcResultText = '';
 
       if (!keepField && !_calculatorOnly) {
-        final controller = _activeController;
-        controller.clear();
+        _writeActiveFieldText('');
 
         if (_activeField == _QuickFieldTarget.qty) {
-          controller.text = '1';
+          _writeActiveFieldText('1');
         }
-
-        controller.selection = TextSelection.collapsed(
-          offset: controller.text.length,
-        );
       }
     });
 
-    if (_calculatorOnly) {
-      _focusKeyboard();
-    } else {
-      _activeFocusNode.requestFocus();
-    }
+    _focusKeyboard();
   }
 
   void _appendKey(String value) {
@@ -217,6 +233,10 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     }
 
     setState(() {
+      if (!_calculatorOnly && _calcExpression.trim().isEmpty) {
+        _calcExpression = _activeController.text.trim();
+      }
+
       if (value == '.') {
         final lastNumber = _calcExpression.split(RegExp(r'[+\-*/]')).last;
         if (lastNumber.contains('.')) return;
@@ -233,11 +253,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       _syncExpressionToActiveFieldIfSimple();
     });
 
-    if (_calculatorOnly) {
-      _focusKeyboard();
-    } else {
-      _activeFocusNode.requestFocus();
-    }
+    _focusKeyboard();
   }
 
   void _appendOperator(String operator) {
@@ -264,25 +280,50 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       _calcResultText = '';
     });
 
-    if (_calculatorOnly) {
-      _focusKeyboard();
-    } else {
-      _activeFocusNode.requestFocus();
-    }
+    _focusKeyboard();
   }
 
   void _syncExpressionToActiveFieldIfSimple() {
     if (_calculatorOnly) return;
     if (_calcExpression.contains(RegExp(r'[+\-*/]'))) return;
 
+    _writeActiveFieldText(_calcExpression);
+  }
+
+  bool _deleteSelectedActiveFieldText() {
+    if (_calculatorOnly) return false;
+    if (_calcExpression.contains(RegExp(r'[+\-*/]'))) return false;
+
     final controller = _activeController;
-    controller.text = _calcExpression;
-    controller.selection = TextSelection.collapsed(
-      offset: controller.text.length,
-    );
+    final selection = controller.selection;
+    if (!selection.isValid || selection.isCollapsed) return false;
+
+    final text = controller.text;
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(0, text.length);
+    final nextText = text.replaceRange(start, end, '');
+
+    setState(() {
+      _calcExpression = nextText;
+      _calcResultText = '';
+      _syncingCalculatorField = true;
+      try {
+        controller.value = TextEditingValue(
+          text: nextText,
+          selection: TextSelection.collapsed(offset: start),
+        );
+      } finally {
+        _syncingCalculatorField = false;
+      }
+    });
+
+    _focusKeyboard();
+    return true;
   }
 
   void _backspace() {
+    if (_deleteSelectedActiveFieldText()) return;
+
     setState(() {
       if (_calcExpression.isNotEmpty) {
         _calcExpression = _calcExpression.substring(
@@ -292,26 +333,20 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       }
 
       if (!_calculatorOnly && !_calcExpression.contains(RegExp(r'[+\-*/]'))) {
-        final controller = _activeController;
-        controller.text = _calcExpression;
+        var text = _calcExpression;
 
-        if (_activeField == _QuickFieldTarget.qty && controller.text.isEmpty) {
-          controller.text = '1';
+        if (_activeField == _QuickFieldTarget.qty && text.isEmpty) {
+          text = '1';
+          _calcExpression = text;
         }
 
-        controller.selection = TextSelection.collapsed(
-          offset: controller.text.length,
-        );
+        _writeActiveFieldText(text);
       }
 
       _calcResultText = '';
     });
 
-    if (_calculatorOnly) {
-      _focusKeyboard();
-    } else {
-      _activeFocusNode.requestFocus();
-    }
+    _focusKeyboard();
   }
 
   void _evaluateCalculator() {
@@ -333,17 +368,48 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       _calcResultText = _calculatorOnly ? _currency.format(result) : '= $text';
 
       if (!_calculatorOnly) {
-        final controller = _activeController;
-        controller.text = text;
-        controller.selection = TextSelection.collapsed(offset: text.length);
+        _writeActiveFieldText(text);
       }
     });
 
-    if (_calculatorOnly) {
-      _focusKeyboard();
-    } else {
-      _activeFocusNode.requestFocus();
+    _focusKeyboard();
+  }
+
+  void _deleteForward() {
+    if (_deleteSelectedActiveFieldText()) return;
+
+    if (!_calculatorOnly && !_calcExpression.contains(RegExp(r'[+\-*/]'))) {
+      final controller = _activeController;
+      final selection = controller.selection;
+      final text = controller.text;
+
+      if (selection.isValid &&
+          selection.isCollapsed &&
+          selection.start >= 0 &&
+          selection.start < text.length) {
+        final offset = selection.start;
+        final nextText = text.replaceRange(offset, offset + 1, '');
+
+        setState(() {
+          _calcExpression = nextText;
+          _calcResultText = '';
+          _syncingCalculatorField = true;
+          try {
+            controller.value = TextEditingValue(
+              text: nextText,
+              selection: TextSelection.collapsed(offset: offset),
+            );
+          } finally {
+            _syncingCalculatorField = false;
+          }
+        });
+
+        _focusKeyboard();
+        return;
+      }
     }
+
+    _clearCalculator(keepField: true);
   }
 
   double? _calculateExpression(String expression) {
@@ -551,7 +617,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     }
 
     if (key == LogicalKeyboardKey.delete) {
-      _clearCalculator(keepField: true);
+      _deleteForward();
       return KeyEventResult.handled;
     }
 
@@ -595,6 +661,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
 
     return DialogKeyboardShortcuts(
       onSubmit: _saveItem,
+      enableSubmitShortcuts: false,
       child: KeyboardListener(
         focusNode: _keyboardFocusNode,
         autofocus: true,
@@ -1091,7 +1158,7 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
       onTap: () {
         _setActiveField(field);
         setState(() {
-          _calcExpression = '';
+          _calcExpression = controller.text.trim();
           _calcResultText = '';
         });
       },

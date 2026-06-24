@@ -97,7 +97,7 @@ class _AddStockPageState extends State<AddStockPage> {
 
     final canAdjust = await requireAuthorizationIfNeeded(
       context: context,
-      action: AppActions.adjustStock,
+      action: AppActions.addStock,
       resourceType: 'product',
       resourceId: widget.productId.toString(),
       isOnline: true,

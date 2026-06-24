@@ -11,9 +11,6 @@ class RoutePermissions {
     }
     if (path == '/clients') return Permissions.clientsView;
     if (path == '/reports') return Permissions.reportsView;
-    if (path == '/tools' || path == '/electronic-documents') {
-      return Permissions.toolsAccess;
-    }
     if (path == '/settings') return Permissions.settingsAccess;
     if (path.startsWith('/settings/')) return Permissions.settingsAccess;
     if (path == '/factura') return Permissions.salesHistoryView;
@@ -22,6 +19,9 @@ class RoutePermissions {
     }
     if (path == '/credits' || path == '/credits-list') {
       return Permissions.creditsView;
+    }
+    if (path == '/products/stock-adjustment') {
+      return Permissions.stockAdjustment;
     }
     if (path.startsWith('/purchases')) return Permissions.purchasesAccess;
 

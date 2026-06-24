@@ -38,27 +38,11 @@ class BlankPermissionGate extends StatefulWidget {
 class _BlankPermissionGateState extends State<BlankPermissionGate> {
   bool _authorized = false;
   bool _prompted = false;
-  // Tracks which userId received the override so dispose() can clear it on unmount.
-  int? _overrideUserId;
 
   @override
   void initState() {
     super.initState();
     unawaited(_checkAndPromptIfNeeded());
-  }
-
-  @override
-  void dispose() {
-    // When this screen/widget is unmounted (navigated away, popped, closed),
-    // explicitly remove the temporary override so re-entry always requires fresh
-    // authorization. This enforces the one-use-per-visit rule for non-admin users.
-    if (_overrideUserId != null) {
-      AuthzService.clearOverrideFor(
-        userId: _overrideUserId!,
-        permission: widget.permission,
-      );
-    }
-    super.dispose();
   }
 
   @override
@@ -69,7 +53,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
         oldWidget.resourceType != widget.resourceType) {
       _authorized = false;
       _prompted = false;
-      _overrideUserId = null;
       unawaited(_checkAndPromptIfNeeded());
     }
   }
@@ -91,9 +74,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
 
       final can = AuthzService.can(user, widget.permission);
       if (can) {
-        // If access is via a temporary override (not native admin permission),
-        // record the userId so dispose() can clear the override on unmount.
-        if (!user.isAdmin) _overrideUserId = user.userId;
         setState(() {
           _authorized = true;
         });
@@ -121,7 +101,6 @@ class _BlankPermissionGateState extends State<BlankPermissionGate> {
       );
 
       if (!mounted) return;
-      if (ok) _overrideUserId = user.userId;
       setState(() {
         _authorized = ok;
       });

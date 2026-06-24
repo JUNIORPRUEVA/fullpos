@@ -107,12 +107,24 @@ class RenderDiagnostics {
     };
 
     ErrorWidget.builder = (details) {
+      final message = details.exceptionAsString();
+      if (ErrorHandler.isTransientFlutterLayoutError(message)) {
+        unawaited(
+          _logger.warn(
+            'error_widget_transient_suppressed',
+            module: 'render',
+            data: {'exception': message},
+          ),
+        );
+        return const SizedBox.shrink();
+      }
+
       final ex = ErrorMapper.map(details, details.stack, 'error_widget');
       unawaited(
         _logger.error(
           'error_widget',
           module: 'render',
-          data: {'exception': details.exceptionAsString()},
+          data: {'exception': message},
           stackTrace: details.stack,
         ),
       );
@@ -160,11 +172,7 @@ class RenderDiagnostics {
   }) {
     return _logger.warn(
       'BLACK_SCREEN_DETECTED',
-      data: {
-        'attempt': attempt,
-        'reason': reason,
-        'hasSurface': ?hasSurface,
-      },
+      data: {'attempt': attempt, 'reason': reason, 'hasSurface': ?hasSurface},
     );
   }
 

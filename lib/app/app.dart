@@ -49,7 +49,9 @@ class FullPosApp extends ConsumerWidget {
     return AppShortcuts(
       child: BackupLifecycle(
         child: MaterialApp.router(
-          color: themeData.scaffoldBackgroundColor,
+          // Color de fondo sólido para evitar pantalla blanca entre frames.
+          // Coincide con el color usado en WindowStartupController y BootstrapLoadingScreen.
+          color: const Color(0xFFF2F6F9),
           title: businessSettings.businessName.isNotEmpty
               ? businessSettings.businessName
               : 'FULLPOS',

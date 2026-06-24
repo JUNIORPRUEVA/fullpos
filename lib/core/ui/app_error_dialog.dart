@@ -1,9 +1,58 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../errors/app_exception.dart';
 import '../theme/app_status_theme.dart';
+
+/// Tipo de error representado con icono y color para el cliente.
+const _errorTypeConfig = <AppErrorType, _ErrorConfig>{
+  AppErrorType.network: _ErrorConfig(
+    icon: Icons.wifi_off_rounded,
+    title: 'Sin conexión',
+  ),
+  AppErrorType.timeout: _ErrorConfig(
+    icon: Icons.timer_off_rounded,
+    title: 'Tiempo de espera agotado',
+  ),
+  AppErrorType.database: _ErrorConfig(
+    icon: Icons.storage_rounded,
+    title: 'Error en la base de datos',
+  ),
+  AppErrorType.validation: _ErrorConfig(
+    icon: Icons.warning_amber_rounded,
+    title: 'Datos inválidos',
+  ),
+  AppErrorType.unauthorized: _ErrorConfig(
+    icon: Icons.lock_outline_rounded,
+    title: 'Sin autorización',
+  ),
+  AppErrorType.forbidden: _ErrorConfig(
+    icon: Icons.block_rounded,
+    title: 'Acceso denegado',
+  ),
+  AppErrorType.notFound: _ErrorConfig(
+    icon: Icons.search_off_rounded,
+    title: 'No encontrado',
+  ),
+  AppErrorType.conflict: _ErrorConfig(
+    icon: Icons.swap_horiz_rounded,
+    title: 'Conflicto de datos',
+  ),
+  AppErrorType.server: _ErrorConfig(
+    icon: Icons.cloud_off_rounded,
+    title: 'Error del servidor',
+  ),
+  AppErrorType.unknown: _ErrorConfig(
+    icon: Icons.error_outline_rounded,
+    title: 'No pudimos completar la acción',
+  ),
+};
+
+class _ErrorConfig {
+  final IconData icon;
+  final String title;
+  const _ErrorConfig({required this.icon, required this.title});
+}
 
 class AppErrorDialog extends StatefulWidget {
   const AppErrorDialog({super.key, required this.exception, this.onRetry});
@@ -28,23 +77,30 @@ class AppErrorDialog extends StatefulWidget {
 }
 
 class _AppErrorDialogState extends State<AppErrorDialog> {
-  bool _showDetails = false;
   bool _copied = false;
 
-  String _buildDebugText(AppException ex) {
-    return [
-      ex.messageDev,
-      if (ex.stackTrace != null) '\n\n${ex.stackTrace}',
-    ].join();
+  String _buildSupportText(AppException ex) {
+    final buf = StringBuffer();
+    buf.writeln('=== REPORTE DE ERROR ===');
+    buf.writeln('Tipo: ${ex.type.name}');
+    if (ex.code != null) buf.writeln('Código: ${ex.code}');
+    buf.writeln('');
+    buf.writeln('Mensaje: ${ex.messageDev}');
+    if (ex.stackTrace != null) {
+      buf.writeln('');
+      buf.writeln('--- Stack Trace ---');
+      buf.writeln(ex.stackTrace.toString());
+    }
+    return buf.toString();
   }
 
-  Future<void> _copyDetails(AppException ex) async {
-    final text = _buildDebugText(ex).trim();
+  Future<void> _copySupportText(AppException ex) async {
+    final text = _buildSupportText(ex).trim();
     if (text.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     setState(() => _copied = true);
-    Future<void>.delayed(const Duration(milliseconds: 1200), () {
+    Future<void>.delayed(const Duration(milliseconds: 1500), () {
       if (mounted) setState(() => _copied = false);
     });
   }
@@ -52,14 +108,15 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
   @override
   Widget build(BuildContext context) {
     final ex = widget.exception;
-    final maxContentHeight = MediaQuery.sizeOf(context).height * 0.30;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final status = theme.extension<AppStatusTheme>();
     final errorColor = status?.error ?? scheme.error;
-    final linkColor = scheme.primary;
+    final config =
+        _errorTypeConfig[ex.type] ?? _errorTypeConfig[AppErrorType.unknown]!;
     final hasDevDetails =
         ex.messageDev.trim().isNotEmpty || ex.stackTrace != null;
+    final supportCode = ex.code?.trim();
 
     return Theme(
       data: theme.copyWith(
@@ -68,34 +125,36 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
         splashColor: Colors.transparent,
       ),
       child: Dialog(
-        insetPadding: const EdgeInsets.all(20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: ConstrainedBox(
           key: const ValueKey('app-error-dialog-card'),
-          constraints: BoxConstraints(
-            maxWidth: 320,
-            maxHeight: maxContentHeight,
-          ),
+          constraints: const BoxConstraints(maxWidth: 380),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 11, 10, 10),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // ── Icono + Título ──
                 Row(
                   children: [
-                    Icon(
-                      Icons.error_outline_rounded,
-                      color: errorColor,
-                      size: 20,
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: errorColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(config.icon, color: errorColor, size: 22),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Ocurrió un problema',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
+                        config.title,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
                           height: 1.2,
                         ),
                       ),
@@ -106,145 +165,130 @@ class _AppErrorDialogState extends State<AppErrorDialog> {
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints.tightFor(
-                        width: 30,
-                        height: 30,
+                        width: 32,
+                        height: 32,
                       ),
-                      icon: const Icon(Icons.close_rounded, size: 17),
+                      icon: const Icon(Icons.close_rounded, size: 18),
                     ),
                   ],
                 ),
-                const SizedBox(height: 7),
-                Text(
-                  ex.messageUser,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontSize: 11.8,
-                    height: 1.32,
-                    fontWeight: FontWeight.w400,
+                const SizedBox(height: 14),
+
+                // ── Mensaje para el cliente ──
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: errorColor.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: errorColor.withOpacity(0.15)),
+                  ),
+                  child: Text(
+                    ex.messageUser.isNotEmpty
+                        ? ex.messageUser
+                        : 'No se pudo completar la acción. Intenta nuevamente. Si continúa, contacta a soporte.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: 13.5,
+                      height: 1.4,
+                      fontWeight: FontWeight.w400,
+                    ),
                   ),
                 ),
-                if (kDebugMode || hasDevDetails) ...[
-                  const SizedBox(height: 6),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _showDetails = !_showDetails),
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              _showDetails
-                                  ? Icons.expand_less
-                                  : Icons.expand_more,
-                              size: 16,
-                              color: linkColor,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              _showDetails
-                                  ? 'Ocultar detalles'
-                                  : 'Ver detalles',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: linkColor,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
+
+                // ── Código de soporte (solo si existe uno útil para soporte) ──
+                if (supportCode != null && supportCode.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.tag,
+                        size: 13,
+                        color: scheme.onSurface.withOpacity(0.4),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Código de soporte: $supportCode',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: scheme.onSurface.withOpacity(0.4),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                  if (_showDetails) ...[
-                    const SizedBox(height: 6),
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(7),
-                            border: Border.all(color: scheme.outlineVariant),
-                          ),
-                          child: SelectableText(
-                            _buildDebugText(ex),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
-                const SizedBox(height: 8),
+
+                const SizedBox(height: 16),
+
+                // ── Botones ──
                 Row(
                   children: [
+                    // Copiar para soporte
                     Expanded(
                       child: TextButton.icon(
                         onPressed: hasDevDetails
-                            ? () => _copyDetails(ex)
+                            ? () => _copySupportText(ex)
                             : null,
                         style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 7),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 10,
+                          ),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: scheme.onSurface.withOpacity(0.6),
                           textStyle: const TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
                         icon: Icon(
-                          _copied ? Icons.check : Icons.copy,
-                          size: 14,
+                          _copied
+                              ? Icons.check_circle_rounded
+                              : Icons.copy_rounded,
+                          size: 16,
                         ),
                         label: Text(_copied ? 'Copiado' : 'Copiar soporte'),
                       ),
                     ),
-                    const SizedBox(width: 7),
+                    const SizedBox(width: 8),
                     if (widget.onRetry != null) ...[
                       FilledButton.icon(
                         style: FilledButton.styleFrom(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 7,
+                            horizontal: 14,
+                            vertical: 10,
                           ),
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           textStyle: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         onPressed: () {
                           Navigator.of(context).maybePop();
                           widget.onRetry?.call();
                         },
-                        icon: const Icon(Icons.refresh_rounded, size: 14),
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
                         label: const Text('Reintentar'),
                       ),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: 8),
                     ],
                     OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 11,
-                          vertical: 7,
+                          horizontal: 14,
+                          vertical: 10,
                         ),
                         minimumSize: Size.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         textStyle: const TextStyle(
-                          fontSize: 11.5,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       onPressed: () => Navigator.of(context).maybePop(),
-                      child: const Text('Ignorar'),
+                      child: const Text('Cerrar'),
                     ),
                   ],
                 ),

@@ -6,6 +6,7 @@ import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/sync/product_sync_service.dart';
 import '../../../core/security/authz/authz_service.dart';
+import '../../../core/security/temporary_authorization_service.dart';
 
 /// Repositorio de autenticación
 class AuthRepository {
@@ -45,6 +46,7 @@ class AuthRepository {
     // that a cashier logging in after an admin session does NOT inherit admin-level
     // temporary overrides, and vice-versa.
     AuthzService.clearOverrideCache();
+    TemporaryAuthorizationService.clearAll();
 
     await SessionManager.login(
       userId: user.id!,
@@ -70,6 +72,8 @@ class AuthRepository {
 
   /// Cierra la sesión del usuario
   static Future<void> logout() async {
+    AuthzService.clearOverrideCache();
+    TemporaryAuthorizationService.clearAll();
     await SessionManager.logout();
   }
 
@@ -195,8 +199,6 @@ class AuthRepository {
         return permissions.canViewQuotes;
       case 'can_convert_quotes_to_ticket':
         return permissions.canConvertQuotesToTicket;
-      case 'can_access_tools':
-        return permissions.canAccessTools;
       case 'can_process_returns':
         return permissions.canProcessReturns;
       case 'can_view_credits':

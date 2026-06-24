@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../session/session_manager.dart';
 import 'authz_service.dart';
 import 'permission.dart';
 
@@ -39,27 +38,11 @@ class _PermissionGateState extends State<PermissionGate> {
   bool _checking = true;
   bool _promptScheduled = false;
   bool _autoPromptBlocked = false;
-  // Tracks which userId was used for the override so we can clear it on dispose.
-  int? _overrideUserId;
 
   @override
   void initState() {
     super.initState();
     unawaited(_checkPermissionOnly());
-  }
-
-  @override
-  void dispose() {
-    // When the screen/widget is disposed (navigated away, popped, etc.),
-    // clear the temporary override so re-entry always requires fresh authorization.
-    // This enforces the "one-time per visit" rule for non-admin users.
-    if (_overrideUserId != null) {
-      AuthzService.clearOverrideFor(
-        userId: _overrideUserId!,
-        permission: widget.permission,
-      );
-    }
-    super.dispose();
   }
 
   @override
@@ -91,11 +74,6 @@ class _PermissionGateState extends State<PermissionGate> {
       }
 
       final can = AuthzService.can(user, widget.permission);
-      // If access is granted via a temporary override (not native admin),
-      // record the userId so dispose() can clear the override on navigation away.
-      if (can && !user.isAdmin) {
-        _overrideUserId = user.userId;
-      }
       setState(() {
         _authorized = can;
         _autoPromptBlocked = !can;
@@ -125,8 +103,6 @@ class _PermissionGateState extends State<PermissionGate> {
       _autoPromptBlocked = false;
     });
     try {
-      // Capture userId before the async gap so we can clear override on dispose.
-      final userId = await SessionManager.userId();
       final ok = await AuthzService.runGuardedCurrent<bool>(
         context,
         widget.permission,
@@ -137,9 +113,6 @@ class _PermissionGateState extends State<PermissionGate> {
         resourceId: widget.resourceId,
       );
       if (!mounted) return;
-      if (ok == true && userId != null) {
-        _overrideUserId = userId;
-      }
       setState(() {
         _authorized = ok == true;
         _autoPromptBlocked = !(_authorized);

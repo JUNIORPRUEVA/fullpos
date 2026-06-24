@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../clients/data/client_model.dart';
 import '../../../../core/utils/currency_display.dart';
 import '../../../../core/theme/app_status_theme.dart';
+import '../../../../core/update/update_shutdown_coordinator.dart';
 import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
 import '../../../../theme/app_colors.dart';
 
@@ -111,6 +112,12 @@ class _PaymentDialogState extends State<PaymentDialog> {
   Future<void> _submitPayment({required String source}) async {
     if (_isProcessingPayment) return;
     if (!mounted) return;
+    if (SafeUpdateCoordinator.blocksCriticalOperations) {
+      _showError(
+        'FullPOS se está preparando para actualizar. Espera a que el sistema se cierre y vuelva a abrir.',
+      );
+      return;
+    }
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if ((nowMs - _lastSubmitAtMs) < 450) return;

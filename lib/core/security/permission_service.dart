@@ -7,6 +7,20 @@ import '../session/session_manager.dart';
 import 'action_access.dart';
 import 'app_actions.dart';
 import 'security_config.dart';
+import 'temporary_authorization_service.dart';
+
+class PermissionDeniedException implements Exception {
+  final String permissionKey;
+  final String message;
+
+  const PermissionDeniedException(
+    this.permissionKey, [
+    this.message = 'No tienes permiso para realizar esta acción.',
+  ]);
+
+  @override
+  String toString() => '$message ($permissionKey)';
+}
 
 class PermissionDecision {
   final bool allowed;
@@ -59,7 +73,7 @@ class PermissionService {
     }
 
     final allowed = await can(
-      actionCode: actionCode,
+      actionCode,
       companyId: resolvedCompanyId,
       userId: resolvedUserId,
       role: resolvedRole,
@@ -78,26 +92,49 @@ class PermissionService {
     );
   }
 
-  static Future<bool> can({
-    required String actionCode,
+  static Future<bool> can(
+    String permissionKey, {
+    int? companyId,
+    int? userId,
+    String? role,
+  }) async {
+    final actionCode = normalizePermissionKey(permissionKey);
+    if (actionCode.isEmpty) return false;
+    final action = AppActions.findByCode(actionCode);
+    if (action == null) return false;
+
+    final resolvedUserId = userId ?? await SessionManager.userId();
+    if (resolvedUserId == null) return false;
+
+    final resolvedRole = normalizeRole(
+      role ?? (await SessionManager.role()) ?? roleCashier,
+    );
+    if (resolvedRole == roleAdmin) return true;
+    if (TemporaryAuthorizationService.isAuthorized(actionCode)) return true;
+    final resolvedCompanyId =
+        companyId ?? await SessionManager.companyId() ?? 1;
+
+    final explicit = await _explicitUserPermission(
+      companyId: resolvedCompanyId,
+      userId: resolvedUserId,
+      actionCode: actionCode,
+    );
+    if (explicit != null) return explicit;
+
+    // Per product rules, module permissions are the authority for critical actions.
+    final modulePerms = await UsersRepository.getPermissions(resolvedUserId);
+    return ActionAccess.isAllowed(
+      action: action,
+      isAdmin: false,
+      permissions: modulePerms,
+    );
+  }
+
+  static Future<bool?> _explicitUserPermission({
     required int companyId,
     required int userId,
-    required String role,
+    required String actionCode,
   }) async {
-    final normalizedRole = normalizeRole(role);
-    if (normalizedRole == roleAdmin) return true;
-
-    final action = AppActions.findByCode(actionCode);
-    if (action != null) {
-      // Per product rules, module permissions are the authority for critical actions.
-      final modulePerms = await UsersRepository.getPermissions(userId);
-      return ActionAccess.isAllowed(
-        action: action,
-        isAdmin: false,
-        permissions: modulePerms,
-      );
-    }
-
     final db = await AppDb.database;
     final rows = await db.query(
       DbTables.userPermissions,
@@ -110,9 +147,26 @@ class PermissionService {
     if (rows.isNotEmpty) {
       return (rows.first['allowed'] as int? ?? 0) == 1;
     }
+    return null;
+  }
 
-    final defaults = defaultAllowedActionsForRole(normalizedRole);
-    return defaults.contains(actionCode);
+  static Future<bool> canAny(List<String> permissionKeys) async {
+    for (final permissionKey in permissionKeys) {
+      if (await can(permissionKey)) return true;
+    }
+    return false;
+  }
+
+  static Future<bool> canAll(List<String> permissionKeys) async {
+    for (final permissionKey in permissionKeys) {
+      if (!await can(permissionKey)) return false;
+    }
+    return true;
+  }
+
+  static Future<void> requirePermission(String permissionKey) async {
+    if (await can(permissionKey)) return;
+    throw PermissionDeniedException(normalizePermissionKey(permissionKey));
   }
 
   static Future<void> setUserPermission({
@@ -149,11 +203,17 @@ class PermissionService {
 
     final modulePerms = await UsersRepository.getPermissions(userId);
     for (final action in AppActions.all) {
-      map[action.code] = ActionAccess.isAllowed(
-        action: action,
-        isAdmin: false,
-        permissions: modulePerms,
-      );
+      map[action.code] =
+          await _explicitUserPermission(
+            companyId: companyId,
+            userId: userId,
+            actionCode: action.code,
+          ) ??
+          ActionAccess.isAllowed(
+            action: action,
+            isAdmin: false,
+            permissions: modulePerms,
+          );
     }
     return map;
   }
@@ -174,6 +234,9 @@ class PermissionService {
         AppActions.grantCredit.code,
         AppActions.createLayaway.code,
         AppActions.processReturn.code,
+        AppActions.addStock.code,
+        AppActions.removeStock.code,
+        AppActions.adjustInventory.code,
         AppActions.adjustStock.code,
         AppActions.editCost.code,
         AppActions.editSalePrice.code,
@@ -200,8 +263,14 @@ class PermissionService {
   }
 
   static String normalizeRole(String role) {
-    final lower = role.toLowerCase();
+    final lower = role.trim().toLowerCase();
     if (lower == roleCajero) return roleCashier;
     return lower;
   }
+
+  static String normalizePermissionKey(String permissionKey) {
+    return TemporaryAuthorizationService.normalizeScope(permissionKey);
+  }
+
+  static Future<bool> isAdmin() => SessionManager.isAdmin();
 }

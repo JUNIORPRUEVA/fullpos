@@ -5,6 +5,7 @@ import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../core/validation/business_rules.dart';
 import '../../../core/services/cloud_sync_service.dart';
+import 'sale_totals_calculator.dart';
 import 'sales_repository.dart';
 import 'sales_model.dart';
 import 'sale_item_model.dart' as new_models;
@@ -63,11 +64,13 @@ class LayawayRepository {
               tmp += v is num ? v.toDouble() : double.tryParse('$v') ?? 0.0;
             }
           }
-          final subtotal = tmp - discountTotal;
-          final itbisAmountCalc =
-              itbisAmountOverride ??
-              (itbisEnabled ? (subtotal * itbisRate) : 0.0);
-          return subtotal + itbisAmountCalc;
+          return SaleTotalsCalculator.fromDiscountedSubtotal(
+            subtotal: tmp - discountTotal,
+            discountTotal: discountTotal,
+            itbisEnabled: itbisEnabled,
+            itbisRate: itbisRate,
+            itbisAmount: itbisAmountOverride,
+          ).total;
         })();
     final minDown = (effectiveTotal * 0.30).clamp(0, double.infinity);
     if (initialPayment + 1e-6 < minDown) {

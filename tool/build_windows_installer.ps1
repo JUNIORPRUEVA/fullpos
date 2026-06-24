@@ -64,8 +64,17 @@ try {
   Assert-LastExitCode 'flutter build windows --release'
 
   $releaseDir = Join-Path $projectRoot 'build\windows\x64\runner\Release'
+  $updaterSource = Join-Path $projectRoot 'tool\fullpos_updater.dart'
+  $updaterExe = Join-Path $releaseDir 'FullPOSUpdater.exe'
+  if (!(Test-Path $updaterSource)) { throw "No existe fullpos_updater.dart en: $updaterSource" }
+
+  Write-Host 'Compilando FullPOSUpdater.exe...' -ForegroundColor Cyan
+  dart compile exe $updaterSource -o $updaterExe
+  Assert-LastExitCode 'dart compile exe FullPOSUpdater'
+
   $required = @(
     (Join-Path $releaseDir 'fullpos.exe'),
+    $updaterExe,
     (Join-Path $releaseDir 'flutter_windows.dll'),
     (Join-Path $releaseDir 'data'),
     (Join-Path $releaseDir 'data\flutter_assets'),

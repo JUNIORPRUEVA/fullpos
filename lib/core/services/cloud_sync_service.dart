@@ -206,6 +206,19 @@ class CloudSyncService {
     _outboxDispatchDebounce = null;
   }
 
+  bool get isSyncing => _outboxRunning;
+
+  void pauseForUpdate() => stopRealtimeSyncEngine();
+
+  Future<bool> waitUntilIdle(Duration timeout) async {
+    final deadline = DateTime.now().add(timeout);
+    while (_outboxRunning) {
+      if (!DateTime.now().isBefore(deadline)) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+    return true;
+  }
+
   Future<bool> _hasActiveSyncSession() async {
     if (!await SessionManager.isLoggedIn()) {
       return false;

@@ -10,6 +10,7 @@ class CompactProductCard extends StatelessWidget {
   final ProductModel product;
   final VoidCallback? onTap;
   final VoidCallback? onAddStockTap;
+  final VoidCallback? onPinProduct;
   final String? categoryName;
   final String? supplierName;
   final bool showPurchasePrice;
@@ -20,6 +21,7 @@ class CompactProductCard extends StatelessWidget {
     required this.product,
     this.onTap,
     this.onAddStockTap,
+    this.onPinProduct,
     this.categoryName,
     this.supplierName,
     this.showPurchasePrice = true,
@@ -135,7 +137,14 @@ class CompactProductCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
               ],
-              Icon(_getStatusIcon(), size: 16, color: statusColor),
+              InkWell(
+                onTap: onPinProduct,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(_getStatusIcon(), size: 16, color: statusColor),
+                ),
+              ),
               const SizedBox(width: 8),
               if (onAddStockTap != null)
                 SizedBox(
@@ -193,11 +202,10 @@ class CompactProductCard extends StatelessWidget {
     );
   }
 
+  /// Color de la barra lateral indicadora de estado (NO cambia por stock)
   Color _getStatusColor(ColorScheme scheme) {
     if (product.isDeleted) return scheme.error;
     if (!product.isActive) return scheme.outline;
-    if (product.isOutOfStock) return scheme.error;
-    if (product.hasLowStock) return scheme.tertiary;
     return scheme.primary;
   }
 

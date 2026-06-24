@@ -63,8 +63,6 @@ import '../core/identity/identity_recovery_bundle.dart';
 import '../features/settings/data/user_model.dart';
 import '../features/registration/services/business_identity_guard.dart';
 import '../features/registration/services/business_identity_storage.dart';
-import '../core/update/app_update_coordinator.dart';
-
 Future<_LicenseGateDecision>? _licenseGateInFlight;
 _LicenseGateDecision? _licenseGateCached;
 DateTime? _licenseGateCachedAt;
@@ -210,10 +208,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return (isOnPublicLicense || isOnLicensePurchase) ? null : '/license';
       }
 
-      // Una sola comprobación central, después de conocer el estado de licencia.
-      // Un fallo de red nunca bloquea; una política obligatoria validada sí.
-      await AppUpdateCoordinator.instance.ensureStarted();
-
       // Con licencia activa, no permitir volver a la pantalla de licencia/bloqueo.
       if (isOnBlocked) {
         return isLoggedIn ? await privateLanding() : '/login';
@@ -344,7 +338,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/products/stock-adjustment',
-            builder: (context, state) => const StockAdjustmentWorkspacePage(),
+            builder: (context, state) => BlankPermissionGate(
+              permission: Permissions.stockAdjustment,
+              autoPromptOnce: true,
+              reason: 'Acceso a ajuste de inventario',
+              resourceType: 'screen',
+              resourceId: 'products.stock_adjustment',
+              child: const StockAdjustmentWorkspacePage(),
+            ),
           ),
           GoRoute(
             path: '/products/movements',

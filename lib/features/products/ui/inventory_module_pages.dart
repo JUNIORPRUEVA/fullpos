@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/session/session_manager.dart';
+import '../../../core/security/app_actions.dart';
+import '../../../core/security/authorization_guard.dart';
+import '../../../core/security/temporary_authorization_service.dart';
 import '../data/categories_repository.dart';
 import '../data/products_repository.dart';
 import '../data/stock_repository.dart';
@@ -73,6 +76,10 @@ class _StockAdjustmentWorkspacePageState
 
   @override
   void dispose() {
+    // Limpiar autorización temporal específica de esta pantalla al salir.
+    TemporaryAuthorizationService.clearAuthorization(
+      'screen.products.stock_adjustment',
+    );
     _searchController
       ..removeListener(_refreshSearch)
       ..dispose();
@@ -214,6 +221,17 @@ class _StockAdjustmentWorkspacePageState
     }
   }
 
+  AppAction _actionForMode(_InventoryAdjustmentMode mode) {
+    switch (mode) {
+      case _InventoryAdjustmentMode.increase:
+        return AppActions.addStock;
+      case _InventoryAdjustmentMode.decrease:
+        return AppActions.removeStock;
+      case _InventoryAdjustmentMode.exact:
+        return AppActions.adjustInventory;
+    }
+  }
+
   Future<void> _saveAdjustment() async {
     if (!_formKey.currentState!.validate() || _selectedProduct == null) return;
     final product = _selectedProduct!;
@@ -240,6 +258,15 @@ class _StockAdjustmentWorkspacePageState
       _InventoryAdjustmentMode.decrease => product.stock - quantity,
       _InventoryAdjustmentMode.exact => quantity,
     };
+
+    final authorized = await requireAuthorizationIfNeeded(
+      context: context,
+      action: _actionForMode(_mode),
+      resourceType: 'product',
+      resourceId: product.id?.toString(),
+      reason: 'Ajustar stock',
+    );
+    if (!authorized || !mounted) return;
 
     setState(() => _saving = true);
     try {

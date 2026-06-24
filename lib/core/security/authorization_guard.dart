@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../features/settings/data/users_repository.dart';
+import '../../features/auth/data/auth_repository.dart';
 import '../session/session_manager.dart';
+import '../ui/app_toast.dart';
 import 'action_access.dart';
 import 'app_actions.dart';
 import 'permission_service.dart';
 import 'security_config.dart';
+import 'temporary_authorization_service.dart';
 import '../../widgets/authorization_modal.dart';
 import '../errors/error_handler.dart';
 
@@ -35,15 +37,19 @@ Future<bool> requireAuthorizationIfNeeded({
       await SessionManager.ensureTerminalId();
 
   if (userId == null) {
-    final ctx = uiContext();
-    final messenger = ctx != null ? ScaffoldMessenger.maybeOf(ctx) : null;
-    messenger?.showSnackBar(
-      const SnackBar(content: Text('No hay usuario autenticado')),
+    AppToast.show(
+      context,
+      'No hay usuario autenticado',
+      type: AppToastType.warning,
     );
     return false;
   }
 
-  final userPermissions = await UsersRepository.getPermissions(userId);
+  if (TemporaryAuthorizationService.isAuthorized(action.code)) {
+    return true;
+  }
+
+  final userPermissions = await AuthRepository.getCurrentPermissions();
   final isAdmin = await SessionManager.isAdmin();
   if (ActionAccess.isAllowed(
     action: action,
@@ -53,6 +59,8 @@ Future<bool> requireAuthorizationIfNeeded({
     return true;
   }
 
+  // Si el permiso de módulo no está activo, verificar si hay una autorización
+  // explícita en la tabla user_permissions o si se requiere override
   final decision = await PermissionService.check(
     actionCode: action.code,
     companyId: companyId,
@@ -62,10 +70,10 @@ Future<bool> requireAuthorizationIfNeeded({
   );
 
   if (!decision.overrideAllowed) {
-    final ctx = uiContext();
-    final messenger = ctx != null ? ScaffoldMessenger.maybeOf(ctx) : null;
-    messenger?.showSnackBar(
-      SnackBar(content: Text('Acción bloqueada: ${action.name}')),
+    AppToast.show(
+      context,
+      'Acción bloqueada: ${action.name}',
+      type: AppToastType.warning,
     );
     return false;
   }

@@ -6,6 +6,7 @@ import '../../features/settings/data/printer_settings_repository.dart';
 import '../../features/facturacion_electronica/data/factura_electronica_repository.dart';
 import '../../features/facturacion_electronica/data/models/factura_electronica_model.dart';
 import '../../features/sales/data/sales_model.dart';
+import '../update/print_activity_tracker.dart';
 import 'thermal_printer_service.dart';
 
 /// Servicio unificado de impresión de tickets
@@ -37,6 +38,7 @@ class UnifiedTicketPrinter {
     required TicketData data,
     int? overrideCopies,
   }) async {
+    PrintActivityTracker.instance.markPrintStarted();
     try {
       // 1. Obtener datos de empresa (FUENTE ÚNICA)
       final company = await CompanyInfoRepository.getCurrentCompanyInfo();
@@ -83,6 +85,8 @@ class UnifiedTicketPrinter {
         message: 'Error de impresión: $e',
         ticketNumber: data.ticketNumber,
       );
+    } finally {
+      PrintActivityTracker.instance.markPrintCompleted();
     }
   }
 

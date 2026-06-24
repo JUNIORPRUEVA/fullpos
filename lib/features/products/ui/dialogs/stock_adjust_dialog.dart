@@ -5,6 +5,7 @@ import 'package:fullpos/core/security/app_actions.dart';
 import 'package:fullpos/core/security/authorization_guard.dart';
 import 'package:fullpos/core/session/session_manager.dart';
 import 'package:fullpos/core/ui/dialog_keyboard_shortcuts.dart';
+import 'package:fullpos/core/ui/app_toast.dart';
 import '../../data/stock_repository.dart';
 import '../../models/product_model.dart';
 import '../../models/stock_movement_model.dart';
@@ -71,7 +72,7 @@ class _StockAdjustDialogState extends State<StockAdjustDialog>
 
     final authorized = await requireAuthorizationIfNeeded(
       context: context,
-      action: AppActions.adjustStock,
+      action: _actionForType(_selectedType),
       resourceType: 'product',
       resourceId: widget.product.id?.toString(),
       reason: 'Ajustar stock',
@@ -97,6 +98,11 @@ class _StockAdjustDialogState extends State<StockAdjustDialog>
       final updatedStock = _calculateNewStock() ?? previousStock;
 
       if (mounted) {
+        AppToast.show(
+          context,
+          'Stock ajustado correctamente',
+          type: AppToastType.success,
+        );
         await _dismissAnimated({
           'ok': true,
           'productId': widget.product.id,
@@ -105,16 +111,15 @@ class _StockAdjustDialogState extends State<StockAdjustDialog>
           'type': _selectedType.name,
           'quantity': quantity,
         });
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stock ajustado correctamente')),
-        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
+        AppToast.show(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+          'Error: $e',
+          type: AppToastType.error,
+          duration: const Duration(seconds: 10),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -132,6 +137,17 @@ class _StockAdjustDialogState extends State<StockAdjustDialog>
         return widget.product.stock - quantity;
       case StockMovementType.adjust:
         return quantity;
+    }
+  }
+
+  AppAction _actionForType(StockMovementType type) {
+    switch (type) {
+      case StockMovementType.input:
+        return AppActions.addStock;
+      case StockMovementType.output:
+        return AppActions.removeStock;
+      case StockMovementType.adjust:
+        return AppActions.adjustInventory;
     }
   }
 

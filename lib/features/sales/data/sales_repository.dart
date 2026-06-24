@@ -9,10 +9,12 @@ import '../../../core/db/tables.dart';
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../core/services/cloud_sync_service.dart';
+import '../../../core/update/update_shutdown_coordinator.dart';
 import '../../../core/utils/app_event_bus.dart';
 import '../../../core/validation/business_rules.dart';
 import '../../facturacion_electronica/services/facturacion_electronica_service.dart';
 import '../../fiscal_receipts/data/fiscal_receipt_repository.dart';
+import 'sale_totals_calculator.dart';
 import 'sales_model.dart';
 import 'sale_item_model.dart' as new_models;
 
@@ -153,6 +155,7 @@ class SalesRepository {
     int? creditInstallments,
     String? creditNote,
   }) async {
+    _throwIfUpdatePreparing();
     // Convertir items al formato esperado
     final convertedItems = <Map<String, dynamic>>[];
     for (final item in items) {
@@ -380,9 +383,17 @@ class SalesRepository {
       subtotal = (tmp - discountTotal).clamp(0.0, double.infinity);
     }
 
-    final itbisAmount =
-        itbisAmountOverride ?? (itbisEnabled ? (subtotal * itbisRate) : 0.0);
-    final total = totalOverride ?? (subtotal + itbisAmount);
+    final calculatedTotals = SaleTotalsCalculator.fromDiscountedSubtotal(
+      subtotal: subtotal,
+      discountTotal: discountTotal,
+      itbisEnabled: itbisEnabled,
+      itbisRate: itbisRate,
+      itbisAmount: itbisAmountOverride,
+      total: totalOverride,
+    );
+    subtotal = calculatedTotals.taxableSubtotal;
+    final itbisAmount = calculatedTotals.itbisAmount;
+    final total = calculatedTotals.total;
 
     String currentLocalCode = localCode;
     int? saleId;
@@ -534,6 +545,7 @@ class SalesRepository {
     String status = 'completed',
     StockUpdateMode stockUpdateMode = StockUpdateMode.deduct,
   }) {
+    _throwIfUpdatePreparing();
     // FULLPOS DB HARDENING: proteger la creación completa de ventas.
     return DbHardening.instance.runDbSafe<int>(() async {
       final db = await AppDb.database;
@@ -850,6 +862,13 @@ class SalesRepository {
     );
 
     return result.map((map) => SaleModel.fromMap(map)).toList();
+  }
+
+  static void _throwIfUpdatePreparing() {
+    if (!SafeUpdateCoordinator.blocksCriticalOperations) return;
+    throw StateError(
+      'FullPOS se está preparando para actualizar. Intenta nuevamente cuando el sistema se abra de nuevo.',
+    );
   }
 
   /// Lista ventas por sesion de caja

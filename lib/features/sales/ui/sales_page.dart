@@ -62,9 +62,9 @@ import '../../facturacion_electronica/data/electronic_company_repository.dart';
 import '../../facturacion_electronica/data/models/electronic_company_model.dart';
 import '../../fiscal_receipts/data/fiscal_receipt_models.dart';
 import '../../fiscal_receipts/data/fiscal_receipt_repository.dart';
-import '../data/app_settings_model.dart';
 import '../data/sale_item_model.dart';
 import '../data/sale_model.dart';
+import '../data/sale_totals_calculator.dart';
 import '../data/layaway_repository.dart';
 import '../data/quote_model.dart';
 import '../data/quotes_repository.dart';
@@ -665,7 +665,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
   bool _isCategorySidebarExpanded = false;
   Timer? _categorySidebarCollapseTimer;
   List<ClientModel> _clients = [];
-  AppSettingsModel? _appSettings;
   final ProductFilterModel _productFilter = ProductFilterModel();
   int _lastFooterTicketSignature = 0;
 
@@ -825,12 +824,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
     bool useDefaultEnabled = false,
   }) {
     cart.itbisRate = _normalizeItbisRate(settings.defaultTaxRate);
-    if (useDefaultEnabled) {
-      cart.itbisEnabled = settings.itbisEnabled;
-    } else if (cart.itbisEnabled != settings.itbisEnabled) {
-      cart.itbisEnabled = settings.itbisEnabled;
-    }
-
+    // El ITBIS se controla por la selección de comprobante fiscal,
+    // no por la configuración global. Solo sincronizamos la tasa.
     if (!settings.itbisEnabled) {
       cart.electronicInvoiceEnabled = false;
       cart.documentType = _SalesDocumentType.consumidorFinal;
@@ -838,7 +833,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
   }
 
   void _applySalesDefaultsToCart(_Cart cart) {
-    final settings = _appSettings;
     final businessSettings = ref.read(businessSettingsProvider);
 
     _applyConfiguredTaxSettingsToCart(
@@ -846,41 +840,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
       businessSettings,
       useDefaultEnabled: true,
     );
-    cart.electronicInvoiceEnabled =
-        _isElectronicInvoicingFeatureEnabled &&
-        (settings?.electronicInvoiceEnabledDefault ?? false) &&
-        businessSettings.itbisEnabled;
-    if (cart.electronicInvoiceEnabled) {
-      // La emisión electrónica implica ITBIS activo.
-      cart.itbisEnabled = true;
-      cart.documentType = _SalesDocumentType.creditoFiscal;
-    } else {
-      cart.documentType = _SalesDocumentType.consumidorFinal;
-    }
-    final defaultFiscalReceiptTypeId = _fiscalReceiptSettings.enabled
-        ? _resolveDefaultFiscalReceiptTypeId()
-        : null;
-    cart.fiscalReceiptTypeId = defaultFiscalReceiptTypeId;
-    // Si hay un comprobante fiscal por defecto, activar ITBIS automáticamente.
-    if (defaultFiscalReceiptTypeId != null) {
-      cart.itbisEnabled = true;
-    }
-  }
-
-  int? _resolveDefaultFiscalReceiptTypeId() {
-    final configured = _fiscalReceiptSettings.defaultReceiptTypeId;
-    if (configured != null &&
-        _fiscalReceiptTypes.any(
-          (type) => type.id == configured && type.isAvailable,
-        )) {
-      return configured;
-    }
-    final defaults = _fiscalReceiptTypes.where(
-      (type) => type.isDefault && type.isAvailable,
-    );
-    if (defaults.isNotEmpty) return defaults.first.id;
-    final active = _fiscalReceiptTypes.where((type) => type.isAvailable);
-    return active.isEmpty ? null : active.first.id;
+    // Toda venta nueva inicia sin comprobante. El usuario activa comprobante
+    // fiscal o e-CF manualmente desde el selector de la factura.
+    cart.electronicInvoiceEnabled = false;
+    cart.documentType = _SalesDocumentType.consumidorFinal;
+    cart.fiscalReceiptTypeId = null;
+    cart.itbisEnabled = false;
   }
 
   BoxConstraints _ticketPanelConstraints(double width) {
@@ -1297,7 +1262,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
         ClientsRepository.getAll(),
         ticketsRepo.listTickets(userId: await SessionManager.userId()),
         tempCartRepo.getAllCarts(),
-        SettingsRepository.getAppSettings(),
         ElectronicCompanyRepository.getOrCreate(),
         FiscalReceiptRepository.getSettings(),
         FiscalReceiptRepository.getActiveTypes(),
@@ -1309,10 +1273,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
       final clients = results[2] as List<ClientModel>;
       final dbTickets = results[3] as List<PosTicketModel>;
       final tempCarts = results[4] as List<Map<String, dynamic>>;
-      final appSettings = results[5] as AppSettingsModel;
-      final electronicCompany = results[6] as ElectronicCompanyModel;
-      final fiscalReceiptSettings = results[7] as FiscalReceiptSettingsModel;
-      final fiscalReceiptTypes = results[8] as List<FiscalReceiptTypeModel>;
+      final electronicCompany = results[5] as ElectronicCompanyModel;
+      final fiscalReceiptSettings = results[6] as FiscalReceiptSettingsModel;
+      final fiscalReceiptTypes = results[7] as List<FiscalReceiptTypeModel>;
       final electronicInvoicingFeatureEnabled =
           _isElectronicInvoicingFeatureEnabled;
 
@@ -1445,7 +1408,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
         _searchResults = products;
         _categories = categories;
         _clients = clients;
-        _appSettings = appSettings;
         _electronicCompany = electronicCompany;
         _fiscalReceiptSettings = fiscalReceiptSettings;
         _fiscalReceiptTypes = fiscalReceiptTypes;
@@ -1509,13 +1471,33 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   Future<int?> _ensureActiveShiftOrRedirect({bool showMessage = true}) async {
     await _refreshCashSession();
-    final liveSessionId = ref
-        .read(activeSessionControllerProvider)
-        .valueOrNull
-        ?.shiftId;
-    if (liveSessionId != null) {
+    final activeSession = ref.read(activeSessionControllerProvider).valueOrNull;
+
+    // FULLPOS SEGURIDAD: verificar que la sesión activa pertenece al usuario.
+    if (activeSession != null) {
+      final currentUserId = await SessionManager.userId();
+      if (currentUserId != null && activeSession.userId != currentUserId) {
+        // La sesión activa no pertenece al usuario actual. Forzar recarga.
+        ref.read(activeSessionControllerProvider.notifier).refresh();
+        if (!mounted) return null;
+        if (showMessage) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'La sesión activa no corresponde a tu usuario. '
+                'Contacta al administrador.',
+              ),
+              backgroundColor: scheme.error,
+            ),
+          );
+        }
+        return null;
+      }
+
+      final liveSessionId = activeSession.shiftId;
       return liveSessionId;
     }
+
     if (!mounted) return null;
     if (showMessage) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2869,7 +2851,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
       _updateCurrentCart(() {
         targetCart.documentType = type;
         targetCart.electronicInvoiceEnabled = false;
-        targetCart.itbisEnabled = _isGlobalItbisEnabled;
+        // Sin comprobante fiscal, el ITBIS se desactiva.
+        targetCart.itbisEnabled = false;
       });
       return;
     }
@@ -3221,13 +3204,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
       final value = double.tryParse(_inlineTotalDiscountController.text) ?? 0.0;
       final type = _inlineTotalDiscountType;
 
-      if (!_isValidTotalDiscount(subtotal, type, value)) {
+      if (!_isValidTotalDiscount(subtotal, type, value, cart: _currentCart)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               type == DiscountType.percent
                   ? 'El porcentaje debe ser entre 0% y 100%'
-                  : 'El monto debe ser menor al subtotal',
+                  : 'El monto debe ser menor al total de la venta',
             ),
             backgroundColor: scheme.error,
           ),
@@ -3269,7 +3252,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
               subtotal,
               _inlineTotalDiscountType,
               raw,
+              cart: _currentCart,
             );
+            // Preview del total después del descuento (siempre sobre subtotal)
             final after = (subtotal - discountAmount).clamp(
               0.0,
               double.infinity,
@@ -3883,22 +3868,33 @@ class _SalesPageState extends ConsumerState<SalesPage>
     );
   }
 
-  bool _isValidTotalDiscount(double subtotal, DiscountType type, double value) {
+  bool _isValidTotalDiscount(
+    double subtotal,
+    DiscountType type,
+    double value, {
+    _Cart? cart,
+  }) {
+    // Reject negative or zero values
     if (value <= 0) return false;
     if (type == DiscountType.percent) {
       return value > 0 && value <= 100;
     }
-    return value > 0 && value < subtotal;
+    // For fixed amount: discount must be less than subtotal
+    final limit = cart?.calculateTotalDiscountInputLimit() ?? subtotal;
+    if (value >= limit) return false;
+    return true;
   }
 
   double _computeTotalDiscountAmount(
     double subtotal,
     DiscountType type,
-    double value,
-  ) {
+    double value, {
+    _Cart? cart,
+  }) {
     if (type == DiscountType.percent) {
       return subtotal * (value / 100);
     }
+    // El descuento en monto fijo siempre se aplica directamente sobre el subtotal
     return value;
   }
 
@@ -4858,10 +4854,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
           cart.itbisRate = nextRate;
           changed = true;
         }
-        if (cart.itbisEnabled != next.itbisEnabled) {
-          cart.itbisEnabled = next.itbisEnabled;
-          changed = true;
-        }
+        // El ITBIS se controla según la selección de comprobante fiscal,
+        // no por la configuración global. Solamente sincronizamos la tasa.
         if (!next.itbisEnabled && cart.electronicInvoiceEnabled) {
           cart.electronicInvoiceEnabled = false;
           cart.documentType = _SalesDocumentType.consumidorFinal;
@@ -5077,8 +5071,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            if (_categories.isNotEmpty)
-                              SizedBox(width: categoryCollapsedWidth),
+                            SizedBox(width: categoryCollapsedWidth),
 
                             Expanded(
                               child: Padding(
@@ -5326,16 +5319,15 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           ],
                         ),
                       ),
-                      if (_categories.isNotEmpty)
-                        Positioned(
-                          left: 0,
-                          top: 0,
-                          bottom: 0,
-                          width: _isCategorySidebarExpanded
-                              ? categoryExpandedWidth
-                              : categoryCollapsedWidth,
-                          child: _buildCategorySidebar(),
-                        ),
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: _isCategorySidebarExpanded
+                            ? categoryExpandedWidth
+                            : categoryCollapsedWidth,
+                        child: _buildCategorySidebar(),
+                      ),
 
                       // ─────────────────────────────────────────────────────────
                       // BLOQUEO DE CAJA CERRADA
@@ -5795,7 +5787,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
         : salesProducts!.cardTextColor;
 
     final priceColorResolved = nameColor;
-    final tealAccent = isOutOfStock ? scheme.error : _allegraAccentColor;
+    final tealAccent = _allegraAccentColor;
 
     final stockLabel = isOutOfStock
         ? 'Sin stock'
@@ -5823,8 +5815,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final imageBoxSize = m.productImageBoxSize;
     final nameFontSize = m.productNameFontSize;
     final priceFontSize = m.productPriceFontSize;
-    final nameBlockHeight = isCompact ? 33.0 : 37.0;
-    final priceBlockHeight = isCompact ? 19.0 : 22.0;
+    final nameBlockHeight = isCompact ? 21.0 : 23.0;
+    final priceBlockHeight = isCompact ? 19.0 : 20.0;
     final cardPadding = isCompact
         ? const EdgeInsets.fromLTRB(14, 9, 14, 7)
         : const EdgeInsets.fromLTRB(18, 12, 18, 9);
@@ -5917,7 +5909,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                     ),
                                   ),
                                 ),
-                                SizedBox(height: isCompact ? 8 : 12),
+                                SizedBox(height: isCompact ? 3 : 5),
                               ],
                             ),
                           ),
@@ -5933,10 +5925,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                   color: isOutOfStock ? stockColor : tealAccent,
                                   fontSize: isCompact ? 10.5 : 11,
                                   fontWeight: FontWeight.w600,
-                                  height: 1.1,
+                                  height: 1.0,
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 2),
                               SizedBox(
                                 height: nameBlockHeight,
                                 width: double.infinity,
@@ -5954,7 +5946,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                       fontSize: nameFontSize,
                                       fontWeight: FontWeight.w600,
                                       fontFamily: 'Inter',
-                                      height: 1.1,
+                                      height: 1.02,
                                     ),
                                   ),
                                 ),
@@ -5973,15 +5965,15 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                       color: priceColorResolved.withOpacity(
                                         isOutOfStock ? 0.72 : 1,
                                       ),
-                                      fontSize: priceFontSize,
-                                      fontWeight: FontWeight.w800,
+                                      fontSize: priceFontSize + 0.25,
+                                      fontWeight: FontWeight.w500,
                                       fontFamily: 'Inter',
-                                      height: 1,
+                                      height: 1.0,
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 3),
                             ],
                           ),
                         ],
@@ -6541,10 +6533,6 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   Widget _buildCategorySidebar() {
     final hasCategories = _categories.isNotEmpty;
-    if (!hasCategories) {
-      return const SizedBox.shrink();
-    }
-
     final isExpanded = _isCategorySidebarExpanded;
     final screenSize = MediaQuery.sizeOf(context);
     final useCompactChrome = _useCompactChromeFor(screenSize);
@@ -6584,49 +6572,52 @@ class _SalesPageState extends ConsumerState<SalesPage>
               if (_selectedCategoryIds.isNotEmpty)
                 _buildClearCategoryFilterButton(isExpanded: isExpanded),
               Expanded(
-                child: ListView.separated(
-                  padding: EdgeInsets.fromLTRB(
-                    useCompactChrome ? 4 : 6,
-                    topPadding,
-                    useCompactChrome ? 5 : 7,
-                    useCompactChrome ? 2 : 4,
-                  ),
-                  itemCount: _categories.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 0),
-                  itemBuilder: (context, index) {
-                    final category = _categories[index];
-                    final isSelected =
-                        category.id != null &&
-                        _selectedCategoryIds.contains(category.id);
-                    final avatarColor = _categorySidebarColor(index);
-                    final normalizedPath = (category.imagePath ?? '').trim();
-                    final hasImage =
-                        normalizedPath.isNotEmpty &&
-                        File(normalizedPath).existsSync();
-                    final trimmedName = category.name.trim();
-                    final initial = trimmedName.isEmpty
-                        ? '?'
-                        : trimmedName.substring(0, 1).toUpperCase();
+                child: hasCategories
+                    ? ListView.separated(
+                        padding: EdgeInsets.fromLTRB(
+                          useCompactChrome ? 4 : 6,
+                          topPadding,
+                          useCompactChrome ? 5 : 7,
+                          useCompactChrome ? 2 : 4,
+                        ),
+                        itemCount: _categories.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 0),
+                        itemBuilder: (context, index) {
+                          final category = _categories[index];
+                          final isSelected =
+                              category.id != null &&
+                              _selectedCategoryIds.contains(category.id);
+                          final avatarColor = _categorySidebarColor(index);
+                          final normalizedPath = (category.imagePath ?? '')
+                              .trim();
+                          final hasImage =
+                              normalizedPath.isNotEmpty &&
+                              File(normalizedPath).existsSync();
+                          final trimmedName = category.name.trim();
+                          final initial = trimmedName.isEmpty
+                              ? '?'
+                              : trimmedName.substring(0, 1).toUpperCase();
 
-                    return _CategorySidebarItem(
-                      isSelected: isSelected,
-                      categoryItemHeight: categoryItemHeight,
-                      isExpanded: isExpanded,
-                      useCompactChrome: useCompactChrome,
-                      avatarLaneWidth: avatarLaneWidth,
-                      onTap: () => _onCategorySelected(category.id),
-                      avatar: _buildCategoryAvatar(
-                        hasImage: hasImage,
-                        imagePath: normalizedPath,
-                        initial: initial,
-                        isSelected: isSelected,
-                        fillColor: avatarColor,
-                      ),
-                      name: category.name,
-                    );
-                  },
-                ),
+                          return _CategorySidebarItem(
+                            isSelected: isSelected,
+                            categoryItemHeight: categoryItemHeight,
+                            isExpanded: isExpanded,
+                            useCompactChrome: useCompactChrome,
+                            avatarLaneWidth: avatarLaneWidth,
+                            onTap: () => _onCategorySelected(category.id),
+                            avatar: _buildCategoryAvatar(
+                              hasImage: hasImage,
+                              imagePath: normalizedPath,
+                              initial: initial,
+                              isSelected: isSelected,
+                              fillColor: avatarColor,
+                            ),
+                            name: category.name,
+                          );
+                        },
+                      )
+                    : const SizedBox.expand(),
               ),
             ],
           ),
@@ -7915,9 +7906,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
         Container(
           color: Colors.white,
           padding: EdgeInsets.fromLTRB(
-            hp - 2,
+            0,
             isCompact ? 8 : 10,
-            hp - 2,
+            0,
             isCompact ? 8 : 10,
           ),
           child: Container(
@@ -8085,7 +8076,12 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   _currentCart.discountTotalValue = value;
                 });
               } else {
-                if (value >= subtotal) {
+                if (!_isValidTotalDiscount(
+                  subtotal,
+                  DiscountType.amount,
+                  value,
+                  cart: _currentCart,
+                )) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: const Text(
@@ -8200,6 +8196,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 RegExp(r'^\d*\.?\d{0,2}'),
                               ),
                             ],
+                            onSubmitted: (_) => applyDiscount(),
                             decoration: InputDecoration(
                               labelText: isPercent
                                   ? 'Porcentaje de descuento'
@@ -8272,7 +8269,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
           ),
         );
       },
-    ).whenComplete(discountController.dispose);
+    );
+    // Nota: discountController NO se dispone explícitamente porque
+    // es una variable local que se limpia al salir del método, y
+    // hacerlo en whenComplete causaría un race condition con la
+    // animación de salida del diálogo (TextController usado tras dispose).
   }
 
   Widget _buildDiscountPanelTypeChip({
@@ -9854,8 +9855,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           close();
                           _updateCurrentCart(() {
                             _currentCart.fiscalReceiptTypeId = null;
-                            // Al quitar el comprobante fiscal, restaurar ITBIS según configuración global.
-                            _currentCart.itbisEnabled = _isGlobalItbisEnabled;
+                            // Sin comprobante fiscal, el ITBIS se desactiva.
+                            _currentCart.itbisEnabled = false;
                           });
                         },
                       ),
@@ -10934,11 +10935,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       Text(
                         item.productNameSnapshot,
                         style: TextStyle(
-                          fontSize: isCompact ? 12.6 : 13.8,
-                          fontWeight: FontWeight.w700,
+                          fontSize: isCompact ? 13.4 : 14.8,
+                          fontWeight: FontWeight.w500,
                           color: const Color(0xFF111827),
-                          height: 1.12,
-                          letterSpacing: -0.12,
+                          height: 1.16,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -10948,10 +10948,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       Text(
                         'RD\$${CurrencyDisplay.formatPlain(item.unitPrice, decimalDigits: 2)}',
                         style: TextStyle(
-                          fontSize: isCompact ? 10.6 : 11.5,
-                          fontWeight: FontWeight.w600,
+                          fontSize: isCompact ? 11.4 : 12.2,
+                          fontWeight: FontWeight.w400,
                           color: const Color(0xFF64748B),
-                          height: 1.0,
+                          height: 1.16,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -11047,11 +11047,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             'RD\$${CurrencyDisplay.formatPlain(subtotal, decimalDigits: 2)}',
                             textAlign: TextAlign.right,
                             style: TextStyle(
-                              fontSize: isCompact ? 13.4 : 14.2,
-                              fontWeight: FontWeight.w800,
+                              fontSize: isCompact ? 14.2 : 15.2,
+                              fontWeight: FontWeight.w500,
                               color: const Color(0xFF111827),
-                              height: 1.0,
-                              letterSpacing: -0.18,
+                              height: 1.16,
                             ),
                           ),
                         ),
@@ -12453,7 +12452,7 @@ class _Cart {
   bool isCompleted = false; // Marca si la venta fue completada
   final List<SaleItemModel> items = [];
   double discount = 0.0;
-  bool itbisEnabled = true;
+  bool itbisEnabled = false;
   double itbisRate = 0.18;
   bool electronicInvoiceEnabled = false;
   int? fiscalReceiptTypeId;
@@ -12553,6 +12552,7 @@ class _Cart {
     documentType = _SalesDocumentType.consumidorFinal;
     electronicInvoiceEnabled = false;
     fiscalReceiptTypeId = null;
+    itbisEnabled = false;
   }
 
   double calculateGrossSubtotal() {
@@ -12573,6 +12573,17 @@ class _Cart {
 
   double calculateSubtotal() {
     return calculateGrossSubtotal() - calculateLineDiscounts() - discount;
+  }
+
+  /// El descuento siempre se aplica sobre el subtotal,
+  /// independientemente del tipo de comprobante fiscal.
+  bool get totalDiscountAmountTargetsGrandTotal => false;
+
+  bool get fixedTotalDiscountTargetsGrandTotal => false;
+
+  double calculateTotalDiscountInputLimit() {
+    final subtotal = calculateSubtotal().clamp(0.0, double.infinity);
+    return subtotal;
   }
 
   double calculateTotalDiscount() {
@@ -12597,11 +12608,23 @@ class _Cart {
     return total.clamp(0.0, double.infinity);
   }
 
-  double calculateItbis() =>
-      itbisEnabled ? calculateSubtotalAfterDiscount() * itbisRate : 0.0;
+  double calculateItbis() {
+    return SaleTotalsCalculator.fromDiscountedSubtotal(
+      subtotal: calculateSubtotalAfterDiscount(),
+      discountTotal: calculateTotalDiscountsCombined(),
+      itbisEnabled: itbisEnabled,
+      itbisRate: itbisRate,
+    ).itbisAmount;
+  }
 
-  double calculateTotal() =>
-      calculateSubtotalAfterDiscount() + calculateItbis();
+  double calculateTotal() {
+    return SaleTotalsCalculator.fromDiscountedSubtotal(
+      subtotal: calculateSubtotalAfterDiscount(),
+      discountTotal: calculateTotalDiscountsCombined(),
+      itbisEnabled: itbisEnabled,
+      itbisRate: itbisRate,
+    ).total;
+  }
 }
 
 // ---- Shortcut intents ----------------------------------------------------

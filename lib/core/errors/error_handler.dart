@@ -27,11 +27,19 @@ class ErrorHandler {
   static bool isTransientFlutterLayoutError(String message) {
     return message.contains('!_debugDuringDeviceUpdate') ||
         message.contains('mouse_tracker.dart') ||
+        message.contains('No Overlay widget found') ||
+        message.contains('RawTooltip widgets require an Overlay widget') ||
+        message.contains('debugCheckHasOverlay') ||
         message.contains('referenceBox.attached') ||
         message.contains('InkFeature._paint') ||
         message.contains('!_skipMarkNeedsLayout') ||
         message.contains('_RenderTheater._addDeferredChild') ||
         message.contains('_OverlayPortalElement') ||
+        message.contains('_elements.contains(element)') ||
+        message.contains('InactiveElements.remove') ||
+        (message.contains('package:flutter/src/widgets/framework.dart') &&
+            message.contains('Failed assertion') &&
+            message.contains('elements.contains')) ||
         message.contains(
           "Looking up a deactivated widget's ancestor is unsafe",
         );
@@ -200,6 +208,14 @@ class ErrorHandler {
   }
 
   bool reportPlatformError(Object error, StackTrace stack, {String? module}) {
+    final message = '$error\n$stack';
+    if (isTransientFlutterLayoutError(message) ||
+        _isNonBlockingFlutterFrameworkAssertion(message, stack)) {
+      final ex = ErrorMapper.map(error, stack, module ?? 'platform');
+      unawaited(AppLogger.instance.logError(ex, module: module ?? 'platform'));
+      return true;
+    }
+
     unawaited(handle(error, stackTrace: stack, module: module ?? 'platform'));
     return true;
   }

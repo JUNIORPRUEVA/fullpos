@@ -22,12 +22,14 @@ void main() {
     final dialogSize = tester.getSize(
       find.byKey(const ValueKey('app-error-dialog-card')),
     );
-    expect(dialogSize.width, lessThanOrEqualTo(340));
-    expect(dialogSize.height, lessThan(180));
-    expect(find.text('Ocurrió un problema'), findsOneWidget);
+    expect(dialogSize.width, lessThanOrEqualTo(380));
+    expect(dialogSize.height, lessThan(260));
+    expect(find.text('No pudimos completar la acción'), findsOneWidget);
   });
 
-  testWidgets('keeps technical details collapsed by default', (tester) async {
+  testWidgets('keeps technical details out of the customer view', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(body: AppErrorDialog(exception: exception)),
@@ -35,7 +37,7 @@ void main() {
     );
 
     expect(find.text('Error técnico de prueba.'), findsNothing);
-    expect(find.text('Ver detalles'), findsOneWidget);
+    expect(find.text('Modo depuración'), findsNothing);
   });
 
   testWidgets('copies support details without requiring a scaffold context', (
@@ -59,7 +61,7 @@ void main() {
     );
 
     expect(find.text('Copiar soporte'), findsOneWidget);
-    expect(find.text('Ignorar'), findsOneWidget);
+    expect(find.text('Cerrar'), findsOneWidget);
 
     await tester.tap(find.text('Copiar soporte'));
     await tester.pump();
@@ -67,6 +69,6 @@ void main() {
     expect(find.text('Copiado'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.pump(const Duration(milliseconds: 1200));
+    await tester.pump(const Duration(milliseconds: 1600));
   });
 }

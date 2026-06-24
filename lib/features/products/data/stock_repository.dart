@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../core/security/permission_service.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/sync/product_sync_event_bus.dart';
 import '../../../core/sync/product_sync_outbox_repository.dart';
@@ -107,6 +108,8 @@ class StockRepository {
     String? note,
     int? userId,
   }) async {
+    await PermissionService.requirePermission(_permissionForStockType(type));
+
     if (quantity <= 0) {
       throw ArgumentError('La cantidad debe ser mayor que 0');
     }
@@ -341,6 +344,7 @@ class StockRepository {
     required int productId,
     required double newStock,
     String? note,
+    int? userId,
   }) async {
     if (newStock < 0) {
       throw ArgumentError('El stock no puede ser negativo');
@@ -351,7 +355,19 @@ class StockRepository {
       type: StockMovementType.adjust,
       quantity: newStock,
       note: note,
+      userId: userId,
     );
+  }
+
+  String _permissionForStockType(StockMovementType type) {
+    switch (type) {
+      case StockMovementType.input:
+        return 'inventory.add_stock';
+      case StockMovementType.output:
+        return 'inventory.remove_stock';
+      case StockMovementType.adjust:
+        return 'inventory.adjust';
+    }
   }
 
   /// Obtiene el historial completo de movimientos de un producto

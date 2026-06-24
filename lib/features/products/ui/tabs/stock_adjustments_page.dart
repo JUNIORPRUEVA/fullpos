@@ -13,6 +13,9 @@ import '../../models/product_model.dart';
 import '../../models/stock_movement_model.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../../settings/data/user_model.dart';
+import '../../../../core/security/app_actions.dart';
+import '../../../../core/security/authorization_guard.dart';
+import '../../../../core/session/session_manager.dart';
 import '../dialogs/product_details_dialog.dart';
 import '../widgets/product_thumbnail.dart';
 import '../widgets/products_surface.dart';
@@ -345,6 +348,15 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
       return;
     }
 
+    final authorized = await requireAuthorizationIfNeeded(
+      context: context,
+      action: _actionForType(_adjustmentMode),
+      resourceType: 'product',
+      resourceId: product.id?.toString(),
+      reason: 'Ajustar stock',
+    );
+    if (!authorized || !mounted) return;
+
     setState(() => _isSaving = true);
 
     try {
@@ -355,7 +367,7 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
         note: _notesController.text.trim().isEmpty
             ? null
             : _notesController.text.trim(),
-        userId: 1,
+        userId: await SessionManager.userId(),
       );
 
       _quantityController.clear();
@@ -491,6 +503,17 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
         ],
       ),
     );
+  }
+
+  AppAction _actionForType(StockMovementType type) {
+    switch (type) {
+      case StockMovementType.input:
+        return AppActions.addStock;
+      case StockMovementType.output:
+        return AppActions.removeStock;
+      case StockMovementType.adjust:
+        return AppActions.adjustInventory;
+    }
   }
 
   Widget _buildTopTitle(

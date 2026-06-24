@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:excel/excel.dart';
 
+import '../../../core/update/import_export_activity_tracker.dart';
 import '../data/categories_repository.dart';
 import '../data/products_repository.dart';
 import '../data/suppliers_repository.dart';
@@ -39,6 +40,8 @@ class ProductsImporter {
     CategoriesRepository? categoriesRepository,
     SuppliersRepository? suppliersRepository,
   }) async {
+    ImportExportActivityTracker.instance.markStarted();
+    try {
     final catsRepo = categoriesRepository ?? CategoriesRepository();
     final supsRepo = suppliersRepository ?? SuppliersRepository();
 
@@ -420,6 +423,9 @@ class ProductsImporter {
       suppliersUpserted: suppliersUpserted,
       errors: errors,
     );
+    } finally {
+      ImportExportActivityTracker.instance.markCompleted();
+    }
   }
 
   static Sheet? _findSheet(

@@ -108,13 +108,6 @@ class Permissions {
     legacyKey: 'can_manage_users',
   );
 
-  static final toolsAccess = Permission.screen(
-    code: 'tools.ver',
-    title: 'Herramientas',
-    description: 'Acceso al módulo de herramientas.',
-    legacyKey: 'can_access_tools',
-  );
-
   static final salesHistoryView = Permission.screen(
     code: 'ventas.factura.ver',
     title: 'Factura',
@@ -149,6 +142,18 @@ class Permissions {
     title: 'Creditos',
     description: 'Acceso a la pantalla de creditos.',
     legacyKey: 'can_view_credits',
+  );
+
+  /// Permiso para acceder a la pantalla de ajuste de inventario.
+  ///
+  /// Mapea al permiso legacy `can_adjust_stock` (UserPermissions) y al
+  /// código de acción `inventory.adjust_stock` (AppActions).
+  /// La UI de permisos muestra "Productos -> Ajustar inventario".
+  static final stockAdjustment = Permission.screen(
+    code: 'inventory.adjust_stock',
+    title: 'Ajustar inventario',
+    description: 'Acceso a la pantalla de ajuste de stock.',
+    legacyKey: 'can_adjust_stock',
   );
 
   // Acciones críticas (AppActions)

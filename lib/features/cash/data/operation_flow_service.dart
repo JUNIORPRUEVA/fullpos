@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
+import '../../../core/errors/app_exception.dart';
 import '../../../core/session/session_manager.dart';
 import 'cash_repository.dart';
 import 'cash_session_model.dart';
@@ -255,7 +256,10 @@ class OperationFlowService {
     return repairedCashbox;
   }
 
-  static Future<CashSessionModel> _claimOpenShiftForCurrentUser(
+  /// Sincroniza los metadatos de un turno que YA pertenece al usuario actual.
+  /// A diferencia de la versión anterior, NUNCA cambia `opened_by_user_id`:
+  /// cada usuario es dueño exclusivo de sus propios turnos.
+  static Future<CashSessionModel> _syncOwnShiftMetadata(
     Transaction txn, {
     required Map<String, dynamic> row,
     required CashboxDailyModel cashbox,
@@ -269,10 +273,15 @@ class OperationFlowService {
       throw StateError('La sesión abierta no tiene identificadores válidos.');
     }
 
-    final updates = <String, Object?>{};
+    // Seguridad: verificar que el turno realmente pertenece a este usuario.
     if (shift.userId != userId) {
-      updates['opened_by_user_id'] = userId;
+      throw StateError(
+        'El turno #$shiftId pertenece a otro usuario y no puede ser reasignado. '
+        'Cada usuario debe abrir su propio turno.',
+      );
     }
+
+    final updates = <String, Object?>{};
     if (shift.userName.trim() != userName.trim()) {
       updates['user_name'] = userName;
     }
@@ -393,7 +402,7 @@ class OperationFlowService {
       note: note,
     );
 
-    final movedShift = await _claimOpenShiftForCurrentUser(
+    final movedShift = await _syncOwnShiftMetadata(
       txn,
       row: shift.toMap(),
       cashbox: targetCashbox,
@@ -656,25 +665,32 @@ class OperationFlowService {
             final reopenedCashbox = CashboxDailyModel.fromMap(
               reopenedRows.first,
             );
-            final shift = await _claimOpenShiftForCurrentUser(
-              txn,
-              row: openRows.first,
-              cashbox: reopenedCashbox,
-              userId: userId,
-              userName:
-                  await SessionManager.displayName() ??
-                  await SessionManager.username() ??
-                  'Usuario',
-            );
-            final shiftId = shift.id;
-            if (shiftId != null && openRows.length > 1) {
-              await _retireDuplicateOpenShifts(
+            // Solo procesamos turnos del usuario actual, nunca reasignamos
+            // turnos de otros usuarios.
+            final myOpenRows = openRows
+                .where((r) => (r['opened_by_user_id'] as int?) == userId)
+                .toList(growable: false);
+            if (myOpenRows.isNotEmpty) {
+              final shift = await _syncOwnShiftMetadata(
                 txn,
-                rows: openRows,
-                keepShiftId: shiftId,
-                actorUserId: userId,
-                nowMs: now,
+                row: myOpenRows.first,
+                cashbox: reopenedCashbox,
+                userId: userId,
+                userName:
+                    await SessionManager.displayName() ??
+                    await SessionManager.username() ??
+                    'Usuario',
               );
+              final shiftId = shift.id;
+              if (shiftId != null && myOpenRows.length > 1) {
+                await _retireDuplicateOpenShifts(
+                  txn,
+                  rows: myOpenRows,
+                  keepShiftId: shiftId,
+                  actorUserId: userId,
+                  nowMs: now,
+                );
+              }
             }
           }
         }
@@ -809,36 +825,9 @@ class OperationFlowService {
         return;
       }
 
-      final otherOpenRows = await txn.query(
-        DbTables.cashSessions,
-        where: '''
-          status = 'OPEN'
-          AND closed_at_ms IS NULL
-          AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
-        ''',
-        whereArgs: [cashbox.id, businessDate],
-        orderBy: 'opened_at_ms DESC',
-      );
-      if (otherOpenRows.isNotEmpty) {
-        final shift = await _claimOpenShiftForCurrentUser(
-          txn,
-          row: otherOpenRows.first,
-          cashbox: cashbox,
-          userId: userId,
-          userName: userName,
-        );
-        id = shift.id;
-        if (id != null && otherOpenRows.length > 1) {
-          await _retireDuplicateOpenShifts(
-            txn,
-            rows: otherOpenRows,
-            keepShiftId: id!,
-            actorUserId: userId,
-            nowMs: DateTime.now().millisecondsSinceEpoch,
-          );
-        }
-        return;
-      }
+      // Seguridad: verificar que otros turnos abiertos en la misma caja
+      // pertenecen a OTROS usuarios. NO reasignamos turnos ajenos.
+      // Cada usuario debe abrir su propio turno.
 
       id = await txn.insert(DbTables.cashSessions, {
         'opened_by_user_id': userId,
@@ -1059,36 +1048,8 @@ class OperationFlowService {
 
       final cashbox = CashboxDailyModel.fromMap(cashboxRow);
 
-      final otherOpenRows = await txn.query(
-        DbTables.cashSessions,
-        where: '''
-          status = 'OPEN'
-          AND closed_at_ms IS NULL
-          AND (cashbox_daily_id = ? OR (cashbox_daily_id IS NULL AND business_date = ?))
-        ''',
-        whereArgs: [cashbox.id, businessDate],
-        orderBy: 'opened_at_ms DESC',
-      );
-      if (otherOpenRows.isNotEmpty) {
-        final shift = await _claimOpenShiftForCurrentUser(
-          txn,
-          row: otherOpenRows.first,
-          cashbox: cashbox,
-          userId: userId,
-          userName: userName,
-        );
-        result = ActiveSession.fromModels(cashbox: cashbox, shift: shift);
-        if (otherOpenRows.length > 1) {
-          await _retireDuplicateOpenShifts(
-            txn,
-            rows: otherOpenRows,
-            keepShiftId: shift.id!,
-            actorUserId: userId,
-            nowMs: now,
-          );
-        }
-        return;
-      }
+      // Seguridad: si existen turnos abiertos de OTROS usuarios en la misma
+      // caja, los ignoramos. Cada usuario crea y gestiona su propio turno.
 
       var resolvedOpeningAmount = openingAmount;
       if (cashbox.isOpen && resolvedOpeningAmount.abs() < 1e-9) {
@@ -1136,11 +1097,43 @@ class OperationFlowService {
     String note = '',
   }) async {
     final userId = await SessionManager.userId();
-    final session = await CashRepository.getSessionById(sessionId);
-    if (session == null || session.id == null) {
-      throw Exception('No existe una sesión activa para cerrar.');
+    if (userId == null) {
+      throw const AppException(
+        type: AppErrorType.unauthorized,
+        code: 'cash_close_user_missing',
+        messageUser:
+            'No se pudo confirmar el usuario actual. Cierra sesión, vuelve a iniciar y reintenta.',
+        messageDev: 'No se pudo identificar al usuario para cerrar el turno.',
+      );
     }
 
+    final session = await CashRepository.getSessionById(sessionId);
+    if (session == null || session.id == null) {
+      throw const AppException(
+        type: AppErrorType.notFound,
+        code: 'cash_close_shift_missing',
+        messageUser:
+            'No encontramos un turno abierto para cerrar. Actualiza la pantalla y vuelve a intentarlo.',
+        messageDev: 'No existe una sesión activa para cerrar.',
+      );
+    }
+
+    // FULLPOS SEGURIDAD: verificar ownership antes de continuar.
+    if (session.userId != userId) {
+      throw AppException(
+        type: AppErrorType.forbidden,
+        code: 'cash_close_owner_mismatch',
+        messageUser:
+            'Este turno pertenece a otro usuario. Inicia sesión con el cajero correcto o pide a un supervisor que lo revise.',
+        messageDev:
+            'El turno #$sessionId pertenece al usuario ${session.userId}, no al usuario actual $userId.',
+      );
+    }
+
+    final closeDailyCashbox = await _shouldCloseDailyCashboxAfterShift(
+      session: session,
+      closingSessionId: sessionId,
+    );
     final summary = await CashRepository.buildSummary(sessionId: sessionId);
     await CashRepository.closeSession(
       sessionId: sessionId,
@@ -1149,11 +1142,48 @@ class OperationFlowService {
       summary: summary,
       expectedUserId: userId,
       expectedCashboxDailyId: session.cashboxDailyId,
-      closeCashboxDaily: true,
+      closeCashboxDaily: closeDailyCashbox,
       cashboxCloseNote: note,
       cashboxClosedByUserId: userId,
     );
     return summary;
+  }
+
+  static Future<bool> _shouldCloseDailyCashboxAfterShift({
+    required CashSessionModel session,
+    required int closingSessionId,
+  }) async {
+    final cashboxDailyId = session.cashboxDailyId;
+    final businessDate = session.businessDate;
+
+    if (cashboxDailyId == null &&
+        (businessDate == null || businessDate.trim().isEmpty)) {
+      return true;
+    }
+
+    final db = await AppDb.database;
+    final rows = await db.query(
+      DbTables.cashSessions,
+      columns: ['id'],
+      where: '''
+        status = 'OPEN'
+        AND closed_at_ms IS NULL
+        AND id <> ?
+        AND (
+          (? IS NOT NULL AND cashbox_daily_id = ?)
+          OR (? IS NOT NULL AND cashbox_daily_id IS NULL AND business_date = ?)
+        )
+      ''',
+      whereArgs: [
+        closingSessionId,
+        cashboxDailyId,
+        cashboxDailyId,
+        businessDate,
+        businessDate,
+      ],
+      limit: 1,
+    );
+    return rows.isEmpty;
   }
 
   static Future<CashSummaryModel> closeSessionAndCashbox({

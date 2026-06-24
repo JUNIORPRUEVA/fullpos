@@ -10,9 +10,14 @@ import '../services/cloud_sync_service.dart';
 import '../sync/product_sync_service.dart';
 import 'app_update_policy.dart';
 import 'app_update_repository.dart';
+import 'app_update_safety.dart';
 import 'app_version.dart';
 import 'installer_launcher.dart';
+import 'pending_update_status.dart';
+import 'update_block_reason.dart';
 import 'update_downloader.dart';
+import 'update_shutdown_coordinator.dart';
+
 
 enum AppUpdatePhase {
   idle,
@@ -37,6 +42,8 @@ class AppUpdateState {
     this.receivedBytes = 0,
     this.totalBytes,
     this.message,
+    this.blockReasons = const [],
+    this.preparationStep,
     this.presentationToken = 0,
   });
 
@@ -46,11 +53,19 @@ class AppUpdateState {
   final int receivedBytes;
   final int? totalBytes;
   final String? message;
+
+  /// Razones estructuradas de bloqueo cuando la actualización no puede proceder.
+  final List<UpdateBlockReason> blockReasons;
+
+  final UpdatePreparationStep? preparationStep;
   final int presentationToken;
 
   bool get isMandatory =>
       policy != null &&
       (policy!.decide(installed!) == UpdateDecision.mandatory);
+
+  /// `true` si hay razones de bloqueo activas.
+  bool get isBlocked => blockReasons.isNotEmpty;
 
   AppUpdateState copyWith({
     AppUpdatePhase? phase,
@@ -59,6 +74,8 @@ class AppUpdateState {
     int? receivedBytes,
     int? totalBytes,
     String? message,
+    List<UpdateBlockReason>? blockReasons,
+    UpdatePreparationStep? preparationStep,
     int? presentationToken,
   }) => AppUpdateState(
     phase: phase ?? this.phase,
@@ -67,22 +84,48 @@ class AppUpdateState {
     receivedBytes: receivedBytes ?? this.receivedBytes,
     totalBytes: totalBytes ?? this.totalBytes,
     message: message,
+    blockReasons: blockReasons ?? this.blockReasons,
+    preparationStep: preparationStep,
     presentationToken: presentationToken ?? this.presentationToken,
   );
 }
 
+
 class AppUpdateCoordinator extends ChangeNotifier {
+  static int _testingStoreSeed = 0;
+
+  static Future<Directory> Function() _createTestingUpdateRoot() {
+    final id = _testingStoreSeed++;
+    return () async => Directory(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}fullpos_update_test_${pid}_$id',
+    );
+  }
+
   AppUpdateCoordinator._({
     AppUpdateRepository? repository,
     UpdateDownloader? downloader,
     InstallerLauncher? launcher,
+    PendingUpdateStatusStore? statusStore,
+    AppUpdateSafetyValidator? safetyValidator,
     Future<AppVersion> Function()? installedVersionLoader,
     bool loggingEnabled = true,
+    bool? autoDownloadUpdates,
   }) : _repository = repository ?? AppUpdateRepository(),
        _downloader = downloader ?? UpdateDownloader(),
        _launcher = launcher ?? InstallerLauncher(),
+       _statusStore =
+           statusStore ??
+           (loggingEnabled
+               ? PendingUpdateStatusStore(
+                   updateRoot: (downloader ?? UpdateDownloader()).updateRoot,
+                 )
+               : PendingUpdateStatusStore(
+                   updateRoot: _createTestingUpdateRoot(),
+                 )),
+       _safetyValidator = safetyValidator ?? const AppUpdateSafetyValidator(),
        _installedVersionLoader = installedVersionLoader ?? AppVersion.installed,
-       _loggingEnabled = loggingEnabled;
+       _loggingEnabled = loggingEnabled,
+       _autoDownloadUpdates = autoDownloadUpdates ?? loggingEnabled;
 
   static final AppUpdateCoordinator instance = AppUpdateCoordinator._();
 
@@ -91,20 +134,28 @@ class AppUpdateCoordinator extends ChangeNotifier {
     required AppUpdateRepository repository,
     UpdateDownloader? downloader,
     InstallerLauncher? launcher,
+    AppUpdateSafetyValidator? safetyValidator,
     required Future<AppVersion> Function() installedVersionLoader,
   }) => AppUpdateCoordinator._(
     repository: repository,
     downloader: downloader,
     launcher: launcher,
+    safetyValidator: safetyValidator,
     installedVersionLoader: installedVersionLoader,
     loggingEnabled: false,
+    autoDownloadUpdates: downloader != null,
   );
 
   final AppUpdateRepository _repository;
   final UpdateDownloader _downloader;
   final InstallerLauncher _launcher;
+  final PendingUpdateStatusStore _statusStore;
+  final AppUpdateSafetyValidator _safetyValidator;
   final Future<AppVersion> Function() _installedVersionLoader;
   final bool _loggingEnabled;
+  final bool _autoDownloadUpdates;
+
+  bool get loggingEnabled => _loggingEnabled;
 
   AppUpdateState _state = const AppUpdateState();
   AppUpdateState get state => _state;
@@ -113,6 +164,9 @@ class AppUpdateCoordinator extends ChangeNotifier {
   Timer? _periodicTimer;
   String? _dismissedOptionalVersion;
   File? _verifiedInstaller;
+  Future<void>? _downloadFlowInFlight;
+  Future<void>? _launchFlowInFlight;
+  bool _presentReadyWhenDownloadCompletes = false;
 
   Future<void> ensureStarted() {
     if (!Platform.isWindows) return Future<void>.value();
@@ -146,14 +200,30 @@ class AppUpdateCoordinator extends ChangeNotifier {
     );
     await _logInfo('Update check started installed=$installed');
 
+    final policyFuture = _repository.fetchPolicy();
+    final previousInstallMessageFuture = _resolvePendingInstallMessage(
+      installed,
+    );
     try {
-      final policy = await _repository.fetchPolicy();
-      await _applyPolicy(installed, policy, manual: manual);
+      final policy = await policyFuture;
+      final previousInstallMessage = await previousInstallMessageFuture;
+      await _applyPolicy(
+        installed,
+        policy,
+        manual: manual,
+        startupMessage: previousInstallMessage,
+      );
     } catch (error) {
+      final previousInstallMessage = await previousInstallMessageFuture;
       final cached = await _repository.readValidatedCache();
       if (cached != null &&
           cached.decide(installed) == UpdateDecision.mandatory) {
-        await _applyPolicy(installed, cached, manual: manual);
+        await _applyPolicy(
+          installed,
+          cached,
+          manual: manual,
+          startupMessage: previousInstallMessage,
+        );
         return;
       }
       _setState(
@@ -176,6 +246,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
     AppVersion installed,
     AppUpdatePolicy policy, {
     required bool manual,
+    String? startupMessage,
   }) async {
     final decision = policy.decide(installed);
     await _logInfo(
@@ -188,7 +259,8 @@ class AppUpdateCoordinator extends ChangeNotifier {
           phase: AppUpdatePhase.current,
           installed: installed,
           policy: policy,
-          message: manual ? 'FullPOS está actualizado.' : null,
+          message:
+              startupMessage ?? (manual ? 'FullPOS está actualizado.' : null),
           presentationToken: _state.presentationToken,
         ),
       );
@@ -201,34 +273,50 @@ class AppUpdateCoordinator extends ChangeNotifier {
         : decision == UpdateDecision.mandatory
         ? AppUpdatePhase.mandatory
         : AppUpdatePhase.optional;
-    final shouldPresentOptional =
-        manual || _dismissedOptionalVersion != policy.latest.toString();
     _setState(
       AppUpdateState(
         phase: phase,
         installed: installed,
         policy: policy,
-        presentationToken:
-            shouldPresentOptional && phase == AppUpdatePhase.optional
-            ? _state.presentationToken + 1
-            : _state.presentationToken,
+        presentationToken: _state.presentationToken,
       ),
     );
+    await _logInfo('Update found target=${policy.latest} phase=${phase.name}');
+    if (_autoDownloadUpdates) {
+      unawaited(downloadAndInstall(presentWhenReady: manual));
+    }
   }
 
   void dismissOptional() {
     final policy = _state.policy;
     if (policy != null) _dismissedOptionalVersion = policy.latest.toString();
+    unawaited(_logInfo('User postponed installation target=${policy?.latest}'));
     _setState(_state.copyWith(phase: AppUpdatePhase.current));
   }
 
-  Future<void> downloadAndInstall() async {
+  Future<void> downloadAndInstall({bool presentWhenReady = true}) {
+    if (presentWhenReady) _presentReadyWhenDownloadCompletes = true;
+    final existing = _downloadFlowInFlight;
+    if (existing != null) return existing;
+    final future = _downloadAndPrepare(presentWhenReady: presentWhenReady);
+    _downloadFlowInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_downloadFlowInFlight, future)) {
+        _downloadFlowInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _downloadAndPrepare({required bool presentWhenReady}) async {
     final policy = _state.policy;
     final installed = _state.installed;
     if (policy == null || installed == null || _downloader.isDownloading) {
       return;
     }
     try {
+      await _logInfo(
+        'Starting background update download target=${policy.latest}',
+      );
       _setState(
         _state.copyWith(
           phase: AppUpdatePhase.downloading,
@@ -239,6 +327,16 @@ class AppUpdateCoordinator extends ChangeNotifier {
       final file = await _downloader.download(
         policy,
         onProgress: (received, total) {
+          if (total != null && total > 0) {
+            final pct = ((received / total) * 100).clamp(0, 100).round();
+            if (pct == 25 || pct == 50 || pct == 75 || pct == 100) {
+              unawaited(
+                _logInfo(
+                  'Update download progress target=${policy.latest} percent=$pct received=$received total=$total',
+                ),
+              );
+            }
+          }
           _setState(
             _state.copyWith(
               phase: AppUpdatePhase.downloading,
@@ -250,7 +348,22 @@ class AppUpdateCoordinator extends ChangeNotifier {
       );
       _setState(_state.copyWith(phase: AppUpdatePhase.verifying));
       _verifiedInstaller = file;
-      _setState(_state.copyWith(phase: AppUpdatePhase.ready));
+      final shouldPresent =
+          presentWhenReady ||
+          _presentReadyWhenDownloadCompletes ||
+          _dismissedOptionalVersion != policy.latest.toString() ||
+          _state.isMandatory;
+      _presentReadyWhenDownloadCompletes = false;
+      await _logInfo('Update download completed file=${file.path}');
+      await _logInfo('Update ready to install target=${policy.latest}');
+      _setState(
+        _state.copyWith(
+          phase: AppUpdatePhase.ready,
+          presentationToken: shouldPresent
+              ? _state.presentationToken + 1
+              : _state.presentationToken,
+        ),
+      );
     } catch (error) {
       _verifiedInstaller = null;
       _setState(
@@ -274,12 +387,71 @@ class AppUpdateCoordinator extends ChangeNotifier {
   }
 
   Future<void> launchInstaller() async {
+    final existing = _launchFlowInFlight;
+    if (existing != null) return existing;
+    final future = _launchInstaller();
+    _launchFlowInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_launchFlowInFlight, future)) {
+        _launchFlowInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _launchInstaller() async {
     final file = _verifiedInstaller;
     final policy = _state.policy;
     if (file == null || policy == null || _launcher.isLaunching) return;
-    _setState(_state.copyWith(phase: AppUpdatePhase.launching));
+    await _logInfo('User clicked install now target=${policy.latest}');
+    final safety = await _safetyValidator.validate();
+    if (!safety.safe) {
+      await _logWarn(
+        'Installation blocked because app is not in a safe state: ${safety.blockReason}',
+      );
+      for (final reason in safety.blockReasons) {
+        await _logWarn(
+          'Update install blocked reason=${reason.code} title=${reason.title}',
+        );
+      }
+      _setState(
+        _state.copyWith(
+          phase: AppUpdatePhase.ready,
+          message:
+              safety.blockReason ?? AppUpdateSafetyValidator.pendingWorkMessage,
+          blockReasons: safety.blockReasons,
+        ),
+      );
+      return;
+    }
+
+    if (safety.warning != null) {
+      await _logWarn('Installation safety warning: ${safety.warning}');
+    }
+    _setState(
+      _state.copyWith(
+        phase: AppUpdatePhase.launching,
+        preparationStep: UpdatePreparationStep.verifyingOpenProcesses,
+      ),
+    );
     try {
-      await _launcher.launch(file, policy);
+      await _logInfo('User started installation target=${policy.latest}');
+      await _launcher.launch(
+        file,
+        policy,
+        onProgress: (step) {
+          _setState(
+            _state.copyWith(
+              phase: AppUpdatePhase.launching,
+              preparationStep: step,
+            ),
+          );
+        },
+      );
+    } on UpdatePreparationException catch (error) {
+      _setState(
+        _state.copyWith(phase: AppUpdatePhase.ready, message: error.message),
+      );
+      await _logWarn('Update preparation blocked: ${error.message}');
     } catch (error) {
       _setState(
         _state.copyWith(
@@ -293,6 +465,21 @@ class AppUpdateCoordinator extends ChangeNotifier {
   }
 
   Future<void> closeFullPos() async {
+    // Intentar preparación segura antes de cerrar.
+    // Si hay operaciones activas, el usuario verá el mensaje y podrá decidir.
+    final safety = await _safetyValidator.validate();
+    if (!safety.safe) {
+      _setState(
+        _state.copyWith(
+          message:
+              safety.blockReason ?? AppUpdateSafetyValidator.pendingWorkMessage,
+        ),
+      );
+      await _logWarn(
+        'closeFullPos blocked: ${safety.blockReason}',
+      );
+      return;
+    }
     CloudSyncService.instance.stopRealtimeSyncEngine();
     ProductSyncService.instance.stop();
     await DatabaseManager.instance.close(reason: 'update_gate_close');
@@ -330,6 +517,23 @@ class AppUpdateCoordinator extends ChangeNotifier {
       await prefs.remove('update_installer_path');
       await prefs.remove('update_install_attempted_at');
     }
+  }
+
+  Future<String?> _resolvePendingInstallMessage(AppVersion installed) async {
+    final pending = await _statusStore.read();
+    if (pending == null || pending.status != 'installing') return null;
+    if (installed.compareTo(pending.targetVersion) >= 0) {
+      await _statusStore.delete();
+      await _logInfo(
+        'Pending update completed target=${pending.targetVersion} installed=$installed',
+      );
+      return 'FullPOS se actualizó correctamente. Ya estás usando la versión más reciente.';
+    }
+    await _statusStore.writeStatus(pending, 'failed');
+    await _logWarn(
+      'Pending update did not complete target=${pending.targetVersion} installed=$installed',
+    );
+    return 'La actualización no se completó correctamente. Puedes intentarlo nuevamente desde Actualizaciones.';
   }
 
   Future<bool> _isIncompleteInstall(

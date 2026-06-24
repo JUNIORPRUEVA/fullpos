@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import '../../../features/sales/data/sale_totals_calculator.dart';
 import 'ticket_layout_config.dart';
 import 'ticket_data.dart';
 import 'company_info.dart';
@@ -38,12 +39,17 @@ class TicketRenderer {
     final subtotal = (data.subtotal <= 0 && computedSubtotal > 0)
         ? computedSubtotal
         : data.subtotal;
-    final discount = data.discount;
-    final itbis = data.itbis;
-    final computedTotal = subtotal - discount + itbis;
-    final total = (data.total <= 0 && computedTotal > 0)
-        ? computedTotal
-        : data.total;
+    final totals = SaleTotalsCalculator.fromDiscountedSubtotal(
+      subtotal: subtotal,
+      discountTotal: data.discount,
+      itbisEnabled: data.itbis > 0,
+      itbisRate: data.itbisRate,
+      itbisAmount: data.itbis,
+      total: data.total > 0 ? data.total : null,
+    );
+    final discount = totals.discountTotal;
+    final itbis = totals.itbisAmount;
+    final total = totals.total;
     final paymentLabel = _paymentLabel(data.paymentMethod).toUpperCase();
     final documentType = _documentLabel(data);
     final dateLabel = DateFormat('dd/MM/yyyy').format(data.dateTime);
@@ -238,10 +244,11 @@ class TicketRenderer {
     }
 
     if (config.showTotalsBreakdown) {
-      addPair('SUBT.:', compactMoney(subtotal));
+      addPair('SUBT.:', compactMoney(totals.grossSubtotal));
       if (discount > 0) {
-        addPair('DESC.:', compactMoney(discount));
+        addPair('DESC.:', '-${compactMoney(discount)}');
       }
+      addPair('BASE:', compactMoney(totals.taxableSubtotal));
       if (config.showItbis && itbis > 0) {
         final taxRate = (data.itbisRate * 100).toStringAsFixed(0);
         addPair('ITBIS $taxRate%:', compactMoney(itbis));

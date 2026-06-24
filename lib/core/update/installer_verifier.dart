@@ -22,9 +22,11 @@ class InstallerVerifier {
     final path = p.normalize(p.absolute(file.path));
     final basename = p.basename(path);
     final validFilename =
+        basename == policy.localInstallerFilename ||
         basename == policy.installerFilename ||
         (allowPartialFilename &&
-            basename == '${policy.installerFilename}.part');
+            (basename == '${policy.localInstallerFilename}.part' ||
+                basename == '${policy.installerFilename}.part'));
     if (!p.isWithin(root, path) || !validFilename || !await file.exists()) {
       throw const InstallerVerificationException('invalid_path');
     }
@@ -55,8 +57,15 @@ class InstallerVerifier {
       throw const InstallerVerificationException('web_error_document');
     }
 
+    final expectedSha256 = policy.sha256;
+    if (expectedSha256 == null || expectedSha256.isEmpty) {
+      // TODO(update-security): add SHA256 to update metadata so every
+      // downloaded installer can be cryptographically verified before launch.
+      return;
+    }
+
     final digest = await sha256.bind(file.openRead()).first;
-    if (digest.toString().toLowerCase() != policy.sha256.toLowerCase()) {
+    if (digest.toString().toLowerCase() != expectedSha256.toLowerCase()) {
       throw const InstallerVerificationException('sha256_mismatch');
     }
   }

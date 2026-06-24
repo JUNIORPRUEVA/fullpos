@@ -6,10 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/session/session_manager.dart';
 import '../../../core/theme/color_utils.dart';
 import '../../../core/printing/models/company_info.dart';
 import '../../../core/printing/models/ticket_layout_config.dart';
 import '../../../core/printing/unified_ticket_printer.dart';
+import '../../../core/update/cash_close_activity_tracker.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authz/authz_service.dart';
 import '../../../core/security/authz/permission.dart' as authz_perm;
@@ -160,6 +162,27 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
   Future<void> _loadSession() async {
     try {
       final session = await CashRepository.getSessionById(widget.sessionId);
+
+      // FULLPOS SEGURIDAD: verificar que el turno pertenece al usuario actual.
+      if (session != null) {
+        final currentUserId = await SessionManager.userId();
+        if (currentUserId != null && session.userId != currentUserId) {
+          if (mounted) {
+            Navigator.of(context).pop();
+            final messenger = ScaffoldMessenger.maybeOf(context);
+            messenger?.showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Este turno pertenece a otro usuario y no puede cerrarse desde aquí.',
+                ),
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+            );
+          }
+          return;
+        }
+      }
+
       final cashboxDaily = await OperationFlowService.getDailyCashboxById(
         session?.cashboxDailyId,
       );
@@ -364,6 +387,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
     if (!mounted) return;
 
     setState(() => _isLoading = true);
+    CashCloseActivityTracker.instance.markClosingStarted();
 
     try {
       final closeNote = _noteController.text.trim();
@@ -404,9 +428,10 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             ScaffoldMessenger.maybeOf(logoutContext)?.showSnackBar(
               SnackBar(
                 duration: const Duration(seconds: 8),
-                content: Text(
+                content: const Text(
                   'El turno se cerró correctamente, pero no se pudo imprimir '
-                  'el comprobante: $printError',
+                  'el comprobante. Revisa la impresora y vuelve a imprimirlo '
+                  'desde el historial de caja.',
                 ),
                 backgroundColor: Theme.of(logoutContext).colorScheme.error,
               ),
@@ -428,8 +453,10 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
             if (messenger == null) return;
             messenger.showSnackBar(
               SnackBar(
-                content: Text(
-                  'La sesión se cerró, pero no se pudo imprimir: $error',
+                content: const Text(
+                  'El turno se cerró correctamente, pero no se pudo imprimir '
+                  'el comprobante. Revisa la impresora y vuelve a imprimirlo '
+                  'desde el historial de caja.',
                 ),
                 backgroundColor: Theme.of(messenger.context).colorScheme.error,
               ),
@@ -457,6 +484,7 @@ class _CashCloseDialogState extends ConsumerState<CashCloseDialog> {
         );
       }
     } finally {
+      CashCloseActivityTracker.instance.markClosingCompleted();
       if (mounted) setState(() => _isLoading = false);
     }
   }

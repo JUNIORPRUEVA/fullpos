@@ -54,9 +54,8 @@ class UpdateDownloader {
     required DownloadProgress onProgress,
   }) async {
     final root = await updateRoot();
-    final versionDir = Directory(p.join(root.path, policy.latest.semantic));
-    await versionDir.create(recursive: true);
-    final finalFile = File(p.join(versionDir.path, policy.installerFilename));
+    await root.create(recursive: true);
+    final finalFile = File(p.join(root.path, policy.localInstallerFilename));
     final partFile = File('${finalFile.path}.part');
 
     if (await finalFile.exists()) {
@@ -128,7 +127,7 @@ class UpdateDownloader {
         allowPartialFilename: true,
       );
       await partFile.rename(finalFile.path);
-      await _cleanObsoleteFolders(root, keep: versionDir);
+      await _cleanObsoleteInstallers(root, keep: finalFile);
       return finalFile;
     } catch (_) {
       await output?.close();
@@ -140,20 +139,27 @@ class UpdateDownloader {
     }
   }
 
-  Future<void> _cleanObsoleteFolders(
+  Future<void> _cleanObsoleteInstallers(
     Directory root, {
-    required Directory keep,
+    required File keep,
   }) async {
     if (!await root.exists()) return;
-    final dirs = await root
+    final files = await root
         .list()
-        .where((entity) => entity is Directory)
-        .cast<Directory>()
+        .where(
+          (entity) =>
+              entity is File &&
+              p.basename(entity.path).startsWith('FullPOS-Setup-v') &&
+              p.extension(entity.path).toLowerCase() == '.exe',
+        )
+        .cast<File>()
         .toList();
-    dirs.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
-    for (final dir in dirs.skip(2)) {
-      if (p.equals(dir.path, keep.path)) continue;
-      await dir.delete(recursive: true);
+    files.sort(
+      (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+    );
+    for (final file in files.skip(2)) {
+      if (p.equals(file.path, keep.path)) continue;
+      await file.delete();
     }
   }
 }

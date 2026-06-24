@@ -1,49 +1,29 @@
-# Transformación Visual - Pantalla Rendimiento Comercial
+# Plan de Corrección: Bug de Permiso de Ajuste de Inventario
 
-## Checklist de Implementación
+## Diagnóstico
 
-- [x] Analizar estructura actual del archivo reports_page.dart (1581 líneas)
-- [x] Leer widgets auxiliares (bar_chart, pie_chart, date_range_selector)
-- [x] **PARTE 1**: Transformación tipográfica completa
-  - [x] Títulos principales: w700/w800, mejor letter-spacing, line-height
-  - [x] Subtítulos: w500, color gris azulado elegante
-  - [x] KPIs/números: refinados, menos toscos
-  - [x] Etiquetas pequeñas: w500/w600, más legibles
-  - [x] Reducir w900 en toda la pantalla
-- [x] **PARTE 2**: Contenedor principal más cuadrado
-  - [x] Reducir border radius (22 → 12)
-  - [x] Mejor padding superior e inferior
-  - [x] Marco más ejecutivo
-- [x] **PARTE 3**: Reestructurar layout
-  - [x] Reducir sensación de tarjetas fragmentadas
-  - [x] Agrupar visualmente bloques relacionados
-  - [x] Layout más unificado tipo dashboard ejecutivo
-- [x] **PARTE 4**: Bloque principal de rendimiento (Hero Panel)
-  - [x] Mejor estructura y espaciado
-  - [x] Integrar mejor gráficos y métricas
-  - [x] Mini métricas (Margen/Órdenes/Utilidad) más integradas
-  - [x] Dona y leyenda más liviana
-- [x] **PARTE 5**: KPIs inferiores (Total vendido, Utilidad, Costo)
-  - [x] Menos sensación de "cajita"
-  - [x] Más aire interior
-  - [x] Tipografía más elegante
-- [x] **PARTE 6**: Productos más vendidos
-  - [x] Mejor jerarquía de título
-  - [x] Lista más limpia y ejecutiva
-  - [x] Mejor alineación ranking/nombre/unidades/monto
-- [x] **PARTE 7**: Bloques laterales secundarios
-  - [x] Más consistentes visualmente
-  - [x] Menos borde pesado
-  - [x] Mejor agrupación
-- [x] **PARTE 8**: Scroll corregido
-  - [x] Contenedor principal NO hace scroll
-  - [x] Contenido interior es el que desplaza
-  - [x] Experiencia más tipo app de escritorio
-- [x] **PARTE 9**: Radios, bordes y superficies
-  - [x] Reducir radios excesivos
-  - [x] Bordes más sutiles
-  - [x] Superficies más planas y elegantes
-- [x] **PARTE 10**: Iconos y microdetalles consistentes
-- [x] **PARTE 11**: Encabezado y barra de acciones refinados
-- [x] **PARTE 12**: Validación visual final
-- [x] **PARTE 13**: Ejecutar flutter analyze y corregir errores
+### Problema 1: Ruta no registrada
+La ruta `/products/stock-adjustment` NO está registrada en:
+- `RoutePermissions.forPath()` → devuelve `null`
+- `ModuleAccess.canAccessPath()` → devuelve `false` (fallback genérico)
+
+Cuando el router intenta acceder, `canAccessPath()` en `router.dart` primero busca en `RoutePermissions.forPath()` (null), luego en `ModuleAccess.canAccessPath()` (false), resultando en redirección a `/no-access?from=/products/stock-adjustment`.
+
+El mensaje "Catalogo" viene de `ModuleAccess.moduleLabelForPath()` que dice `if (path.startsWith('/products')) return 'Catalogo'`.
+
+### Problema 2: TemporaryAuthorizationService duración incorrecta
+- `defaultDuration` es 3 minutos, debe ser 2 minutos
+- No hay limpieza al salir de la pantalla
+
+### Problema 3: No hay PermissionGate en la ruta
+La ruta en `router.dart` línea 346-348 no tiene `PermissionGate` ni `BlankPermissionGate`.
+
+## Archivos a modificar
+
+1. **lib/core/security/authz/route_permissions.dart** - Agregar ruta `/products/stock-adjustment`
+2. **lib/core/security/module_access.dart** - Agregar ruta `/products/stock-adjustment`
+3. **lib/core/security/temporary_authorization_service.dart** - Cambiar defaultDuration a 2 min
+4. **lib/app/router.dart** - Agregar BlankPermissionGate a la ruta stock-adjustment
+5. **lib/features/products/ui/inventory_module_pages.dart** - Agregar limpieza de temp auth en dispose()
+6. **test/core/security/temporary_authorization_service_test.dart** - Actualizar tests
+7. **test/core/security/permission_service_test.dart** - Agregar tests de ruta

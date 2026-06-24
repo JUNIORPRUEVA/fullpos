@@ -4803,6 +4803,7 @@ class AppDb {
         'status',
         "TEXT NOT NULL DEFAULT 'OPEN'",
       );
+      await _ensureCashSessionsAllowsMultipleUsersPerCashbox(db);
       await _createIndexIfMissing(
         db,
         'idx_cash_session_open',
@@ -4829,6 +4830,18 @@ class AppDb {
         UPDATE ${DbTables.cashSessions}
         SET business_date = strftime('%Y-%m-%d', opened_at_ms / 1000, 'unixepoch', 'localtime')
         WHERE business_date IS NULL OR TRIM(business_date) = ''
+      ''');
+
+      await _retireDuplicateOpenCashSessionsForIndex(db);
+      await db.execute('DROP INDEX IF EXISTS idx_cash_sessions_one_open_user');
+
+      // FULLPOS SEGURIDAD: índice único parcial que impide que un usuario
+      // tenga más de un turno abierto simultáneamente a nivel de base de datos.
+      // Esto es una red de seguridad ante condiciones de carrera.
+      await db.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_cash_sessions_unique_open_per_user
+        ON ${DbTables.cashSessions}(opened_by_user_id)
+        WHERE status = 'OPEN' AND closed_at_ms IS NULL
       ''');
     }
 
@@ -5814,6 +5827,190 @@ class AppDb {
       } catch (_) {
         // No romper apertura por integridad.
       }
+    }
+  }
+
+  static Future<void> _ensureCashSessionsAllowsMultipleUsersPerCashbox(
+    DatabaseExecutor db,
+  ) async {
+    if (!await _tableExists(db, DbTables.cashSessions)) return;
+
+    var mustRebuildTable = false;
+    final indexes = await db.rawQuery(
+      'PRAGMA index_list(${DbTables.cashSessions})',
+    );
+    for (final index in indexes) {
+      final unique = (index['unique'] as int? ?? 0) == 1;
+      if (!unique) continue;
+
+      final indexName = index['name'] as String?;
+      if (indexName == null || indexName.trim().isEmpty) continue;
+
+      final indexInfo = await db.rawQuery('PRAGMA index_info("$indexName")');
+      final columns = indexInfo
+          .map((row) => row['name'])
+          .whereType<String>()
+          .map((name) => name.trim().toLowerCase())
+          .toList(growable: false);
+      final isOnlyCashboxDailyId =
+          columns.length == 1 && columns.single == 'cashbox_daily_id';
+      if (!isOnlyCashboxDailyId) continue;
+
+      final origin = (index['origin'] as String? ?? '').toLowerCase();
+      final isTableConstraint =
+          indexName.startsWith('sqlite_autoindex') || origin == 'u';
+      if (isTableConstraint) {
+        mustRebuildTable = true;
+      } else {
+        await db.execute('DROP INDEX IF EXISTS "$indexName"');
+      }
+    }
+
+    final tableSqlRows = await db.rawQuery(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+      [DbTables.cashSessions],
+    );
+    final tableSql =
+        (tableSqlRows.isEmpty ? '' : tableSqlRows.first['sql'] as String? ?? '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .toLowerCase();
+    if (tableSql.contains('cashbox_daily_id') && tableSql.contains('unique')) {
+      final hasTableLevelUnique = RegExp(
+        r'unique\s*\(\s*cashbox_daily_id\s*\)',
+      ).hasMatch(tableSql);
+      final hasColumnLevelUnique = RegExp(
+        r'cashbox_daily_id\b[^,)]*\bunique\b',
+      ).hasMatch(tableSql);
+      mustRebuildTable =
+          mustRebuildTable || hasTableLevelUnique || hasColumnLevelUnique;
+    }
+
+    if (!mustRebuildTable) return;
+    await _rebuildCashSessionsWithoutCashboxUniqueConstraint(db);
+  }
+
+  static Future<void> _rebuildCashSessionsWithoutCashboxUniqueConstraint(
+    DatabaseExecutor db,
+  ) async {
+    const rebuiltTable = 'cash_sessions_rebuild_no_cashbox_unique';
+    try {
+      await db.execute('PRAGMA foreign_keys = OFF;');
+    } catch (_) {
+      // Si se llama dentro de una transacción, SQLite puede ignorarlo.
+    }
+    try {
+      await db.execute('DROP TABLE IF EXISTS $rebuiltTable');
+      await db.execute('''
+        CREATE TABLE $rebuiltTable (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          opened_by_user_id INTEGER NOT NULL,
+          user_name TEXT NOT NULL DEFAULT 'admin',
+          opened_at_ms INTEGER NOT NULL,
+          initial_amount REAL NOT NULL DEFAULT 0,
+          cashbox_daily_id INTEGER,
+          business_date TEXT,
+          requires_closure INTEGER NOT NULL DEFAULT 0,
+          closing_amount REAL,
+          expected_cash REAL,
+          difference REAL,
+          closed_at_ms INTEGER,
+          closed_by_user_id INTEGER,
+          note TEXT,
+          status TEXT NOT NULL DEFAULT 'OPEN',
+          FOREIGN KEY (opened_by_user_id) REFERENCES ${DbTables.users}(id),
+          FOREIGN KEY (closed_by_user_id) REFERENCES ${DbTables.users}(id),
+          FOREIGN KEY (cashbox_daily_id) REFERENCES ${DbTables.cashboxDaily}(id)
+        )
+      ''');
+
+      const columns = [
+        'id',
+        'opened_by_user_id',
+        'user_name',
+        'opened_at_ms',
+        'initial_amount',
+        'cashbox_daily_id',
+        'business_date',
+        'requires_closure',
+        'closing_amount',
+        'expected_cash',
+        'difference',
+        'closed_at_ms',
+        'closed_by_user_id',
+        'note',
+        'status',
+      ];
+      final columnList = columns.join(', ');
+      await db.execute('''
+        INSERT INTO $rebuiltTable ($columnList)
+        SELECT $columnList
+        FROM ${DbTables.cashSessions}
+        ORDER BY id
+      ''');
+      await db.execute('DROP TABLE ${DbTables.cashSessions}');
+      await db.execute(
+        'ALTER TABLE $rebuiltTable RENAME TO ${DbTables.cashSessions}',
+      );
+    } finally {
+      try {
+        await db.execute('PRAGMA foreign_keys = ON;');
+      } catch (_) {
+        // No bloquear apertura si SQLite no permite cambiar el pragma aquí.
+      }
+    }
+  }
+
+  static Future<void> _retireDuplicateOpenCashSessionsForIndex(
+    DatabaseExecutor db,
+  ) async {
+    final duplicateUsers = await db.rawQuery('''
+      SELECT opened_by_user_id
+      FROM ${DbTables.cashSessions}
+      WHERE status = 'OPEN' AND closed_at_ms IS NULL
+      GROUP BY opened_by_user_id
+      HAVING COUNT(*) > 1
+    ''');
+    if (duplicateUsers.isEmpty) return;
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    for (final row in duplicateUsers) {
+      final userId = row['opened_by_user_id'];
+      if (userId == null) continue;
+
+      final keepRows = await db.rawQuery(
+        '''
+        SELECT id
+        FROM ${DbTables.cashSessions}
+        WHERE status = 'OPEN'
+          AND closed_at_ms IS NULL
+          AND opened_by_user_id = ?
+        ORDER BY opened_at_ms DESC, id DESC
+        LIMIT 1
+        ''',
+        [userId],
+      );
+      if (keepRows.isEmpty) continue;
+      final keepId = keepRows.first['id'];
+
+      await db.rawUpdate(
+        '''
+        UPDATE ${DbTables.cashSessions}
+        SET status = 'CLOSED',
+            closed_at_ms = ?,
+            closed_by_user_id = opened_by_user_id,
+            note = TRIM(COALESCE(note || char(10), '') || ?)
+        WHERE status = 'OPEN'
+          AND closed_at_ms IS NULL
+          AND opened_by_user_id = ?
+          AND id <> ?
+        ''',
+        [
+          nowMs,
+          'Autocerrado por reparacion de turnos abiertos duplicados.',
+          userId,
+          keepId,
+        ],
+      );
     }
   }
 

@@ -37,6 +37,9 @@ class ModuleAccess {
 
     if (path == '/products') return permissions.canViewProducts;
     if (path == '/products/history') return permissions.canViewProducts;
+    if (path == '/products/stock-adjustment') {
+      return permissions.canAdjustStock;
+    }
     if (path.startsWith('/products/add-stock')) {
       return permissions.canAdjustStock;
     }
@@ -52,10 +55,6 @@ class ModuleAccess {
     }
 
     if (path == '/reports') return permissions.canViewReports;
-    if (path == '/tools' || path == '/electronic-documents') {
-      return permissions.canAccessTools;
-    }
-
     if (path == '/settings' ||
         path == '/settings/printer' ||
         path == '/settings/logs' ||

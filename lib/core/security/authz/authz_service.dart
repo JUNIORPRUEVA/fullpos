@@ -8,6 +8,7 @@ import '../../session/session_manager.dart';
 import '../permission_service.dart';
 import '../../security/security_config.dart';
 import '../../security/app_actions.dart';
+import '../../security/temporary_authorization_service.dart';
 import '../../../widgets/authorization_modal.dart';
 import '../../errors/error_handler.dart';
 import 'authz_audit_service.dart';
@@ -26,39 +27,13 @@ class AuditMeta {
 class AuthzService {
   AuthzService._();
 
-  // Prevents back-to-back prompts for the same permission after a successful override.
-  // This is intentionally short-lived and in-memory only.
-  // Only a short cooldown to prevent back-to-back prompts caused by multiple guards
-  // running in sequence for the same user interaction.
-  //
-  // SECURITY: Screen overrides are NOT cached long-term. They use the same short
-  // TTL as action overrides (3 seconds) so that back-to-back guard calls in the
-  // same navigation event don't prompt twice, but re-entry into the screen WILL
-  // require a new authorization. PermissionGate.dispose() also explicitly removes
-  // the override so the next visit always requires fresh auth.
-  static const Duration _actionOverrideTtl = Duration(seconds: 3);
-  // Keep screen override available a bit longer to avoid premature expiration
-  // during route transitions/loading, while still being temporary and in-memory.
-  // It is explicitly cleared on screen dispose by PermissionGate/BlankPermissionGate.
-  static const Duration _screenOverrideTtl = Duration(seconds: 15);
-  static final Map<String, DateTime> _overrideCache = <String, DateTime>{};
-
-  static String _overrideKey({
-    required int userId,
-    required Permission permission,
-    required String? resourceType,
-    required String? resourceId,
-  }) {
-    // Cache at permission level (not resource-level) to avoid back-to-back prompts
-    // triggered by multiple guards during the same user flow.
-    return '$userId|${permission.code}';
-  }
-
   /// Clears ALL temporary overrides (call on logout / user switch).
   static void clearOverrideCache() {
-    _overrideCache.clear();
+    TemporaryAuthorizationService.clearAll();
     assert(() {
-      debugPrint('[AUTHZ] clearOverrideCache: all temporary authorizations cleared');
+      debugPrint(
+        '[AUTHZ] clearOverrideCache: all temporary authorizations cleared',
+      );
       return true;
     }());
   }
@@ -69,27 +44,13 @@ class AuthzService {
     required int userId,
     required Permission permission,
   }) {
-    final key = _overrideKey(
-      userId: userId,
-      permission: permission,
-      resourceType: null,
-      resourceId: null,
-    );
-    _overrideCache.remove(key);
+    TemporaryAuthorizationService.clearAuthorization(permission.code);
     assert(() {
-      debugPrint('[AUTHZ] clearOverrideFor: userId=$userId perm=${permission.code} removed');
+      debugPrint(
+        '[AUTHZ] clearOverrideFor: userId=$userId perm=${permission.code} removed',
+      );
       return true;
     }());
-  }
-
-  static bool _hasValidCachedOverride(String key) {
-    final until = _overrideCache[key];
-    if (until == null) return false;
-    if (DateTime.now().isAfter(until)) {
-      _overrideCache.remove(key);
-      return false;
-    }
-    return true;
   }
 
   /// Construye un usuario de autorización desde la sesión actual.
@@ -133,13 +94,7 @@ class AuthzService {
   static bool can(User u, Permission p) {
     if (u.isAdmin) return true;
 
-    final cachedKey = _overrideKey(
-      userId: u.userId,
-      permission: p,
-      resourceType: null,
-      resourceId: null,
-    );
-    if (_hasValidCachedOverride(cachedKey)) return true;
+    if (TemporaryAuthorizationService.isAuthorized(p.code)) return true;
 
     if (p.kind == PermissionKind.action) {
       return u.actionPermissions[p.code] ?? false;
@@ -161,13 +116,7 @@ class AuthzService {
     String? resourceId,
     bool isOnline = true,
   }) async {
-    final cachedKey = _overrideKey(
-      userId: u.userId,
-      permission: p,
-      resourceType: resourceType,
-      resourceId: resourceId,
-    );
-    if (_hasValidCachedOverride(cachedKey)) return true;
+    if (TemporaryAuthorizationService.isAuthorized(p.code)) return true;
 
     await AuthzAuditService.log(
       companyId: u.companyId,
@@ -178,10 +127,7 @@ class AuthzService {
       requestedByUserId: u.userId,
       resourceType: resourceType,
       resourceId: resourceId,
-      meta: {
-        'reason': ?reason,
-        if (meta != null) ...meta.value,
-      },
+      meta: {'reason': ?reason, if (meta != null) ...meta.value},
     );
 
     if (can(u, p)) {
@@ -224,13 +170,6 @@ class AuthzService {
       isOnline: isOnline,
     );
 
-    if (ok) {
-      final ttl = p.kind == PermissionKind.screen
-          ? _screenOverrideTtl
-          : _actionOverrideTtl;
-      _overrideCache[cachedKey] = DateTime.now().add(ttl);
-    }
-
     await AuthzAuditService.log(
       companyId: u.companyId,
       permissionCode: p.code,
@@ -240,10 +179,7 @@ class AuthzService {
       requestedByUserId: u.userId,
       resourceType: resourceType,
       resourceId: resourceId,
-      meta: {
-        'reason': ?reason,
-        if (meta != null) ...meta.value,
-      },
+      meta: {'reason': ?reason, if (meta != null) ...meta.value},
     );
 
     return ok;
@@ -404,8 +340,6 @@ class AuthzService {
         return perms.canViewQuotes;
       case 'can_convert_quotes_to_ticket':
         return perms.canConvertQuotesToTicket;
-      case 'can_access_tools':
-        return perms.canAccessTools;
       case 'can_process_returns':
         return perms.canProcessReturns;
       case 'can_view_credits':

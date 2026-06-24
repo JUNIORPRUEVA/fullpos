@@ -68,6 +68,9 @@ class ActionAccess {
   ) {
     switch (action.code) {
       case 'inventory.adjust_stock':
+      case 'inventory.add_stock':
+      case 'inventory.remove_stock':
+      case 'inventory.adjust':
         return permissions.canAdjustStock;
       case 'inventory.edit_cost':
       case 'inventory.edit_sale_price':

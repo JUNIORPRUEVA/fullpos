@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/window/window_service.dart';
+import '../../../../core/ui/app_toast.dart';
 import '../../../../core/utils/color_utils.dart';
 import '../../../../core/security/app_actions.dart';
 import '../../../../core/security/authorization_guard.dart';
@@ -180,6 +181,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   List<SupplierModel> _suppliers = [];
 
   String? _imagePath;
+  String? _imageUrl;
   String? _pendingImageSourcePath;
   bool _removeImage = false;
   String _placeholderType = 'image';
@@ -217,6 +219,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       _selectedCategoryId = p.categoryId;
       _selectedSupplierId = p.supplierId;
       _imagePath = p.imagePath;
+      _imageUrl = p.imageUrl;
       _placeholderType = p.placeholderType;
       _placeholderColorHex =
           p.placeholderColorHex ??
@@ -252,6 +255,18 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   String? get _previewImagePath => _placeholderType == 'color'
       ? null
       : (_pendingImageSourcePath ?? _imagePath);
+
+  String? get _previewImageUrl {
+    if (_placeholderType == 'color' || _pendingImageSourcePath != null) {
+      return null;
+    }
+    final value = _imageUrl?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  bool get _hasPreviewImage =>
+      (_previewImagePath?.trim().isNotEmpty ?? false) ||
+      (_previewImageUrl?.trim().isNotEmpty ?? false);
 
   String _resolvePlaceholderColor() {
     if (_placeholderColorHex != null &&
@@ -314,6 +329,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
 
     setState(() {
       _pendingImageSourcePath = path;
+      _imageUrl = null;
       _removeImage = false;
       _placeholderType = 'image';
     });
@@ -323,6 +339,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     setState(() {
       _pendingImageSourcePath = null;
       _imagePath = null;
+      _imageUrl = null;
       _removeImage = true;
       _placeholderType = 'color';
       _placeholderColorHex = _resolvePlaceholderColor();
@@ -333,17 +350,12 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     if (!_formKey.currentState!.validate()) return;
 
     final usingColor = _placeholderType == 'color';
-    final previewPath = _previewImagePath;
-    final hasImage = previewPath != null && previewPath.trim().isNotEmpty;
-
-    if (!usingColor && !hasImage) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Debe seleccionar una imagen para el producto.'),
-          ),
-        );
-      }
+    if (!usingColor && !_hasPreviewImage) {
+      AppToast.show(
+        context,
+        'Debe seleccionar una imagen para el producto.',
+        type: AppToastType.warning,
+      );
       return;
     }
 
@@ -411,7 +423,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       if (stockChanged) {
         final ok = await requireAuthorizationIfNeeded(
           context: context,
-          action: AppActions.adjustStock,
+          action: AppActions.adjustInventory,
           resourceType: 'product',
           resourceId: productId.toString(),
           reason: 'Ajustar stock',
@@ -446,6 +458,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       final placeholderType = _placeholderType;
 
       final oldImagePath = widget.product?.imagePath;
+      final oldImageUrl = widget.product?.imageUrl;
 
       if (_isEdit) {
         final productId = widget.product!.id;
@@ -454,15 +467,19 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
         }
 
         String? finalImagePath = oldImagePath;
+        String? finalImageUrl = oldImageUrl;
         if (usingColor) {
           finalImagePath = null;
+          finalImageUrl = null;
         } else if (_removeImage) {
           finalImagePath = null;
+          finalImageUrl = null;
         } else if (_pendingImageSourcePath != null) {
           finalImagePath = await _copyImageToAppDir(
             productId: productId,
             sourcePath: _pendingImageSourcePath!,
           );
+          finalImageUrl = null;
         }
 
         final updated = widget.product!.copyWith(
@@ -471,6 +488,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
           categoryId: _selectedCategoryId,
           supplierId: _selectedSupplierId,
           imagePath: finalImagePath,
+          imageUrl: finalImageUrl,
           placeholderColorHex: placeholderColor,
           placeholderType: placeholderType,
           purchasePrice: purchasePrice,
@@ -481,6 +499,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
         await _productsRepo.update(updated);
 
         _imagePath = finalImagePath;
+        _imageUrl = finalImageUrl;
         _pendingImageSourcePath = null;
       } else {
         final now = DateTime.now().millisecondsSinceEpoch;
@@ -516,25 +535,23 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
 
       if (mounted) {
         Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isEdit
-                  ? 'Producto actualizado correctamente'
-                  : 'Producto creado correctamente',
-            ),
-          ),
+        AppToast.show(
+          context,
+          _isEdit
+              ? 'Producto actualizado correctamente'
+              : 'Producto creado correctamente',
+          type: AppToastType.success,
         );
       }
     } catch (e, st) {
       debugPrint('Error al guardar producto: $e');
       debugPrint('$st');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 10),
-            content: Text('Error al guardar: ${e.toString()}'),
-          ),
+        AppToast.show(
+          context,
+          'Error al guardar: ${e.toString()}',
+          type: AppToastType.error,
+          duration: const Duration(seconds: 10),
         );
       }
     } finally {
@@ -648,8 +665,10 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
           : _selectedCategoryId,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Categoría "${category.name}" eliminada')),
+    AppToast.show(
+      context,
+      'Categoría "${category.name}" eliminada',
+      type: AppToastType.success,
     );
   }
 
@@ -1254,6 +1273,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                       : _nameController.text
                                                             .trim(),
                                                   imagePath: _previewImagePath,
+                                                  imageUrl: _previewImageUrl,
                                                   placeholderType: 'image',
                                                   categoryId:
                                                       _selectedCategoryId,
@@ -1294,10 +1314,27 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                       ),
                                                       const SizedBox(height: 4),
                                                       Text(
-                                                        _previewImagePath ==
-                                                                null
+                                                        !_hasPreviewImage
                                                             ? 'Sin imagen personalizada. Se usará el ícono por defecto.'
                                                             : 'Imagen personalizada seleccionada.',
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: theme
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.copyWith(
+                                                              color: scheme
+                                                                  .onSurfaceVariant,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w500,
+                                                              height: 1.25,
+                                                            ),
+                                                      ),
+                                                      const SizedBox(height: 3),
+                                                      Text(
+                                                        'Recomendado: fondo blanco o transparente para una imagen más limpia.',
                                                         maxLines: 2,
                                                         overflow: TextOverflow
                                                             .ellipsis,
@@ -1330,15 +1367,13 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
                                                                 size: 18,
                                                               ),
                                                               label: Text(
-                                                                _previewImagePath ==
-                                                                        null
+                                                                !_hasPreviewImage
                                                                     ? 'Seleccionar imagen'
                                                                     : 'Cambiar imagen',
                                                               ),
                                                             ),
                                                           ),
-                                                          if (_previewImagePath !=
-                                                              null) ...[
+                                                          if (_hasPreviewImage) ...[
                                                             const SizedBox(
                                                               width: 8,
                                                             ),

@@ -31,7 +31,7 @@ class AppUpdatePolicy {
   final Uri installerUrl;
   final String installerFilename;
   final int? installerSizeBytes;
-  final String sha256;
+  final String? sha256;
   final String releaseTitle;
   final List<String> releaseNotes;
   final DateTime publishedAt;
@@ -43,9 +43,13 @@ class AppUpdatePolicy {
     if (filename != 'FullPOS-Setup.exe') {
       throw const FormatException('Unexpected installer filename');
     }
-    final hash = _requiredString(json, 'sha256').toLowerCase();
-    if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(hash)) {
-      throw const FormatException('Invalid SHA-256');
+    final rawHash = json['sha256']?.toString().trim().toLowerCase() ?? '';
+    String? hash;
+    if (rawHash.isNotEmpty) {
+      if (!RegExp(r'^[0-9a-f]{64}$').hasMatch(rawHash)) {
+        throw const FormatException('Invalid SHA-256');
+      }
+      hash = rawHash;
     }
     final latestBuild = _positiveInt(json['latestBuild'], 'latestBuild');
     final minimumBuild = _positiveInt(
@@ -102,6 +106,9 @@ class AppUpdatePolicy {
     return UpdateDecision.optional;
   }
 
+  String get localInstallerFilename =>
+      'FullPOS-Setup-v${latest.semantic}-build${latest.build}.exe';
+
   Map<String, dynamic> toJson() => {
     'projectCode': 'fullpos',
     'platform': 'windows',
@@ -114,7 +121,7 @@ class AppUpdatePolicy {
     'installerUrl': installerUrl.toString(),
     'installerFilename': installerFilename,
     'installerSizeBytes': installerSizeBytes,
-    'sha256': sha256,
+    if (sha256 != null) 'sha256': sha256,
     'releaseTitle': releaseTitle,
     'releaseNotes': releaseNotes,
     'publishedAt': publishedAt.toIso8601String(),

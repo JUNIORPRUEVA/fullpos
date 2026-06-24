@@ -24,6 +24,7 @@ import '../data/sales_model.dart';
 import '../data/sales_repository.dart';
 import '../data/returns_repository.dart';
 import '../data/refund_calculator.dart';
+import '../data/sale_totals_calculator.dart';
 
 /// Filtros de fecha predefinidos
 enum DateFilter { all, today, yesterday, thisWeek, thisMonth, custom }
@@ -644,57 +645,72 @@ class _FacturaPageState extends State<FacturaPage> {
         const gap = 10.0;
 
         final normalBorder = OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFFDCE5EF), width: 1),
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.1),
         );
 
         final searchField = SizedBox(
           height: elementHeight,
-          child: TextField(
-            controller: _searchController,
-            onChanged: _onSearchChanged,
-            textAlignVertical: TextAlignVertical.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: const Color(0xFF0F172A),
-              fontWeight: FontWeight.w600,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0A0F172A),
+                  blurRadius: 12,
+                  offset: Offset(0, 3),
+                ),
+              ],
             ),
-            decoration: InputDecoration(
-              hintText: 'Buscar por código, cliente o total...',
-              hintStyle: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFF94A3B8),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              textAlignVertical: TextAlignVertical.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF0F172A),
                 fontWeight: FontWeight.w500,
+                height: 1.25,
               ),
-              filled: true,
-              fillColor: Colors.white,
-              prefixIcon: const Icon(
-                Icons.search_rounded,
-                size: 21,
-                color: Color(0xFF64748B),
-              ),
-              suffixIcon: _searchQuery.trim().isNotEmpty
-                  ? IconButton(
-                      tooltip: 'Limpiar búsqueda',
-                      splashRadius: 18,
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        size: 19,
-                        color: Color(0xFF64748B),
-                      ),
-                      onPressed: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
-                      },
-                    )
-                  : null,
-              border: normalBorder,
-              enabledBorder: normalBorder,
-              focusedBorder: normalBorder.copyWith(
-                borderSide: BorderSide(color: scheme.primary, width: 1.4),
-              ),
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 11,
+              decoration: InputDecoration(
+                hintText: 'Buscar por código, cliente o total...',
+                hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF64748B),
+                  fontWeight: FontWeight.w400,
+                  height: 1.25,
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  size: 21,
+                  color: Color(0xFF2563EB),
+                ),
+                suffixIcon: _searchQuery.trim().isNotEmpty
+                    ? IconButton(
+                        tooltip: 'Limpiar búsqueda',
+                        splashRadius: 18,
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          size: 19,
+                          color: Color(0xFF64748B),
+                        ),
+                        onPressed: () {
+                          _searchController.clear();
+                          _onSearchChanged('');
+                        },
+                      )
+                    : null,
+                border: normalBorder,
+                enabledBorder: normalBorder,
+                focusedBorder: normalBorder.copyWith(
+                  borderSide: BorderSide(color: scheme.primary, width: 1.5),
+                ),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 11,
+                ),
               ),
             ),
           ),
@@ -731,16 +747,24 @@ class _FacturaPageState extends State<FacturaPage> {
         final backButton = SizedBox(
           width: elementHeight,
           height: elementHeight,
-          child: IconButton(
-            tooltip: 'Volver',
-            onPressed: _handleBack,
-            icon: const Icon(Icons.arrow_back_rounded, size: 21),
-            style: IconButton.styleFrom(
-              foregroundColor: const Color(0xFF334155),
-              backgroundColor: Colors.white,
-              side: const BorderSide(color: Color(0xFFDCE5EF)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+          child: Material(
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.1),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: _handleBack,
+              child: const Tooltip(
+                message: 'Volver',
+                child: Center(
+                  child: Icon(
+                    Icons.arrow_back_rounded,
+                    size: 21,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
               ),
             ),
           ),
@@ -784,11 +808,9 @@ class _FacturaPageState extends State<FacturaPage> {
                     backButton,
                     const SizedBox(width: gap),
 
-                    Expanded(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 680),
-                        child: searchField,
-                      ),
+                    SizedBox(
+                      width: (constraints.maxWidth * 0.40).clamp(520.0, 720.0),
+                      child: searchField,
                     ),
 
                     const SizedBox(width: gap),
@@ -1042,15 +1064,16 @@ class _FacturaPageState extends State<FacturaPage> {
 
     return Container(
       margin: listPadding,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.borderSoft),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
         boxShadow: [
           BoxShadow(
-            color: scheme.shadow.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: scheme.shadow.withOpacity(0.045),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -1058,10 +1081,10 @@ class _FacturaPageState extends State<FacturaPage> {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerLowest,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(18),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFBFDFF),
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1),
               ),
             ),
             child: Row(
@@ -1112,339 +1135,350 @@ class _FacturaPageState extends State<FacturaPage> {
             ),
           ),
           Expanded(
-            child: ListView.separated(
-              padding: EdgeInsets.zero,
-              itemCount: sales.length,
-              separatorBuilder: (context, index) => Divider(
-                height: 1,
-                thickness: 1,
-                color: AppColors.borderSoft,
-                indent: 16,
-                endIndent: 16,
-              ),
-              itemBuilder: (context, index) {
-                final sale = sales[index];
-                final isSelected =
-                    sale.id != null && sale.id == _selectedSaleId;
-                final date = DateTime.fromMillisecondsSinceEpoch(
-                  sale.createdAtMs,
-                );
-                final customer = sale.customerNameSnapshot ?? 'Cliente General';
-                final compactInvoiceCode = _compactInvoiceCode(sale.localCode);
-                final isFiscal = _isFiscalSale(sale);
-                final fiscalStyle = _fiscalStyle(sale);
-                final statusStyle = _saleStatusStyle(sale);
-                final canRefund = sale.status.toUpperCase() != 'REFUNDED';
+            child: DecoratedBox(
+              decoration: const BoxDecoration(color: Colors.white),
+              child: ListView.separated(
+                padding: EdgeInsets.zero,
+                itemCount: sales.length,
+                separatorBuilder: (context, index) => const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFE2E8F0),
+                  indent: 18,
+                  endIndent: 18,
+                ),
+                itemBuilder: (context, index) {
+                  final sale = sales[index];
+                  final isSelected =
+                      sale.id != null && sale.id == _selectedSaleId;
+                  final date = DateTime.fromMillisecondsSinceEpoch(
+                    sale.createdAtMs,
+                  );
+                  final customer =
+                      sale.customerNameSnapshot ?? 'Cliente General';
+                  final compactInvoiceCode = _compactInvoiceCode(
+                    sale.localCode,
+                  );
+                  final isFiscal = _isFiscalSale(sale);
+                  final fiscalStyle = _fiscalStyle(sale);
+                  final statusStyle = _saleStatusStyle(sale);
+                  final canRefund = sale.status.toUpperCase() != 'REFUNDED';
 
-                return Material(
-                  color: Colors.transparent,
-                  child: Ink(
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppColors.lightBlueHover.withOpacity(0.30)
-                          : isFiscal
-                          ? fiscalStyle.rowBackground
-                          : Colors.transparent,
-                      border: isFiscal
-                          ? Border(
-                              left: BorderSide(
-                                color: fiscalStyle.accent,
-                                width: 4,
-                              ),
-                            )
-                          : null,
-                    ),
-                    child: InkWell(
-                      onTap: () => _selectSale(sale, showDetails: !isWide),
-                      hoverColor: AppColors.lightBlueHover.withOpacity(0.22),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 17,
-                        ),
-                        child: LayoutBuilder(
-                          builder: (context, rowConstraints) {
-                            final compact = rowConstraints.maxWidth < 860;
-                            if (compact) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    compactInvoiceCode,
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: theme
-                                                        .textTheme
-                                                        .bodyMedium
-                                                        ?.copyWith(
-                                                          fontSize: 14.2,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          fontFamily: 'Inter',
-                                                          height: 1.35,
-                                                        ),
+                  return Material(
+                    color: Colors.transparent,
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.lightBlueHover.withOpacity(0.30)
+                            : isFiscal
+                            ? fiscalStyle.rowBackground
+                            : Colors.transparent,
+                        border: isFiscal
+                            ? Border(
+                                left: BorderSide(
+                                  color: fiscalStyle.accent,
+                                  width: 4,
+                                ),
+                              )
+                            : null,
+                      ),
+                      child: InkWell(
+                        onTap: () => _selectSale(sale, showDetails: !isWide),
+                        hoverColor: AppColors.lightBlueHover.withOpacity(0.22),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 17,
+                          ),
+                          child: LayoutBuilder(
+                            builder: (context, rowConstraints) {
+                              final compact = rowConstraints.maxWidth < 860;
+                              if (compact) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      compactInvoiceCode,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: theme
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.copyWith(
+                                                            fontSize: 14.2,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            fontFamily: 'Inter',
+                                                            height: 1.35,
+                                                          ),
+                                                    ),
                                                   ),
-                                                ),
-                                                if (isFiscal) ...[
-                                                  const SizedBox(width: 8),
-                                                  _buildFiscalChip(
-                                                    sale,
-                                                    compact: true,
-                                                  ),
+                                                  if (isFiscal) ...[
+                                                    const SizedBox(width: 8),
+                                                    _buildFiscalChip(
+                                                      sale,
+                                                      compact: true,
+                                                    ),
+                                                  ],
                                                 ],
-                                              ],
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text(
-                                              customer,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                    color: scheme.onSurface,
-                                                    fontSize: 13.4,
-                                                    fontWeight: FontWeight.w400,
-                                                    fontFamily: 'Inter',
-                                                    height: 1.35,
-                                                  ),
-                                            ),
-                                          ],
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                customer,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: theme.textTheme.bodySmall
+                                                    ?.copyWith(
+                                                      color: scheme.onSurface,
+                                                      fontSize: 13.4,
+                                                      fontWeight:
+                                                          FontWeight.w400,
+                                                      fontFamily: 'Inter',
+                                                      height: 1.35,
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      _buildStatusChip(statusStyle),
-                                      _buildSaleRowActions(
-                                        sale,
-                                        canRefund: canRefund,
-                                        compact: true,
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Wrap(
-                                    spacing: 12,
-                                    runSpacing: 6,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      Text(
-                                        dateFormat.format(date),
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: AppColors.textSecondary,
-                                              fontFamily: 'Inter',
-                                              fontSize: 12.8,
-                                              fontWeight: FontWeight.w400,
-                                              height: 1.35,
-                                            ),
-                                      ),
-                                      Text(
-                                        _cashierLabelForSessionId(
-                                          sale.sessionId,
-                                        ),
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: AppColors.textSecondary,
-                                              fontFamily: 'Inter',
-                                              fontSize: 12.8,
-                                              fontWeight: FontWeight.w400,
-                                              height: 1.35,
-                                            ),
-                                      ),
-                                      if (isFiscal)
-                                        _buildFiscalMetaText(
+                                        const SizedBox(width: 10),
+                                        _buildStatusChip(statusStyle),
+                                        _buildSaleRowActions(
                                           sale,
+                                          canRefund: canRefund,
+                                          compact: true,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Wrap(
+                                      spacing: 12,
+                                      runSpacing: 6,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        Text(
+                                          dateFormat.format(date),
                                           style: theme.textTheme.bodySmall
                                               ?.copyWith(
-                                                color: fiscalStyle.accent,
-                                                fontWeight: FontWeight.w500,
+                                                color: AppColors.textSecondary,
                                                 fontFamily: 'Inter',
-                                                height: 1.3,
+                                                fontSize: 12.8,
+                                                fontWeight: FontWeight.w400,
+                                                height: 1.35,
                                               ),
                                         ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: _buildMoneyText(
-                                      amount: sale.total,
-                                      bigStyle: theme.textTheme.bodyLarge
-                                          ?.copyWith(
-                                            fontSize: 15.4,
-                                            fontWeight: FontWeight.w600,
-                                            fontFamily: 'Inter',
-                                            height: 1.25,
+                                        Text(
+                                          _cashierLabelForSessionId(
+                                            sale.sessionId,
                                           ),
-                                      smallStyle: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w400,
-                                            fontFamily: 'Inter',
-                                            color: AppColors.textSecondary,
-                                            height: 1.25,
-                                          ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }
-
-                            return Row(
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              compactInvoiceCode,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: theme.textTheme.bodyMedium
-                                                  ?.copyWith(
-                                                    fontSize: 14.2,
-                                                    fontWeight: FontWeight.w600,
-                                                    fontFamily: 'Inter',
-                                                    height: 1.35,
-                                                  ),
-                                            ),
-                                          ),
-                                          if (isFiscal) ...[
-                                            const SizedBox(width: 8),
-                                            _buildFiscalChip(
-                                              sale,
-                                              compact: true,
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        _cashierLabelForSessionId(
-                                          sale.sessionId,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: AppColors.textSecondary,
-                                              fontFamily: 'Inter',
-                                              fontSize: 12.8,
-                                              fontWeight: FontWeight.w400,
-                                              height: 1.35,
-                                            ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  flex: 5,
-                                  child: Text(
-                                    customer,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontSize: 14.0,
-                                      fontWeight: FontWeight.w400,
-                                      fontFamily: 'Inter',
-                                      height: 1.35,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  flex: 3,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        dateFormat.format(date),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: AppColors.textSecondary,
-                                              fontFamily: 'Inter',
-                                              fontSize: 12.8,
-                                              fontWeight: FontWeight.w400,
-                                              height: 1.35,
-                                            ),
-                                      ),
-                                      if (isFiscal) ...[
-                                        const SizedBox(height: 4),
-                                        _buildFiscalMetaText(
-                                          sale,
-                                          style: theme.textTheme.labelSmall
+                                          style: theme.textTheme.bodySmall
                                               ?.copyWith(
-                                                color: fiscalStyle.accent,
-                                                fontWeight: FontWeight.w500,
+                                                color: AppColors.textSecondary,
                                                 fontFamily: 'Inter',
-                                                height: 1.3,
+                                                fontSize: 12.8,
+                                                fontWeight: FontWeight.w400,
+                                                height: 1.35,
+                                              ),
+                                        ),
+                                        if (isFiscal)
+                                          _buildFiscalMetaText(
+                                            sale,
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: fiscalStyle.accent,
+                                                  fontWeight: FontWeight.w500,
+                                                  fontFamily: 'Inter',
+                                                  height: 1.3,
+                                                ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: _buildMoneyText(
+                                        amount: sale.total,
+                                        bigStyle: theme.textTheme.bodyLarge
+                                            ?.copyWith(
+                                              fontSize: 15.4,
+                                              fontWeight: FontWeight.w600,
+                                              fontFamily: 'Inter',
+                                              height: 1.25,
+                                            ),
+                                        smallStyle: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w400,
+                                              fontFamily: 'Inter',
+                                              color: AppColors.textSecondary,
+                                              height: 1.25,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                compactInvoiceCode,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: theme
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(
+                                                      fontSize: 14.2,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      fontFamily: 'Inter',
+                                                      height: 1.35,
+                                                    ),
+                                              ),
+                                            ),
+                                            if (isFiscal) ...[
+                                              const SizedBox(width: 8),
+                                              _buildFiscalChip(
+                                                sale,
+                                                compact: true,
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          _cashierLabelForSessionId(
+                                            sale.sessionId,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: AppColors.textSecondary,
+                                                fontFamily: 'Inter',
+                                                fontSize: 12.8,
+                                                fontWeight: FontWeight.w400,
+                                                height: 1.35,
                                               ),
                                         ),
                                       ],
-                                    ],
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 14),
-                                _buildStatusChip(statusStyle),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  flex: 2,
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: _buildMoneyText(
-                                      amount: sale.total,
-                                      bigStyle: theme.textTheme.bodyLarge
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    flex: 5,
+                                    child: Text(
+                                      customer,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodyMedium
                                           ?.copyWith(
-                                            fontSize: 15.4,
-                                            fontWeight: FontWeight.w600,
-                                            fontFamily: 'Inter',
-                                            height: 1.25,
-                                          ),
-                                      smallStyle: theme.textTheme.bodySmall
-                                          ?.copyWith(
+                                            fontSize: 14.0,
                                             fontWeight: FontWeight.w400,
                                             fontFamily: 'Inter',
-                                            color: AppColors.textSecondary,
-                                            height: 1.25,
+                                            height: 1.35,
                                           ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                _buildSaleRowActions(
-                                  sale,
-                                  canRefund: canRefund,
-                                ),
-                              ],
-                            );
-                          },
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    flex: 3,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          dateFormat.format(date),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: AppColors.textSecondary,
+                                                fontFamily: 'Inter',
+                                                fontSize: 12.8,
+                                                fontWeight: FontWeight.w400,
+                                                height: 1.35,
+                                              ),
+                                        ),
+                                        if (isFiscal) ...[
+                                          const SizedBox(height: 4),
+                                          _buildFiscalMetaText(
+                                            sale,
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                                  color: fiscalStyle.accent,
+                                                  fontWeight: FontWeight.w500,
+                                                  fontFamily: 'Inter',
+                                                  height: 1.3,
+                                                ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  _buildStatusChip(statusStyle),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Align(
+                                      alignment: Alignment.centerRight,
+                                      child: _buildMoneyText(
+                                        amount: sale.total,
+                                        bigStyle: theme.textTheme.bodyLarge
+                                            ?.copyWith(
+                                              fontSize: 15.4,
+                                              fontWeight: FontWeight.w600,
+                                              fontFamily: 'Inter',
+                                              height: 1.25,
+                                            ),
+                                        smallStyle: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w400,
+                                              fontFamily: 'Inter',
+                                              color: AppColors.textSecondary,
+                                              height: 1.25,
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _buildSaleRowActions(
+                                    sale,
+                                    canRefund: canRefund,
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -1773,6 +1807,14 @@ class _FacturaPageState extends State<FacturaPage> {
     final compactInvoiceCode = _compactInvoiceCode(sale.localCode);
     final isFiscal = _isFiscalSale(sale);
     final fiscalStyle = _fiscalStyle(sale);
+    final totals = SaleTotalsCalculator.fromDiscountedSubtotal(
+      subtotal: sale.subtotal,
+      discountTotal: sale.discountTotal,
+      itbisEnabled: sale.itbisEnabled == 1,
+      itbisRate: sale.itbisRate,
+      itbisAmount: sale.itbisAmount,
+      total: sale.total,
+    );
 
     return FutureBuilder<List<SaleItemModel>>(
       future: _loadSaleItemsForSale(sale),
@@ -1923,14 +1965,15 @@ class _FacturaPageState extends State<FacturaPage> {
             const SizedBox(height: 12),
             Divider(color: scheme.outlineVariant.withOpacity(0.45), height: 1),
             const SizedBox(height: 12),
-            _buildTicketAmountRow('Subtotal', sale.subtotal),
-            if (sale.discountTotal > 0.009)
-              _buildTicketAmountRow('Descuento', -sale.discountTotal),
-            if (sale.itbisAmount > 0.009)
-              _buildTicketAmountRow('ITBIS', sale.itbisAmount),
+            _buildTicketAmountRow('Subtotal', totals.grossSubtotal),
+            if (totals.discountTotal > 0.009)
+              _buildTicketAmountRow('Descuento', -totals.discountTotal),
+            _buildTicketAmountRow('Base imponible', totals.taxableSubtotal),
+            if (totals.itbisAmount > 0.009)
+              _buildTicketAmountRow('ITBIS', totals.itbisAmount),
             _buildTicketAmountRow(
               'Total factura',
-              sale.total,
+              totals.total,
               emphasized: true,
             ),
             if (refundedAmount > 0.009)
@@ -2440,6 +2483,14 @@ class _SaleTicketDialog extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
+    final totals = SaleTotalsCalculator.fromDiscountedSubtotal(
+      subtotal: sale.subtotal,
+      discountTotal: sale.discountTotal,
+      itbisEnabled: sale.itbisEnabled == 1,
+      itbisRate: sale.itbisRate,
+      itbisAmount: sale.itbisAmount,
+      total: sale.total,
+    );
     final headerMid = gradientTheme?.mid ?? scheme.primaryContainer;
     final headerText = ColorUtils.ensureReadableColor(
       scheme.onPrimary,
@@ -2689,20 +2740,25 @@ class _SaleTicketDialog extends StatelessWidget {
                   _buildTotalRow(
                     context,
                     'Subtotal',
-                    currencyFormat.format(sale.subtotal),
+                    currencyFormat.format(totals.grossSubtotal),
+                  ),
+                  if (totals.discountTotal > 0)
+                    _buildTotalRow(
+                      context,
+                      'Descuento',
+                      '-${currencyFormat.format(totals.discountTotal)}',
+                      valueColor: status.error,
+                    ),
+                  _buildTotalRow(
+                    context,
+                    'Base imponible',
+                    currencyFormat.format(totals.taxableSubtotal),
                   ),
                   if (sale.itbisEnabled == 1)
                     _buildTotalRow(
                       context,
-                      'ITBIS (${(sale.itbisRate * 100).toStringAsFixed(0)}%)',
-                      currencyFormat.format(sale.itbisAmount),
-                    ),
-                  if (sale.discountTotal > 0)
-                    _buildTotalRow(
-                      context,
-                      'Descuento',
-                      '-${currencyFormat.format(sale.discountTotal)}',
-                      valueColor: status.error,
+                      'ITBIS (${(totals.itbisRate * 100).toStringAsFixed(0)}%)',
+                      currencyFormat.format(totals.itbisAmount),
                     ),
                   const SizedBox(height: 8),
                   Row(
@@ -2716,7 +2772,7 @@ class _SaleTicketDialog extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        currencyFormat.format(sale.total),
+                        currencyFormat.format(totals.total),
                         style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 22,

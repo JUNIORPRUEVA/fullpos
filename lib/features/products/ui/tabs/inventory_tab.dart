@@ -180,6 +180,7 @@ class _InventoryTabState extends State<InventoryTab> {
                             await _openAdjustStockDialog(product);
                           }
                         : null,
+                    onPinProduct: () => _pinProductToTop(product),
                     showPurchasePrice: showPurchasePrice,
                     showProfit: showProfit,
                   );
@@ -250,6 +251,7 @@ class _InventoryTabState extends State<InventoryTab> {
                             await _openAdjustStockDialog(product);
                           }
                         : null,
+                    onPinProduct: () => _pinProductToTop(product),
                     showPurchasePrice: showPurchasePrice,
                     showProfit: showProfit,
                   );
@@ -258,6 +260,20 @@ class _InventoryTabState extends State<InventoryTab> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _pinProductToTop(ProductModel product) {
+    // Mueve el producto al inicio de la lista de inventario
+    setState(() {
+      _inventoryProducts.removeWhere((p) => p.id == product.id);
+      _inventoryProducts.insert(0, product);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${product.name} fijado al inicio'),
+        duration: const Duration(seconds: 2),
       ),
     );
   }

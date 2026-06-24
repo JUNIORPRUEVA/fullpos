@@ -8,6 +8,7 @@ import 'package:pdf/widgets.dart' as pw;
 import '../../core/utils/currency_display.dart';
 import '../../features/facturacion_electronica/data/factura_electronica_repository.dart';
 import '../../features/sales/data/sales_model.dart';
+import '../../features/sales/data/sale_totals_calculator.dart';
 import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/printer_settings_repository.dart';
 
@@ -44,6 +45,27 @@ class InvoiceLetterPdf {
     return isInt ? qty.toStringAsFixed(0) : qty.toStringAsFixed(2);
   }
 
+  static String _friendlyInvoiceNumber(SaleModel sale) {
+    final saleId = sale.id;
+    if (saleId != null && saleId > 0) {
+      return '#${saleId.toString().padLeft(6, '0')}';
+    }
+
+    final code = _sanitize(sale.localCode).trim();
+    final numeric = RegExp(r'\d+').allMatches(code).map((m) => m.group(0)!);
+    final lastNumber = numeric.isEmpty ? '' : numeric.last;
+    if (lastNumber.isNotEmpty) {
+      return '#${lastNumber.padLeft(6, '0')}';
+    }
+
+    final compact = code.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+    if (compact.isEmpty) return '#000000';
+    final shortCode = compact.length <= 8
+        ? compact
+        : compact.substring(compact.length - 8);
+    return '#${shortCode.toUpperCase()}';
+  }
+
   static Future<Uint8List> generate({
     required SaleModel sale,
     required List<SaleItemModel> items,
@@ -70,14 +92,15 @@ class InvoiceLetterPdf {
     }
 
     final electronicInvoice = sale.id == null
-      ? null
-      : await FacturaElectronicaRepository.getBySaleId(sale.id!);
+        ? null
+        : await FacturaElectronicaRepository.getBySaleId(sale.id!);
 
     final brand = _toPdfColor(brandColorArgb);
-    final gray700 = PdfColor(0.25, 0.28, 0.32);
-    final gray500 = PdfColor(0.42, 0.45, 0.50);
-    final gray300 = PdfColor(0.83, 0.85, 0.88);
-    final gray100 = PdfColor(0.95, 0.96, 0.97);
+    final ink = PdfColor(0.10, 0.12, 0.16);
+    final muted = PdfColor(0.38, 0.42, 0.48);
+    final line = PdfColor(0.84, 0.87, 0.91);
+    final soft = PdfColor(0.96, 0.98, 1.00);
+    final pale = PdfColor(0.98, 0.99, 1.00);
 
     final currencySymbol = (business.currencySymbol).trim().isNotEmpty
         ? business.currencySymbol.trim()
@@ -108,21 +131,36 @@ class InvoiceLetterPdf {
         margin: const pw.EdgeInsets.fromLTRB(40, 40, 40, 40),
         build: (context) {
           final rows = <List<String>>[];
+          final hasLineDiscount = items.any((it) => it.discountLine > 0.009);
           for (final it in items) {
-            rows.add([
-              _fmtQty(it.qty),
+            final row = <String>[
               _sanitize(it.productNameSnapshot),
+              _fmtQty(it.qty),
               _fmtMoney(currencySymbol, it.unitPrice),
-              _fmtMoney(currencySymbol, it.totalLine),
-            ]);
+            ];
+            if (hasLineDiscount) {
+              row.add(
+                it.discountLine > 0.009
+                    ? '-${_fmtMoney(currencySymbol, it.discountLine)}'
+                    : _fmtMoney(currencySymbol, 0),
+              );
+            }
+            row.add(_fmtMoney(currencySymbol, it.totalLine));
+            rows.add(row);
           }
+          final totals = SaleTotalsCalculator.fromDiscountedSubtotal(
+            subtotal: sale.subtotal,
+            discountTotal: sale.discountTotal,
+            itbisEnabled: sale.itbisEnabled == 1,
+            itbisRate: sale.itbisRate,
+            itbisAmount: sale.itbisAmount,
+            total: sale.total,
+          );
 
-          // ── Company info ──
           final companyLines = <String>[];
           final name = business.businessName.trim().isNotEmpty
               ? business.businessName.trim()
               : 'FULLPOS';
-          companyLines.add(_sanitize(name));
 
           final slogan = (business.slogan ?? '').trim();
           if (slogan.isNotEmpty) companyLines.add(_sanitize(slogan));
@@ -166,10 +204,11 @@ class InvoiceLetterPdf {
             footerParts.add('Facebook: ${_sanitize(facebook)}');
           }
 
-          // ── Client info ──
           final clientLines = <String>[];
           final clientName = (sale.customerNameSnapshot ?? '').trim();
-          if (clientName.isNotEmpty) clientLines.add(_sanitize(clientName));
+          clientLines.add(
+            clientName.isNotEmpty ? _sanitize(clientName) : 'Consumidor final',
+          );
 
           final clientPhone = (sale.customerPhoneSnapshot ?? '').trim();
           if (clientPhone.isNotEmpty) {
@@ -188,467 +227,159 @@ class InvoiceLetterPdf {
 
           final String invoiceTitle;
           if ((electronicInvoice?.ecf ?? '').trim().isNotEmpty) {
-            invoiceTitle = 'FACTURA ELECTRÓNICA (e-CF)';
+            invoiceTitle = 'FACTURA ELECTRÓNICA';
           } else if (hasFiscalReceipt) {
-            invoiceTitle = 'COMPROBANTE FISCAL';
+            invoiceTitle = 'FACTURA FISCAL';
           } else {
-            invoiceTitle = 'FACTURA DE VENTA';
+            invoiceTitle = 'FACTURA';
           }
 
           final warrantyText = (resolvedWarrantyPolicy ?? '').trim();
           final termsText = (resolvedFooterMessage ?? '').trim();
-
-          // ── Helper: section title ──
-          pw.Widget sectionTitle(String text) {
-            return pw.Text(
-              text,
-              style: pw.TextStyle(
-                fontSize: 9,
-                fontWeight: pw.FontWeight.bold,
-                color: brand,
-                letterSpacing: 0.8,
-              ),
+          final fiscalLines = <_InfoPair>[
+            _InfoPair('Condición', sale.paymentMethodDisplayLabel),
+          ];
+          if ((sale.fiscalReceiptName ?? '').trim().isNotEmpty) {
+            fiscalLines.add(
+              _InfoPair('Tipo', _sanitize(sale.fiscalReceiptName!.trim())),
             );
           }
-
-          // ── Helper: info line ──
-          pw.Widget infoLine(String label, String value) {
-            return pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 2),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    label,
-                    style: pw.TextStyle(fontSize: 9, color: gray500),
+          if ((sale.ncfFull ?? '').trim().isNotEmpty) {
+            fiscalLines.add(_InfoPair('NCF', _sanitize(sale.ncfFull!.trim())));
+          }
+          if ((electronicInvoice?.ecf ?? '').trim().isNotEmpty) {
+            fiscalLines.add(
+              _InfoPair('e-CF', _sanitize(electronicInvoice!.ecf!.trim())),
+            );
+          }
+          if (sale.fiscalReceiptExpirationDateMs != null) {
+            fiscalLines.add(
+              _InfoPair(
+                'Vence',
+                DateFormat('dd/MM/yyyy').format(
+                  DateTime.fromMillisecondsSinceEpoch(
+                    sale.fiscalReceiptExpirationDateMs!,
                   ),
-                  pw.Text(
-                    value,
-                    style: pw.TextStyle(fontSize: 9, color: gray700),
-                  ),
-                ],
+                ),
               ),
             );
           }
 
           return [
-            // ═══════════════════════════════════════════════════
-            //  HEADER
-            // ═══════════════════════════════════════════════════
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                // Logo (only if real content exists)
-                if (logoBytes != null)
-                  pw.Container(
-                    width: 52,
-                    height: 52,
-                    margin: const pw.EdgeInsets.only(right: 14),
-                    child: pw.Image(
-                      pw.MemoryImage(logoBytes),
-                      fit: pw.BoxFit.contain,
-                    ),
-                  ),
-                // Company info
-                pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        name,
-                        style: pw.TextStyle(
-                          fontSize: 18,
-                          fontWeight: pw.FontWeight.bold,
-                          color: gray700,
-                        ),
-                      ),
-                      if (slogan.isNotEmpty)
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.only(top: 2),
-                          child: pw.Text(
-                            slogan,
-                            style: pw.TextStyle(
-                              fontSize: 9,
-                              color: gray500,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                // Invoice title and metadata
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.end,
-                  children: [
-                    pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: pw.BoxDecoration(
-                        color: brand,
-                        borderRadius: pw.BorderRadius.circular(4),
-                      ),
-                      child: pw.Text(
-                        invoiceTitle,
-                        style: pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.white,
-                        ),
-                      ),
-                    ),
-                    pw.SizedBox(height: 6),
-                    pw.Text(
-                      'No. ${_sanitize(sale.localCode)}',
-                      style: pw.TextStyle(
-                        fontSize: 11,
-                        fontWeight: pw.FontWeight.bold,
-                        color: gray700,
-                      ),
-                    ),
-                    pw.Text(
-                      dateFmt.format(createdAt),
-                      style: pw.TextStyle(fontSize: 9, color: gray500),
-                    ),
-                    if (cashierName != null && cashierName.trim().isNotEmpty)
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.only(top: 2),
-                        child: pw.Text(
-                          'Cajero: ${_sanitize(cashierName)}',
-                          style: pw.TextStyle(fontSize: 9, color: gray500),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+            _buildHeader(
+              logoBytes: logoBytes,
+              companyName: name,
+              companyLines: companyLines,
+              invoiceTitle: invoiceTitle,
+              invoiceNumber: _friendlyInvoiceNumber(sale),
+              issueDate: dateFmt.format(createdAt),
+              cashierName: cashierName,
+              brand: brand,
+              ink: ink,
+              muted: muted,
             ),
-
-            pw.SizedBox(height: 20),
-
-            // ═══════════════════════════════════════════════════
-            //  COMPANY DETAILS + CLIENT INFO (side by side)
-            // ═══════════════════════════════════════════════════
+            pw.SizedBox(height: 24),
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Company details
                 pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      sectionTitle('EMISOR'),
-                      pw.SizedBox(height: 6),
-                      ...companyLines.map(
-                        (line) => pw.Padding(
-                          padding: const pw.EdgeInsets.only(bottom: 2),
-                          child: pw.Text(
-                            line,
-                            style: pw.TextStyle(fontSize: 9, color: gray700),
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: _buildInfoCard(
+                    title: 'Facturar a',
+                    lines: clientLines,
+                    brand: brand,
+                    ink: ink,
+                    muted: muted,
+                    line: line,
+                    fill: pale,
                   ),
                 ),
-                pw.SizedBox(width: 24),
-                // Client info
+                pw.SizedBox(width: 18),
                 pw.Expanded(
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      sectionTitle('CLIENTE'),
-                      pw.SizedBox(height: 6),
-                      if (clientLines.isEmpty)
-                        pw.Text(
-                          'Consumidor final',
-                          style: pw.TextStyle(fontSize: 9, color: gray500),
-                        )
-                      else
-                        ...clientLines.map(
-                          (line) => pw.Padding(
-                            padding: const pw.EdgeInsets.only(bottom: 2),
-                            child: pw.Text(
-                              line,
-                              style: pw.TextStyle(fontSize: 9, color: gray700),
-                            ),
-                          ),
-                        ),
-                      // Electronic invoice e-CF block (only for e-invoice)
-                      if ((electronicInvoice?.ecf ?? '').trim().isNotEmpty) ...[
-                        pw.SizedBox(height: 8),
-                        pw.Container(
-                          padding: const pw.EdgeInsets.all(8),
-                          decoration: pw.BoxDecoration(
-                            color: gray100,
-                            borderRadius: pw.BorderRadius.circular(4),
-                          ),
-                          child: pw.Row(
-                            mainAxisAlignment:
-                                pw.MainAxisAlignment.spaceBetween,
-                            children: [
-                              pw.Text(
-                                'e-CF:',
-                                style: pw.TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: pw.FontWeight.bold,
-                                  color: brand,
-                                ),
-                              ),
-                              pw.Text(
-                                _sanitize(electronicInvoice!.ecf!.trim()),
-                                style: pw.TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: pw.FontWeight.bold,
-                                  color: brand,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if ((electronicInvoice.mensajeDgii ?? '').trim().isNotEmpty)
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.only(top: 6),
-                            child: pw.Text(
-                              _sanitize(electronicInvoice.mensajeDgii!.trim()),
-                              style: pw.TextStyle(
-                                fontSize: 8,
-                                color: brand,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ],
+                  child: _buildFiscalCard(
+                    title: 'Datos de facturación',
+                    pairs: fiscalLines,
+                    brand: brand,
+                    ink: ink,
+                    muted: muted,
+                    line: line,
+                    fill: pale,
                   ),
                 ),
               ],
             ),
-
-            pw.SizedBox(height: 22),
-
-            // ═══════════════════════════════════════════════════
-            //  PRODUCTS TABLE
-            // ═══════════════════════════════════════════════════
-            sectionTitle('PRODUCTOS'),
+            if ((electronicInvoice?.mensajeDgii ?? '').trim().isNotEmpty) ...[
+              pw.SizedBox(height: 8),
+              pw.Text(
+                _sanitize(electronicInvoice!.mensajeDgii!.trim()),
+                style: pw.TextStyle(fontSize: 8, color: brand),
+              ),
+            ],
+            pw.SizedBox(height: 24),
+            _sectionLabel('Detalle de venta', brand),
             pw.SizedBox(height: 8),
-            pw.TableHelper.fromTextArray(
-              headerDecoration: pw.BoxDecoration(
-                color: gray100,
-                border: pw.Border(
-                  bottom: pw.BorderSide(color: gray300),
-                ),
-              ),
-              headerStyle: pw.TextStyle(
-                fontSize: 9,
-                fontWeight: pw.FontWeight.bold,
-                color: gray700,
-              ),
-              cellStyle: pw.TextStyle(fontSize: 9, color: gray700),
-              cellAlignments: {
-                0: pw.Alignment.centerRight,
-                1: pw.Alignment.centerLeft,
-                2: pw.Alignment.centerRight,
-                3: pw.Alignment.centerRight,
-              },
-              columnWidths: {
-                0: const pw.FixedColumnWidth(36),
-                1: const pw.FlexColumnWidth(1),
-                2: const pw.FixedColumnWidth(72),
-                3: const pw.FixedColumnWidth(72),
-              },
-              headers: const ['Cant.', 'Descripción', 'Precio', 'Importe'],
-              data: rows,
-              border: pw.TableBorder(
-                horizontalInside: pw.BorderSide(color: gray100),
-              ),
+            _buildItemsTable(
+              rows: rows,
+              hasLineDiscount: hasLineDiscount,
+              ink: ink,
+              muted: muted,
+              line: line,
+              soft: soft,
             ),
-
             pw.SizedBox(height: 22),
-
-            // ═══════════════════════════════════════════════════
-            //  TOTALS + OBSERVATIONS
-            // ═══════════════════════════════════════════════════
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Observations (if any)
                 if (business.receiptHeader.trim().isNotEmpty) ...[
                   pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        sectionTitle('OBSERVACIONES'),
-                        pw.SizedBox(height: 6),
-                        pw.Text(
-                          _sanitize(business.receiptHeader.trim()),
-                          style: pw.TextStyle(fontSize: 9, color: gray700),
-                        ),
-                      ],
+                    child: _buildNoteBlock(
+                      title: 'Observaciones',
+                      text: business.receiptHeader.trim(),
+                      brand: brand,
+                      ink: ink,
+                      muted: muted,
+                      line: line,
                     ),
                   ),
-                  pw.SizedBox(width: 24),
+                  pw.SizedBox(width: 18),
                 ] else ...[
                   pw.Spacer(),
                 ],
-                // Totals
-                pw.Container(
-                  width: 220,
-                  child: pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-                    children: [
-                      _totLine(
-                        'Subtotal',
-                        _fmtMoney(currencySymbol, sale.subtotal),
-                        gray700, gray500,
-                      ),
-                      _totLine(
-                        'Descuento',
-                        _fmtMoney(currencySymbol, sale.discountTotal),
-                        gray700, gray500,
-                      ),
-                      if (sale.itbisEnabled == 1)
-                        _totLine(
-                          'ITBIS',
-                          _fmtMoney(currencySymbol, sale.itbisAmount),
-                          gray700, gray500,
-                        ),
-                      pw.Divider(color: gray300, height: 16),
-                      pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text(
-                            'TOTAL',
-                            style: pw.TextStyle(
-                              fontSize: 13,
-                              fontWeight: pw.FontWeight.bold,
-                              color: gray700,
-                            ),
-                          ),
-                          pw.Text(
-                            _fmtMoney(currencySymbol, sale.total),
-                            style: pw.TextStyle(
-                              fontSize: 13,
-                              fontWeight: pw.FontWeight.bold,
-                              color: gray700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                _buildTotalsBlock(
+                  totals: totals,
+                  showItbis: sale.itbisEnabled == 1,
+                  currencySymbol: currencySymbol,
+                  brand: brand,
+                  ink: ink,
+                  muted: muted,
+                  line: line,
+                  fill: soft,
                 ),
               ],
             ),
-
-            // ═══════════════════════════════════════════════════
-            //  FISCAL RECEIPT BLOCK (local NCF, no e-CF)
-            // ═══════════════════════════════════════════════════
-            if (hasFiscalReceipt) ...[
-              pw.SizedBox(height: 18),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(12),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: gray300),
-                  borderRadius: pw.BorderRadius.circular(4),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    sectionTitle('COMPROBANTE FISCAL'),
-                    pw.SizedBox(height: 6),
-                    if ((sale.fiscalReceiptName ?? '').trim().isNotEmpty)
-                      infoLine(
-                        'Tipo',
-                        _sanitize(sale.fiscalReceiptName!.trim()),
-                      ),
-                    if ((sale.ncfFull ?? '').trim().isNotEmpty)
-                      infoLine(
-                        'NCF',
-                        _sanitize(sale.ncfFull!.trim()),
-                      ),
-                    if (sale.fiscalReceiptExpirationDateMs != null)
-                      infoLine(
-                        'Vence',
-                        DateFormat('dd/MM/yyyy').format(
-                          DateTime.fromMillisecondsSinceEpoch(
-                            sale.fiscalReceiptExpirationDateMs!,
-                          ),
-                        ),
-                      ),
-                    if ((sale.customerRncSnapshot ?? '').trim().isNotEmpty)
-                      infoLine(
-                        'RNC/Cédula',
-                        _sanitize(sale.customerRncSnapshot!.trim()),
-                      ),
-                  ],
-                ),
+            pw.SizedBox(height: 18),
+            if (footerParts.isNotEmpty) ...[
+              pw.Divider(color: line, height: 14),
+              pw.Text(
+                footerParts.join('   |   '),
+                style: pw.TextStyle(fontSize: 8.5, color: muted),
               ),
             ],
-
-            pw.SizedBox(height: 18),
-
-            // ═══════════════════════════════════════════════════
-            //  FOOTER (social / web links)
-            // ═══════════════════════════════════════════════════
-            if (footerParts.isNotEmpty)
-              pw.Container(
-                padding: const pw.EdgeInsets.symmetric(vertical: 8),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: footerParts
-                      .map(
-                        (t) => pw.Padding(
-                          padding: const pw.EdgeInsets.only(bottom: 2),
-                          child: pw.Text(
-                            t,
-                            style: pw.TextStyle(fontSize: 9, color: gray500),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ),
-
-            // ═══════════════════════════════════════════════════
-            //  WARRANTY POLICY
-            // ═══════════════════════════════════════════════════
             if (warrantyText.isNotEmpty) ...[
               pw.SizedBox(height: 12),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(10),
-                decoration: pw.BoxDecoration(
-                  color: gray100,
-                  borderRadius: pw.BorderRadius.circular(4),
-                ),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'POLÍTICA DE GARANTÍA',
-                      style: pw.TextStyle(
-                        fontSize: 9,
-                        fontWeight: pw.FontWeight.bold,
-                        color: gray700,
-                      ),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      _sanitize(warrantyText),
-                      style: pw.TextStyle(fontSize: 9, color: gray700),
-                    ),
-                  ],
-                ),
+              _buildNoteBlock(
+                title: 'Política de garantía',
+                text: warrantyText,
+                brand: brand,
+                ink: ink,
+                muted: muted,
+                line: line,
               ),
             ],
-
-            // ═══════════════════════════════════════════════════
-            //  FOOTER MESSAGE
-            // ═══════════════════════════════════════════════════
             if (termsText.isNotEmpty) ...[
               pw.SizedBox(height: 10),
               pw.Text(
                 _sanitize(termsText),
-                style: pw.TextStyle(fontSize: 9, color: gray500),
+                style: pw.TextStyle(fontSize: 8.5, color: muted),
               ),
             ],
           ];
@@ -659,6 +390,396 @@ class InvoiceLetterPdf {
     return doc.save();
   }
 
+  static pw.Widget _buildHeader({
+    required Uint8List? logoBytes,
+    required String companyName,
+    required List<String> companyLines,
+    required String invoiceTitle,
+    required String invoiceNumber,
+    required String issueDate,
+    required String? cashierName,
+    required PdfColor brand,
+    required PdfColor ink,
+    required PdfColor muted,
+  }) {
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Expanded(
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              if (logoBytes != null)
+                pw.Container(
+                  width: 58,
+                  height: 58,
+                  margin: const pw.EdgeInsets.only(right: 14),
+                  padding: const pw.EdgeInsets.all(4),
+                  child: pw.Image(
+                    pw.MemoryImage(logoBytes),
+                    fit: pw.BoxFit.contain,
+                  ),
+                ),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      _sanitize(companyName),
+                      style: pw.TextStyle(
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                        color: ink,
+                      ),
+                    ),
+                    pw.SizedBox(height: 5),
+                    ...companyLines.map(
+                      (line) => pw.Padding(
+                        padding: const pw.EdgeInsets.only(bottom: 2.5),
+                        child: pw.Text(
+                          line,
+                          style: pw.TextStyle(fontSize: 8.8, color: muted),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        pw.SizedBox(width: 24),
+        pw.Container(
+          width: 180,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text(
+                invoiceTitle,
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  fontSize: 20,
+                  fontWeight: pw.FontWeight.bold,
+                  color: ink,
+                ),
+              ),
+              pw.SizedBox(height: 5),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: pw.BoxDecoration(
+                  color: brand,
+                  borderRadius: pw.BorderRadius.circular(3),
+                ),
+                child: pw.Text(
+                  'Factura $invoiceNumber',
+                  style: pw.TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.white,
+                  ),
+                ),
+              ),
+              pw.SizedBox(height: 8),
+              _smallRightLine('Fecha', issueDate, muted, ink),
+              if (cashierName != null && cashierName.trim().isNotEmpty)
+                _smallRightLine(
+                  'Cajero',
+                  _sanitize(cashierName.trim()),
+                  muted,
+                  ink,
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  static pw.Widget _smallRightLine(
+    String label,
+    String value,
+    PdfColor muted,
+    PdfColor ink,
+  ) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 2),
+      child: pw.RichText(
+        textAlign: pw.TextAlign.right,
+        text: pw.TextSpan(
+          children: [
+            pw.TextSpan(
+              text: '$label: ',
+              style: pw.TextStyle(fontSize: 8.8, color: muted),
+            ),
+            pw.TextSpan(
+              text: value,
+              style: pw.TextStyle(fontSize: 8.8, color: ink),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static pw.Widget _sectionLabel(String text, PdfColor brand) {
+    return pw.Text(
+      text.toUpperCase(),
+      style: pw.TextStyle(
+        fontSize: 8.5,
+        fontWeight: pw.FontWeight.bold,
+        color: brand,
+        letterSpacing: 0.7,
+      ),
+    );
+  }
+
+  static pw.Widget _buildInfoCard({
+    required String title,
+    required List<String> lines,
+    required PdfColor brand,
+    required PdfColor ink,
+    required PdfColor muted,
+    required PdfColor line,
+    required PdfColor fill,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: pw.BoxDecoration(
+        color: fill,
+        border: pw.Border(left: pw.BorderSide(color: brand, width: 2.4)),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _sectionLabel(title, brand),
+          pw.SizedBox(height: 8),
+          ...lines.map(
+            (lineText) => pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 3),
+              child: pw.Text(
+                _sanitize(lineText),
+                style: pw.TextStyle(
+                  fontSize: lineText == lines.first ? 10.2 : 8.8,
+                  fontWeight: lineText == lines.first
+                      ? pw.FontWeight.bold
+                      : pw.FontWeight.normal,
+                  color: lineText == lines.first ? ink : muted,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildFiscalCard({
+    required String title,
+    required List<_InfoPair> pairs,
+    required PdfColor brand,
+    required PdfColor ink,
+    required PdfColor muted,
+    required PdfColor line,
+    required PdfColor fill,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: pw.BoxDecoration(
+        color: fill,
+        border: pw.Border.all(color: line, width: 0.6),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _sectionLabel(title, brand),
+          pw.SizedBox(height: 8),
+          ...pairs.map(
+            (pair) => pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 4),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    pair.label,
+                    style: pw.TextStyle(fontSize: 8.8, color: muted),
+                  ),
+                  pw.SizedBox(width: 12),
+                  pw.Expanded(
+                    child: pw.Text(
+                      pair.value,
+                      textAlign: pw.TextAlign.right,
+                      style: pw.TextStyle(
+                        fontSize: 8.8,
+                        fontWeight: pair.label == 'NCF' || pair.label == 'e-CF'
+                            ? pw.FontWeight.bold
+                            : pw.FontWeight.normal,
+                        color: ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildItemsTable({
+    required List<List<String>> rows,
+    required bool hasLineDiscount,
+    required PdfColor ink,
+    required PdfColor muted,
+    required PdfColor line,
+    required PdfColor soft,
+  }) {
+    final headers = <String>['Descripción', 'Cant.', 'Precio'];
+    if (hasLineDiscount) headers.add('Desc.');
+    headers.add('Importe');
+
+    return pw.TableHelper.fromTextArray(
+      headers: headers,
+      data: rows,
+      headerDecoration: pw.BoxDecoration(
+        color: soft,
+        border: pw.Border(bottom: pw.BorderSide(color: line, width: 0.8)),
+      ),
+      headerStyle: pw.TextStyle(
+        fontSize: 8.7,
+        fontWeight: pw.FontWeight.bold,
+        color: ink,
+      ),
+      cellStyle: pw.TextStyle(fontSize: 8.7, color: ink),
+      cellPadding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 7),
+      cellAlignments: {
+        0: pw.Alignment.centerLeft,
+        1: pw.Alignment.centerRight,
+        2: pw.Alignment.centerRight,
+        if (hasLineDiscount) 3: pw.Alignment.centerRight,
+        if (hasLineDiscount) 4: pw.Alignment.centerRight,
+        if (!hasLineDiscount) 3: pw.Alignment.centerRight,
+      },
+      columnWidths: {
+        0: const pw.FlexColumnWidth(1),
+        1: const pw.FixedColumnWidth(42),
+        2: const pw.FixedColumnWidth(74),
+        if (hasLineDiscount) 3: const pw.FixedColumnWidth(68),
+        if (hasLineDiscount) 4: const pw.FixedColumnWidth(78),
+        if (!hasLineDiscount) 3: const pw.FixedColumnWidth(78),
+      },
+      border: pw.TableBorder(
+        horizontalInside: pw.BorderSide(color: line, width: 0.35),
+        bottom: pw.BorderSide(color: line, width: 0.6),
+      ),
+    );
+  }
+
+  static pw.Widget _buildTotalsBlock({
+    required SaleTotals totals,
+    required bool showItbis,
+    required String currencySymbol,
+    required PdfColor brand,
+    required PdfColor ink,
+    required PdfColor muted,
+    required PdfColor line,
+    required PdfColor fill,
+  }) {
+    return pw.Container(
+      width: 235,
+      padding: const pw.EdgeInsets.fromLTRB(16, 13, 16, 14),
+      decoration: pw.BoxDecoration(
+        color: fill,
+        border: pw.Border.all(color: line, width: 0.7),
+        borderRadius: pw.BorderRadius.circular(5),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          _totLine(
+            'Subtotal',
+            _fmtMoney(currencySymbol, totals.grossSubtotal),
+            muted,
+            ink,
+          ),
+          if (totals.discountTotal > 0.009)
+            _totLine(
+              'Descuento',
+              '-${_fmtMoney(currencySymbol, totals.discountTotal)}',
+              muted,
+              ink,
+            ),
+          if (showItbis)
+            _totLine(
+              'ITBIS',
+              _fmtMoney(currencySymbol, totals.itbisAmount),
+              muted,
+              ink,
+            ),
+          pw.Container(
+            margin: const pw.EdgeInsets.symmetric(vertical: 9),
+            height: 0.8,
+            color: line,
+          ),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Total',
+                style: pw.TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: brand,
+                ),
+              ),
+              pw.Text(
+                _fmtMoney(currencySymbol, totals.total),
+                style: pw.TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: ink,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildNoteBlock({
+    required String title,
+    required String text,
+    required PdfColor brand,
+    required PdfColor ink,
+    required PdfColor muted,
+    required PdfColor line,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: line, width: 0.6),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          _sectionLabel(title, brand),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            _sanitize(text),
+            style: pw.TextStyle(fontSize: 8.7, color: muted, lineSpacing: 2),
+          ),
+        ],
+      ),
+    );
+  }
+
   static pw.Widget _totLine(
     String label,
     String value,
@@ -666,14 +787,21 @@ class InvoiceLetterPdf {
     PdfColor valueColor,
   ) {
     return pw.Padding(
-      padding: const pw.EdgeInsets.symmetric(vertical: 2),
+      padding: const pw.EdgeInsets.symmetric(vertical: 3),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: pw.TextStyle(fontSize: 9, color: labelColor)),
-          pw.Text(value, style: pw.TextStyle(fontSize: 9, color: valueColor)),
+          pw.Text(label, style: pw.TextStyle(fontSize: 9.2, color: labelColor)),
+          pw.Text(value, style: pw.TextStyle(fontSize: 9.2, color: valueColor)),
         ],
       ),
     );
   }
+}
+
+class _InfoPair {
+  final String label;
+  final String value;
+
+  const _InfoPair(this.label, this.value);
 }

@@ -5,9 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/core/update/app_update_coordinator.dart';
 import 'package:fullpos/core/update/app_update_policy.dart';
 import 'package:fullpos/core/update/app_update_repository.dart';
+import 'package:fullpos/core/update/app_update_safety.dart';
 import 'package:fullpos/core/update/app_version.dart';
 import 'package:fullpos/core/update/installer_launcher.dart';
 import 'package:fullpos/core/update/update_downloader.dart';
+import 'package:fullpos/core/update/update_shutdown_coordinator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 AppUpdatePolicy policy({bool mandatory = false}) {
@@ -81,10 +83,23 @@ class _FakeLauncher extends InstallerLauncher {
   bool get isLaunching => active;
 
   @override
-  Future<void> launch(File installer, AppUpdatePolicy policy) {
+  Future<void> launch(
+    File installer,
+    AppUpdatePolicy policy, {
+    UpdatePreparationProgress? onProgress,
+  }) {
     calls++;
     active = true;
     return completer.future.whenComplete(() => active = false);
+  }
+}
+
+class _SafeValidator extends AppUpdateSafetyValidator {
+  const _SafeValidator();
+
+  @override
+  Future<AppUpdateSafetyResult> validate() async {
+    return const AppUpdateSafetyResult(safe: true);
   }
 }
 
@@ -136,6 +151,68 @@ void main() {
     expect(repository.calls, 1);
   });
 
+  test(
+    'available optional update downloads in background and becomes ready',
+    () async {
+      final downloader = _FakeDownloader();
+      final coordinator = AppUpdateCoordinator.testing(
+        repository: _FakeRepository(remote: policy()),
+        downloader: downloader,
+        safetyValidator: const _SafeValidator(),
+        installedVersionLoader: () async => AppVersion.parse('1.0.1+5'),
+      );
+
+      await coordinator.check();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(downloader.calls, 1);
+      expect(coordinator.state.phase, AppUpdatePhase.downloading);
+      expect(coordinator.state.presentationToken, 0);
+
+      final temp = await Directory.systemTemp.createTemp('fullpos_ready_test_');
+      final installer = File(
+        '${temp.path}${Platform.pathSeparator}FullPOS-Setup-v1.0.2-build6.exe',
+      );
+      await installer.writeAsBytes([0x4d, 0x5a]);
+      downloader.completer.complete(installer);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(coordinator.state.phase, AppUpdatePhase.ready);
+      expect(coordinator.state.presentationToken, 1);
+      await temp.delete(recursive: true);
+    },
+  );
+
+  test('manual request during active download presents when ready', () async {
+    final downloader = _FakeDownloader();
+    final coordinator = AppUpdateCoordinator.testing(
+      repository: _FakeRepository(remote: policy()),
+      downloader: downloader,
+      safetyValidator: const _SafeValidator(),
+      installedVersionLoader: () async => AppVersion.parse('1.0.1+5'),
+    );
+
+    await coordinator.check();
+    await Future<void>.delayed(Duration.zero);
+    coordinator.dismissOptional();
+    final manualFuture = coordinator.downloadAndInstall(presentWhenReady: true);
+
+    final temp = await Directory.systemTemp.createTemp(
+      'fullpos_manual_ready_test_',
+    );
+    final installer = File(
+      '${temp.path}${Platform.pathSeparator}FullPOS-Setup-v1.0.2-build6.exe',
+    );
+    await installer.writeAsBytes([0x4d, 0x5a]);
+    downloader.completer.complete(installer);
+    await manualFuture;
+    await Future<void>.delayed(Duration.zero);
+
+    expect(coordinator.state.phase, AppUpdatePhase.ready);
+    expect(coordinator.state.presentationToken, 1);
+    await temp.delete(recursive: true);
+  });
+
   test('prevents duplicate downloads and installer launches', () async {
     final downloader = _FakeDownloader();
     final launcher = _FakeLauncher();
@@ -143,6 +220,7 @@ void main() {
       repository: _FakeRepository(remote: policy()),
       downloader: downloader,
       launcher: launcher,
+      safetyValidator: const _SafeValidator(),
       installedVersionLoader: () async => AppVersion.parse('1.0.1+5'),
     );
     await coordinator.check();

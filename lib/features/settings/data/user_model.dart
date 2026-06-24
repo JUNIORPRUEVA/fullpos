@@ -30,9 +30,10 @@ class UserModel {
     this.deletedAtMs,
   });
 
-  bool get isAdmin => role == 'admin';
-  bool get isSupervisor => role == 'supervisor';
-  bool get isCashier => role == 'cashier';
+  String get normalizedRole => role.trim().toLowerCase();
+  bool get isAdmin => normalizedRole == 'admin';
+  bool get isSupervisor => normalizedRole == 'supervisor';
+  bool get isCashier => normalizedRole == 'cashier';
   bool get isActiveUser => isActive == 1;
   bool get hasPassword => passwordHash != null && passwordHash!.isNotEmpty;
 
@@ -149,9 +150,6 @@ class UserPermissions {
   final bool canViewQuotes;
   final bool canConvertQuotesToTicket;
 
-  // Herramientas
-  final bool canAccessTools;
-
   // Devoluciones
   final bool canProcessReturns;
 
@@ -193,7 +191,6 @@ class UserPermissions {
     this.canCreateQuotes = false,
     this.canViewQuotes = false,
     this.canConvertQuotesToTicket = false,
-    this.canAccessTools = false,
     this.canProcessReturns = false,
     this.canViewCredits = false,
     this.canManageCredits = false,
@@ -230,7 +227,6 @@ class UserPermissions {
     canCreateQuotes: false,
     canViewQuotes: false,
     canConvertQuotesToTicket: false,
-    canAccessTools: false,
     canProcessReturns: false,
     canViewCredits: false,
     canManageCredits: false,
@@ -267,7 +263,6 @@ class UserPermissions {
     canCreateQuotes: true,
     canViewQuotes: true,
     canConvertQuotesToTicket: true,
-    canAccessTools: true,
     canProcessReturns: true,
     canViewCredits: true,
     canManageCredits: true,
@@ -304,7 +299,6 @@ class UserPermissions {
     canCreateQuotes: true,
     canViewQuotes: true,
     canConvertQuotesToTicket: false,
-    canAccessTools: false,
     canProcessReturns: false,
     canViewCredits: true,
     canManageCredits: false,
@@ -340,7 +334,6 @@ class UserPermissions {
     'can_create_quotes': canCreateQuotes,
     'can_view_quotes': canViewQuotes,
     'can_convert_quotes_to_ticket': canConvertQuotesToTicket,
-    'can_access_tools': canAccessTools,
     'can_process_returns': canProcessReturns,
     'can_view_credits': canViewCredits,
     'can_manage_credits': canManageCredits,
@@ -413,8 +406,6 @@ class UserPermissions {
       canConvertQuotesToTicket:
           map['can_convert_quotes_to_ticket'] as bool? ??
           defaults.canConvertQuotesToTicket,
-      canAccessTools:
-          map['can_access_tools'] as bool? ?? defaults.canAccessTools,
       canProcessReturns:
           map['can_process_returns'] as bool? ?? defaults.canProcessReturns,
       canViewCredits:
@@ -456,7 +447,6 @@ class UserPermissions {
     bool? canCreateQuotes,
     bool? canViewQuotes,
     bool? canConvertQuotesToTicket,
-    bool? canAccessTools,
     bool? canProcessReturns,
     bool? canViewCredits,
     bool? canManageCredits,
@@ -491,7 +481,6 @@ class UserPermissions {
     canViewQuotes: canViewQuotes ?? this.canViewQuotes,
     canConvertQuotesToTicket:
         canConvertQuotesToTicket ?? this.canConvertQuotesToTicket,
-    canAccessTools: canAccessTools ?? this.canAccessTools,
     canProcessReturns: canProcessReturns ?? this.canProcessReturns,
     canViewCredits: canViewCredits ?? this.canViewCredits,
     canManageCredits: canManageCredits ?? this.canManageCredits,

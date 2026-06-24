@@ -35,18 +35,32 @@ class LogoutFlowService {
       final openShifts = await CashRepository.listOpenSessionsForUser(
         userId: userId,
       );
-      if (openShifts.isEmpty) {
+
+      // FULLPOS SEGURIDAD: verificar que los turnos realmente pertenecen
+      // al usuario actual. Esto es una defensa adicional por si el
+      // repositorio no filtrara correctamente.
+      final myOpenShifts = openShifts
+          .where((s) => s.userId == userId)
+          .toList(growable: false);
+
+      if (myOpenShifts.isEmpty) {
         await performLogout();
         return;
       }
-      if (openShifts.length > 1) {
+      if (myOpenShifts.length > 1) {
         throw StateError(
-          'Hay varios turnos abiertos para este usuario. '
+          'Hay varios turnos abiertos para este usuario (${myOpenShifts.length}). '
           'No se cerrará sesión hasta corregir este estado.',
         );
       }
 
-      final openShift = openShifts.single;
+      final openShift = myOpenShifts.single;
+      if (openShift.userId != userId) {
+        throw StateError(
+          'El turno abierto #${openShift.id} no pertenece a este usuario.',
+        );
+      }
+
       final sessionId = openShift.id;
       if (sessionId == null) {
         throw StateError('El turno abierto no tiene un identificador válido.');
@@ -146,7 +160,6 @@ class LogoutFlowService {
       ScaffoldMessenger.maybeOf(messengerContext)?.hideCurrentSnackBar();
 
       final container = ProviderScope.containerOf(routerContext, listen: false);
-      container.read(appBootstrapProvider).forceLoggedOut();
 
       // Clear all temporary authorization overrides before destroying the session.
       // This ensures a cashier logging in after an admin (or vice-versa) does NOT
@@ -154,19 +167,7 @@ class LogoutFlowService {
       AuthzService.clearOverrideCache();
 
       await SessionManager.logout();
-
-      try {
-        await container
-            .read(appBootstrapProvider)
-            .refreshAuth()
-            .timeout(const Duration(seconds: 2));
-      } on TimeoutException catch (error) {
-        debugPrint(
-          'Logout refreshAuth agotó tiempo, continuando salida: $error',
-        );
-      } catch (error) {
-        debugPrint('Logout refreshAuth falló, continuando salida: $error');
-      }
+      container.read(appBootstrapProvider).forceLoggedOut();
 
       final navigator = ErrorHandler.navigatorKey.currentState;
       while (navigator?.canPop() == true) {
@@ -176,8 +177,20 @@ class LogoutFlowService {
       if (!routerContext.mounted) return;
 
       final router = GoRouter.of(routerContext);
-      router.refresh();
       router.go('/login');
+      router.refresh();
+
+      unawaited(
+        container
+            .read(appBootstrapProvider)
+            .refreshAuth()
+            .timeout(const Duration(seconds: 2))
+            .catchError((Object error) {
+              debugPrint(
+                'Logout refreshAuth falló, continuando salida: $error',
+              );
+            }),
+      );
     } catch (error) {
       debugPrint('Logout inmediato falló de forma no fatal: $error');
     }

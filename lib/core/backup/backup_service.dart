@@ -17,6 +17,7 @@ import '../errors/error_mapper.dart';
 import '../identity/identity_recovery_bundle.dart';
 import '../logging/app_logger.dart';
 import '../session/session_manager.dart';
+import '../update/update_shutdown_coordinator.dart';
 import '../utils/id_utils.dart';
 import 'backup_models.dart';
 import 'backup_paths.dart';
@@ -34,6 +35,19 @@ class BackupService {
   DateTime? _lastAutoBackupAt;
 
   bool get isRunning => _running;
+
+  void pauseSchedulerForUpdate() {
+    _lastAutoBackupAt = DateTime.now();
+  }
+
+  Future<bool> waitUntilIdle(Duration timeout) async {
+    final deadline = DateTime.now().add(timeout);
+    while (_running) {
+      if (!DateTime.now().isBefore(deadline)) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+    return true;
+  }
 
   Future<int> getRetentionCount() async {
     final prefs = await SharedPreferences.getInstance();
@@ -69,6 +83,12 @@ class BackupService {
     Directory? outputDir,
     bool recordHistory = true,
   }) async {
+    if (SafeUpdateCoordinator.blocksCriticalOperations) {
+      return const BackupResult(
+        ok: false,
+        messageUser: 'FullPOS se está preparando para actualizar.',
+      );
+    }
     if (_running) {
       return const BackupResult(
         ok: false,
@@ -607,6 +627,7 @@ class BackupService {
     required BackupTrigger trigger,
   }) async {
     if (!enabled) return;
+    if (SafeUpdateCoordinator.blocksCriticalOperations) return;
 
     // Anti-spam: no disparar varios auto-backups seguidos.
     final last = _lastAutoBackupAt;

@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:fullpos/core/db/app_db.dart';
 import 'package:fullpos/core/db/tables.dart';
+import 'package:fullpos/core/session/session_manager.dart';
 import 'package:fullpos/features/cash/data/operation_flow_service.dart';
 
 class _FakePathProvider extends PathProviderPlatform
@@ -106,7 +107,7 @@ void main() {
   });
 
   test(
-    'restaura turno abierto existente de la caja en vez de lanzar conflicto',
+    'abre turno propio aunque otro usuario tenga turno abierto en la misma caja',
     () async {
       SharedPreferences.setMockInitialValues({
         'flutter.logged_user_id': 2,
@@ -153,22 +154,180 @@ void main() {
         note: 'intento nuevo',
       );
 
-      expect(session.shiftId, shiftId);
+      expect(session.shiftId, isNot(shiftId));
       expect(session.cashId, cashboxId);
       expect(session.userId, 2);
       expect(session.userName, 'Cajero');
 
-      final shifts = await db.query(DbTables.cashSessions);
-      expect(shifts, hasLength(1));
-      expect(shifts.first['opened_by_user_id'], 2);
-      expect(shifts.first['user_name'], 'Cajero');
-      expect(shifts.first['status'], 'OPEN');
-      expect(shifts.first['closed_at_ms'], isNull);
+      final shifts = await db.query(
+        DbTables.cashSessions,
+        where: 'cashbox_daily_id = ? AND status = ? AND closed_at_ms IS NULL',
+        whereArgs: [cashboxId, 'OPEN'],
+        orderBy: 'opened_by_user_id ASC',
+      );
+      expect(shifts, hasLength(2));
+      expect(shifts.map((row) => row['opened_by_user_id']), [1, 2]);
+      expect(shifts.map((row) => row['user_name']), ['Admin', 'Cajero']);
+    },
+  );
+
+  test(
+    'cierra el turno actual sin cerrar la caja si otro turno sigue abierto',
+    () async {
+      final firstSession = await OperationFlowService.startActiveSession(
+        openingAmount: 1000,
+        note: 'turno admin',
+      );
+
+      final db = await AppDb.database;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.insert(DbTables.users, {
+        'id': 2,
+        'company_id': 1,
+        'username': 'cajero',
+        'pin': null,
+        'role': 'cashier',
+        'is_active': 1,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+      });
+
+      await SessionManager.login(
+        userId: 2,
+        username: 'cajero',
+        displayName: 'Cajero',
+        role: 'cashier',
+        terminalId: 'terminal-test',
+      );
+
+      final secondSession = await OperationFlowService.startActiveSession(
+        openingAmount: 500,
+        note: 'turno cajero',
+      );
+
+      await OperationFlowService.closeActiveSession(
+        sessionId: secondSession.shiftId,
+        closingAmount: 500,
+        note: 'cierre cajero',
+      );
+
+      final shifts = await db.query(
+        DbTables.cashSessions,
+        where: 'id IN (?, ?)',
+        whereArgs: [firstSession.shiftId, secondSession.shiftId],
+        orderBy: 'id ASC',
+      );
+      final firstShift = shifts.firstWhere(
+        (row) => row['id'] == firstSession.shiftId,
+      );
+      final secondShift = shifts.firstWhere(
+        (row) => row['id'] == secondSession.shiftId,
+      );
+
+      expect(firstShift['status'], 'OPEN');
+      expect(firstShift['closed_at_ms'], isNull);
+      expect(secondShift['status'], 'CLOSED');
+      expect(secondShift['closed_at_ms'], isNotNull);
+
+      final cashboxRows = await db.query(
+        DbTables.cashboxDaily,
+        where: 'id = ?',
+        whereArgs: [firstSession.cashId],
+        limit: 1,
+      );
+      expect(cashboxRows.first['status'], 'OPEN');
+    },
+  );
+
+  test(
+    'repara esquema legacy con cashbox_daily_id unico y permite turnos por usuario',
+    () async {
+      final db = await AppDb.database;
+      await db.execute('PRAGMA foreign_keys = OFF;');
+      await db.execute('DROP TABLE ${DbTables.cashSessions};');
+      await db.execute('''
+        CREATE TABLE ${DbTables.cashSessions} (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          opened_by_user_id INTEGER NOT NULL,
+          user_name TEXT NOT NULL DEFAULT 'admin',
+          opened_at_ms INTEGER NOT NULL,
+          initial_amount REAL NOT NULL DEFAULT 0,
+          cashbox_daily_id INTEGER UNIQUE,
+          business_date TEXT,
+          requires_closure INTEGER NOT NULL DEFAULT 0,
+          closing_amount REAL,
+          expected_cash REAL,
+          difference REAL,
+          closed_at_ms INTEGER,
+          closed_by_user_id INTEGER,
+          note TEXT,
+          status TEXT NOT NULL DEFAULT 'OPEN'
+        )
+      ''');
+      await db.execute('PRAGMA foreign_keys = ON;');
+
+      await AppDb.ensureSchema(db);
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.insert(DbTables.users, {
+        'id': 2,
+        'company_id': 1,
+        'username': 'junior',
+        'pin': null,
+        'role': 'cashier',
+        'is_active': 1,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+      });
+      final businessDate = OperationFlowService.businessDateOf();
+      final cashboxId = await db.insert(DbTables.cashboxDaily, {
+        'business_date': businessDate,
+        'opened_at_ms': now,
+        'opened_by_user_id': 1,
+        'initial_amount': 0.0,
+        'current_amount': 0.0,
+        'status': 'OPEN',
+      });
+
+      await db.insert(DbTables.cashSessions, {
+        'opened_by_user_id': 1,
+        'user_name': 'Admin',
+        'opened_at_ms': now,
+        'initial_amount': 0.0,
+        'cashbox_daily_id': cashboxId,
+        'business_date': businessDate,
+        'requires_closure': 0,
+        'status': 'OPEN',
+      });
+
+      SharedPreferences.setMockInitialValues({
+        'flutter.logged_user_id': 2,
+        'flutter.logged_user': 'junior',
+        'flutter.logged_display_name': 'Junior',
+      });
+
+      final session = await OperationFlowService.startActiveSession(
+        openingAmount: 0,
+        note: 'apertura junior',
+      );
+
+      expect(session.userId, 2);
+      expect(session.cashId, cashboxId);
+
+      final openRows = await db.query(
+        DbTables.cashSessions,
+        where: 'cashbox_daily_id = ? AND status = ? AND closed_at_ms IS NULL',
+        whereArgs: [cashboxId, 'OPEN'],
+      );
+      expect(openRows, hasLength(2));
     },
   );
 
   test('consolida turnos duplicados al iniciar caja', () async {
     final db = await AppDb.database;
+    await db.execute(
+      'DROP INDEX IF EXISTS idx_cash_sessions_unique_open_per_user',
+    );
     final now = DateTime.now().millisecondsSinceEpoch;
     final businessDate = OperationFlowService.businessDateOf();
     final cashboxId = await db.insert(DbTables.cashboxDaily, {

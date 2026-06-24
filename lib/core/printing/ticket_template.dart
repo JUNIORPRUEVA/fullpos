@@ -3,6 +3,7 @@ import '../services/app_configuration_service.dart';
 import '../utils/currency_display.dart';
 import '../../features/settings/data/printer_settings_model.dart';
 import '../../features/sales/data/sales_model.dart';
+import '../../features/sales/data/sale_totals_calculator.dart';
 
 class TicketTemplate {
   final PrinterSettingsModel settings;
@@ -96,32 +97,51 @@ class TicketTemplate {
     }
 
     lines.add(separator);
+    final totals = SaleTotalsCalculator.fromDiscountedSubtotal(
+      subtotal: sale.subtotal,
+      discountTotal: sale.discountTotal,
+      itbisEnabled: sale.itbisEnabled == 1,
+      itbisRate: sale.itbisRate,
+      itbisAmount: sale.itbisAmount,
+      total: sale.total,
+    );
 
     // Totales - solo mostrar desglose si está habilitado
     if (settings.showSubtotalItbisTotal == 1) {
       lines.add(
         _padRight('Subtotal:', (width * 0.6).toInt()) +
-            _padLeft(_formatCurrency(sale.subtotal), (width * 0.4).toInt()),
+            _padLeft(
+              _formatCurrency(totals.grossSubtotal),
+              (width * 0.4).toInt(),
+            ),
       );
 
-      if ((sale.discountTotal) > 0) {
+      if (totals.discountTotal > 0) {
         lines.add(
           _padRight('Descuento:', (width * 0.6).toInt()) +
               _padLeft(
-                '-${_formatCurrency(sale.discountTotal)}',
+                '-${_formatCurrency(totals.discountTotal)}',
                 (width * 0.4).toInt(),
               ),
         );
       }
 
-      if (settings.showItbis == 1 && sale.itbisAmount > 0) {
+      lines.add(
+        _padRight('Base imponible:', (width * 0.6).toInt()) +
+            _padLeft(
+              _formatCurrency(totals.taxableSubtotal),
+              (width * 0.4).toInt(),
+            ),
+      );
+
+      if (settings.showItbis == 1 && totals.itbisAmount > 0) {
         lines.add(
           _padRight(
-                'ITBIS (${(sale.itbisRate * 100).toStringAsFixed(0)}%):',
+                'ITBIS (${(totals.itbisRate * 100).toStringAsFixed(0)}%):',
                 (width * 0.6).toInt(),
               ) +
               _padLeft(
-                _formatCurrency(sale.itbisAmount),
+                _formatCurrency(totals.itbisAmount),
                 (width * 0.4).toInt(),
               ),
         );
@@ -133,7 +153,7 @@ class TicketTemplate {
     // TOTAL siempre se muestra
     lines.add(
       _padRight('TOTAL:', (width * 0.6).toInt()) +
-          _padLeft(_formatCurrency(sale.total), (width * 0.4).toInt()),
+          _padLeft(_formatCurrency(totals.total), (width * 0.4).toInt()),
     );
 
     lines.add(separator);

@@ -204,14 +204,21 @@ class CashRepository {
         final cashboxDailyId = session['cashbox_daily_id'] as int?;
         final businessDate = session['business_date'] as String?;
 
+        // FULLPOS SEGURIDAD: validaciones estrictas de ownership y estado.
         if (status != CashSessionStatus.open || closedAtMs != null) {
           throw Exception(
             'El turno ya está cerrado o no está disponible para cierre.',
           );
         }
-        if (actorUserId != null && ownerUserId != actorUserId) {
+        if (actorUserId == null) {
           throw Exception(
-            'Este turno pertenece a otro cajero y no puede cerrarse desde aquí.',
+            'No se pudo identificar al usuario para cerrar el turno.',
+          );
+        }
+        if (ownerUserId != actorUserId) {
+          throw Exception(
+            'Este turno (#$sessionId) pertenece a otro cajero (user #$ownerUserId) '
+            'y no puede cerrarse desde aquí.',
           );
         }
         if (expectedCashboxDailyId != null &&
@@ -219,6 +226,30 @@ class CashRepository {
           throw Exception('El turno no corresponde a la caja diaria activa.');
         }
 
+        // FULLPOS SEGURIDAD: verificar que el usuario no tenga múltiples
+        // turnos abiertos (estado inconsistente que debe corregirse antes).
+        final duplicateCheck = await txn.query(
+          DbTables.cashSessions,
+          columns: ['id'],
+          where: '''
+            status = 'OPEN'
+            AND closed_at_ms IS NULL
+            AND opened_by_user_id = ?
+            AND id <> ?
+          ''',
+          whereArgs: [actorUserId, sessionId],
+          limit: 1,
+        );
+        if (duplicateCheck.isNotEmpty) {
+          throw StateError(
+            'El usuario tiene múltiples turnos abiertos (ids: $sessionId, '
+            '${duplicateCheck.first['id']}). Debe corregir este estado '
+            'antes de cerrar sesión.',
+          );
+        }
+
+        // FULLPOS SEGURIDAD: UPDATE con validación completa para evitar
+        // condiciones de carrera (otro hilo cerrando el mismo turno).
         final updated = await txn.update(
           DbTables.cashSessions,
           {
@@ -230,8 +261,17 @@ class CashRepository {
             'note': note.trim(),
             'status': CashSessionStatus.closed,
           },
-          where: 'id = ? AND status = ? AND closed_at_ms IS NULL',
-          whereArgs: [sessionId, CashSessionStatus.open],
+          where: '''
+            id = ?
+            AND status = ?
+            AND closed_at_ms IS NULL
+            AND opened_by_user_id = ?
+          ''',
+          whereArgs: [
+            sessionId,
+            CashSessionStatus.open,
+            actorUserId,
+          ],
         );
 
         if (updated != 1) {

@@ -44,6 +44,7 @@ class ProductCard extends StatelessWidget {
     );
     final numberFormat = NumberFormat.decimalPattern();
     final statusColor = _resolveStatusColor(scheme);
+    final stockColor = _getStockTextColor(scheme);
     final mutedText = scheme.onSurface.withOpacity(0.65);
     final textPrimary = scheme.onSurface;
     final textSecondary = scheme.onSurfaceVariant;
@@ -175,7 +176,7 @@ class ProductCard extends StatelessWidget {
                     _buildCompactInfo(
                       'Stock',
                       numberFormat.format(product.stock),
-                      statusColor,
+                      stockColor,
                       mutedText,
                     ),
                     const SizedBox(width: 10),
@@ -373,11 +374,17 @@ class ProductCard extends StatelessWidget {
     );
   }
 
+  /// Color de la barra lateral indicadora de estado (NO cambia por stock)
   Color _resolveStatusColor(ColorScheme scheme) {
     if (product.isDeleted) return scheme.error;
     if (!product.isActive) return scheme.outline;
+    return scheme.primary;
+  }
+
+  /// Color del texto de stock (solo el texto se pone rojo si está agotado o stock bajo)
+  Color _getStockTextColor(ColorScheme scheme) {
     if (product.isOutOfStock) return scheme.error;
     if (product.hasLowStock) return scheme.tertiary;
-    return scheme.primary;
+    return scheme.onSurface;
   }
 }

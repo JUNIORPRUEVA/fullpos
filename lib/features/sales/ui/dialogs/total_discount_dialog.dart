@@ -84,11 +84,13 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
   }
 
   bool _isValidDiscount() {
+    // Reject negative or zero values
     if (_discountValue <= 0) return false;
 
     if (_selectedType == DiscountType.percent) {
       return _discountValue > 0 && _discountValue <= 100;
     } else {
+      // Fixed amount must be less than subtotal
       return _discountValue > 0 && _discountValue < widget.subtotal;
     }
   }
@@ -100,7 +102,7 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
           content: Text(
             _selectedType == DiscountType.percent
                 ? 'El porcentaje debe ser entre 0% y 100%'
-                : 'El monto debe ser menor al subtotal',
+                : 'El monto debe ser menor al subtotal (${CurrencyDisplay.format(widget.subtotal)})',
           ),
           backgroundColor: AppColors.error,
         ),
@@ -122,7 +124,7 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
     final hasCurrentDiscount = widget.currentDiscount != null;
 
     return DialogKeyboardShortcuts(
-      onSubmit: _isValidDiscount() ? _applyDiscount : null,
+      onSubmit: _applyDiscount,
       child: AlertDialog(
         backgroundColor: Colors.white,
         insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
@@ -216,6 +218,7 @@ class _TotalDiscountDialogState extends State<TotalDiscountDialog> {
                       : 'RD\$',
                 ),
                 onChanged: _updateValue,
+                onSubmitted: (_) => _applyDiscount(),
                 autofocus: true,
               ),
               const SizedBox(height: AppSizes.paddingL),

@@ -131,6 +131,20 @@ class ProductSyncService {
     _disposeSocket();
   }
 
+  bool get isSyncing => _draining;
+
+  void pauseForUpdate() => stop();
+
+  Future<bool> waitUntilIdle(Duration timeout) async {
+    final deadline = DateTime.now().add(timeout);
+    if (!_started) return true;
+    while (_draining) {
+      if (!DateTime.now().isBefore(deadline)) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
+    return true;
+  }
+
   Future<void> flushNow() async {
     if (!_started) {
       start();

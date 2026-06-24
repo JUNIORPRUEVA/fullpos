@@ -36,6 +36,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   bool _isLoading = false;
   bool _showSuccessTransition = false;
+  bool _showPassword = false;
   _LoginMode _mode = _LoginMode.password;
   String? _errorMessage;
 
@@ -98,6 +99,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       _errorMessage = null;
       if (_usingPin) {
         _passwordController.clear();
+        _showPassword = false;
       } else {
         _pinController.clear();
       }
@@ -915,8 +917,33 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                               cursorColor: primaryBlue,
                                               decoration: decoration(
                                                 hint: 'Ingresa tu contraseña',
+                                                suffix: IconButton(
+                                                  key: const ValueKey(
+                                                    'passwordVisibilityToggle',
+                                                  ),
+                                                  tooltip: _showPassword
+                                                      ? 'Ocultar contraseña'
+                                                      : 'Mostrar contraseña',
+                                                  onPressed: _isLoading
+                                                      ? null
+                                                      : () {
+                                                          setState(() {
+                                                            _showPassword =
+                                                                !_showPassword;
+                                                          });
+                                                        },
+                                                  icon: Icon(
+                                                    _showPassword
+                                                        ? Icons
+                                                              .visibility_off_outlined
+                                                        : Icons
+                                                              .visibility_outlined,
+                                                    size: 20,
+                                                    color: inputHint,
+                                                  ),
+                                                ),
                                               ),
-                                              obscureText: true,
+                                              obscureText: !_showPassword,
                                               validator: (value) {
                                                 if (value == null ||
                                                     value.isEmpty) {

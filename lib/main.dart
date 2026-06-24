@@ -51,6 +51,16 @@ Future<void> main() async {
           return;
         }
 
+        if (ErrorHandler.isTransientFlutterLayoutError(message)) {
+          unawaited(
+            AppLogger.instance.logWarn(
+              'FLUTTER_TRANSIENT_ERROR_SUPPRESSED: $message',
+              module: 'flutter',
+            ),
+          );
+          return;
+        }
+
         // Ignore noisy, non-fatal image 404s (e.g. sample Unsplash URLs) so
         // navigation doesn't spam the console.
         if (message.contains('NetworkImageLoadException') &&
@@ -61,13 +71,6 @@ Future<void> main() async {
 
         debugPrint('FLUTTER_ERROR: $message');
         debugPrint('$stack');
-        try {
-          ErrorHandler.instance.reportPlatformError(
-            details.exception,
-            stack,
-            module: 'flutter',
-          );
-        } catch (_) {}
         unawaited(
           AppLogger.instance.logWarn(
             'FLUTTER_ERROR: $message',
@@ -77,6 +80,12 @@ Future<void> main() async {
         if (originalFlutterOnError != null) {
           originalFlutterOnError(details);
         } else {
+          try {
+            ErrorHandler.instance.reportFlutterError(
+              details,
+              module: 'flutter',
+            );
+          } catch (_) {}
           FlutterError.dumpErrorToConsole(details);
         }
       };

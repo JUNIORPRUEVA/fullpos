@@ -2,16 +2,36 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'dart:convert';
+
 import '../../../core/constants/app_colors.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/security/app_actions.dart';
 import '../../../core/security/authorization_guard.dart';
 import '../../../core/security/authz/permission.dart';
 import '../../../core/security/authz/permission_gate.dart';
+import '../../../core/session/session_manager.dart';
 import '../data/business_settings_repository.dart';
 import '../data/user_model.dart';
 import '../data/users_repository.dart';
 import 'settings_layout.dart';
+
+// ──────────────────────────────────────────────
+// Design tokens for this screen
+// ──────────────────────────────────────────────
+const Color _primaryBlue = Color(0xFF2563EB);
+const Color _deepNavy = Color(0xFF0F172A);
+const Color _secondaryText = Color(0xFF64748B);
+const Color _softBackground = Color(0xFFF8FAFC);
+const Color _white = Color(0xFFFFFFFF);
+const Color _borderColor = Color(0xFFE2E8F0);
+const Color _lightBlueTint = Color(0xFFEFF6FF);
+const Color _hoverTint = Color(0xFFF8FAFC);
+const Color _warningAmber = Color(0xFFF59E0B);
+const double _controlHeight = 40;
+const double _rowMinHeight = 52;
+const double _moduleHeaderHeight = 42;
+const double _toolbarGap = 8;
 
 enum _RiskLevel { low, medium, high, critical }
 
@@ -83,7 +103,6 @@ enum _UserPermissionCategory {
   quotes,
   returns,
   credits,
-  tools,
   users,
   settings,
 }
@@ -392,18 +411,6 @@ class _PermissionsPageState extends State<PermissionsPage> {
             permissions.copyWith(canManageCredits: value),
       ),
     ],
-    _UserPermissionCategory.tools: [
-      _PermissionDef(
-        id: 'tools.acceso',
-        title: 'Acceso a herramientas',
-        description: 'Habilita utilidades operativas y tecnicas.',
-        riskLevel: _RiskLevel.medium,
-        column: _PermissionColumn.operate,
-        read: (permissions) => permissions.canAccessTools,
-        write: (permissions, value) =>
-            permissions.copyWith(canAccessTools: value),
-      ),
-    ],
     _UserPermissionCategory.users: [
       _PermissionDef(
         id: 'usuarios.gestionar',
@@ -606,6 +613,15 @@ class _PermissionsPageState extends State<PermissionsPage> {
     try {
       await UsersRepository.savePermissions(userId, _permissions);
       if (!mounted) return;
+
+      // Si el usuario editado es el mismo que está logueado, actualizar la sesión
+      final loggedUserId = await SessionManager.userId();
+      if (loggedUserId == userId) {
+        await SessionManager.setPermissions(
+          jsonEncode(_permissions.toMap()),
+        );
+      }
+
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         const SnackBar(
           content: Text('Permisos guardados correctamente'),
@@ -648,67 +664,61 @@ class _PermissionsPageState extends State<PermissionsPage> {
       id: _UserPermissionCategory.sales,
       label: 'Ventas',
       icon: Icons.point_of_sale_outlined,
-      color: Color(0xFF0F766E),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.products,
       label: 'Productos',
       icon: Icons.inventory_2_outlined,
-      color: Color(0xFF1D4ED8),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.clients,
       label: 'Clientes',
       icon: Icons.people_outline,
-      color: Color(0xFF7C3AED),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.cash,
       label: 'Caja',
       icon: Icons.account_balance_wallet_outlined,
-      color: Color(0xFF15803D),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.reports,
       label: 'Reportes',
       icon: Icons.assessment_outlined,
-      color: Color(0xFFB45309),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.quotes,
       label: 'Cotizaciones',
       icon: Icons.request_quote_outlined,
-      color: Color(0xFF0F4C81),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.returns,
       label: 'Devoluciones',
       icon: Icons.assignment_return_outlined,
-      color: Color(0xFFB91C1C),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.credits,
       label: 'Creditos',
       icon: Icons.credit_score_outlined,
-      color: Color(0xFF4338CA),
-    ),
-    _PermissionCategory(
-      id: _UserPermissionCategory.tools,
-      label: 'Herramientas',
-      icon: Icons.build_outlined,
-      color: Color(0xFF475569),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.users,
       label: 'Usuarios',
       icon: Icons.manage_accounts_outlined,
-      color: Color(0xFF6D28D9),
+      color: _primaryBlue,
     ),
     _PermissionCategory(
       id: _UserPermissionCategory.settings,
       label: 'Configuracion',
       icon: Icons.settings_outlined,
-      color: Color(0xFF334155),
+      color: _primaryBlue,
     ),
   ];
 
@@ -1254,28 +1264,43 @@ class _PermissionsPageState extends State<PermissionsPage> {
     List<_PermissionDef> allDefs,
     UserModel? currentUser,
   ) {
-    final scheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Guardar - primary button
         FilledButton.icon(
           onPressed: editingEnabled ? _savePermissions : null,
           style: FilledButton.styleFrom(
-            minimumSize: const Size(0, 34),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            minimumSize: const Size(0, _controlHeight),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+            backgroundColor: _primaryBlue,
+            foregroundColor: _white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            elevation: 0,
+            shadowColor: Colors.transparent,
+            textStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           icon: _isSaving
               ? const SizedBox(
                   width: 14,
                   height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : const Icon(Icons.save_outlined, size: 16),
           label: Text(
             _isSaving ? 'Guardando' : (_hasChanges ? 'Guardar *' : 'Guardar'),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: _toolbarGap),
+        // Acciones - secondary button
         PopupMenuButton<_ControlAction>(
           enabled: currentUser != null && !_isLoadingUsers,
           tooltip: 'Acciones',
@@ -1314,24 +1339,31 @@ class _PermissionsPageState extends State<PermissionsPage> {
             ),
           ],
           child: Container(
-            height: 34,
+            height: _controlHeight,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest.withOpacity(0.32),
+              color: _white,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: scheme.outlineVariant),
+              border: Border.all(color: _borderColor),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.tune_outlined, size: 16, color: scheme.onSurface),
+                const Icon(Icons.tune_outlined, size: 16, color: _secondaryText),
                 const SizedBox(width: 6),
-                Text(
+                const Text(
                   'Acciones',
                   style: TextStyle(
-                    color: scheme.onSurface,
-                    fontWeight: FontWeight.w700,
+                    color: _deepNavy,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
+                ),
+                const SizedBox(width: 2),
+                const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: _secondaryText,
                 ),
               ],
             ),
@@ -1452,50 +1484,57 @@ class _PermissionsPageState extends State<PermissionsPage> {
   }
 
   Widget _buildMatrixTopRow(List<_PermissionGroup> groups) {
-    final scheme = Theme.of(context).colorScheme;
     final visibleDefs = [for (final group in groups) ...group.defs];
     final enabledVisible = _enabledCount(visibleDefs);
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Permisos del usuario',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Cada fila representa un permiso concreto. La columna Tipo indica si corresponde a ver, editar, aprobar o administrar.',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Permisos del usuario',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: _deepNavy,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Cada fila representa un permiso concreto. La columna Tipo indica si corresponde a ver, editar, aprobar o administrar.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _secondaryText,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        _buildHeaderBadge(
-          icon: Icons.grid_view_rounded,
-          label:
-              '${groups.length} modulos · $enabledVisible / ${visibleDefs.length} activos',
-          tone: scheme.primary,
-        ),
-      ],
+          _buildHeaderBadge(
+            icon: Icons.grid_view_rounded,
+            label:
+                '${groups.length} modulos · $enabledVisible / ${visibleDefs.length} activos',
+            tone: _primaryBlue,
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildMatrixHeaderRow() {
-    final scheme = Theme.of(context).colorScheme;
     return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.30)),
+        color: _softBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _borderColor.withOpacity(0.6)),
       ),
       child: Row(
         children: [
@@ -1515,18 +1554,19 @@ class _PermissionsPageState extends State<PermissionsPage> {
     return Expanded(
       flex: flex,
       child: Container(
-        height: 40,
-        padding: EdgeInsets.fromLTRB(alignStart ? 12 : 6, 0, 6, 0),
+        height: 36,
+        padding: EdgeInsets.fromLTRB(alignStart ? 14 : 6, 0, 6, 0),
         alignment: alignStart ? Alignment.centerLeft : Alignment.center,
         child: Text(
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: alignStart ? TextAlign.left : TextAlign.center,
-          style: TextStyle(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w800,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: _secondaryText,
+            letterSpacing: 0.3,
           ),
         ),
       ),
@@ -1534,40 +1574,79 @@ class _PermissionsPageState extends State<PermissionsPage> {
   }
 
   Widget _buildMatrixGroup(_PermissionGroup group) {
-    final scheme = Theme.of(context).colorScheme;
     final enabled = _enabledCount(group.defs);
 
     return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.18)),
+        color: _white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _borderColor.withOpacity(0.7)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
+          // Module header - clean white with subtle border
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-            color: group.category.color.withOpacity(0.06),
+            height: _moduleHeaderHeight,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: _softBackground,
+              border: Border(
+                bottom: BorderSide(
+                  color: _borderColor.withOpacity(0.5),
+                ),
+              ),
+            ),
             child: Row(
               children: [
                 Icon(
                   group.category.icon,
-                  size: 18,
-                  color: group.category.color,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  group.category.label,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  size: 17,
+                  color: _primaryBlue,
                 ),
                 const SizedBox(width: 8),
-                _buildHeaderBadge(
-                  icon: Icons.checklist_rounded,
-                  label: '$enabled/${group.defs.length}',
-                  tone: group.category.color,
+                Text(
+                  group.category.label,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _deepNavy,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Subtle count chip
+                Container(
+                  height: 22,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: _lightBlueTint,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: _primaryBlue.withOpacity(0.15),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.checklist_rounded,
+                        size: 12,
+                        color: _primaryBlue,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$enabled/${group.defs.length}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _primaryBlue,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const Spacer(),
                 _buildGroupActionButton(
@@ -1587,11 +1666,10 @@ class _PermissionsPageState extends State<PermissionsPage> {
               ],
             ),
           ),
-          Container(height: 1, color: scheme.outlineVariant.withOpacity(0.20)),
+          // Permission rows
           for (var index = 0; index < group.defs.length; index++)
             _buildMatrixPermissionRow(
               group.defs[index],
-              accentColor: group.category.color,
               isLast: index == group.defs.length - 1,
             ),
         ],
@@ -1603,19 +1681,24 @@ class _PermissionsPageState extends State<PermissionsPage> {
     required String label,
     required VoidCallback onTap,
   }) {
-    final scheme = Theme.of(context).colorScheme;
     return OutlinedButton(
       onPressed: _isSaving ? null : onTap,
       style: OutlinedButton.styleFrom(
-        backgroundColor: scheme.surface.withOpacity(0.92),
-        foregroundColor: scheme.onSurface,
-        side: BorderSide(color: scheme.outlineVariant.withOpacity(0.55)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        minimumSize: const Size(0, 30),
-        textStyle: Theme.of(
-          context,
-        ).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+        backgroundColor: _white,
+        foregroundColor: _deepNavy,
+        side: BorderSide(color: _borderColor.withOpacity(0.7)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+        minimumSize: const Size(0, 28),
+        textStyle: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+          color: _deepNavy,
+        ),
+        elevation: 0,
+        shadowColor: Colors.transparent,
       ),
       child: Text(label),
     );
@@ -1623,10 +1706,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
 
   Widget _buildMatrixPermissionRow(
     _PermissionDef def, {
-    required Color accentColor,
     required bool isLast,
   }) {
-    final scheme = Theme.of(context).colorScheme;
     final value = def.read(_permissions);
     final disabledByConfig = _isDisabledByConfig(def);
 
@@ -1634,18 +1715,16 @@ class _PermissionsPageState extends State<PermissionsPage> {
       onTap: disabledByConfig || _isSaving
           ? null
           : () => _updatePermission((current) => def.write(current, !value)),
-      hoverColor: accentColor.withOpacity(0.03),
+      hoverColor: _hoverTint,
       child: Container(
-        constraints: const BoxConstraints(minHeight: 50),
+        constraints: const BoxConstraints(minHeight: _rowMinHeight),
         decoration: BoxDecoration(
-          color: value
-              ? accentColor.withOpacity(0.035)
-              : scheme.surface.withOpacity(0.01),
+          color: value ? _lightBlueTint.withOpacity(0.35) : _white,
           border: Border(
             bottom: BorderSide(
               color: isLast
                   ? Colors.transparent
-                  : scheme.outlineVariant.withOpacity(0.22),
+                  : _borderColor.withOpacity(0.4),
             ),
           ),
         ),
@@ -1654,7 +1733,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
             Expanded(
               flex: 6,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 7, 10, 7),
+                padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1666,27 +1745,29 @@ class _PermissionsPageState extends State<PermissionsPage> {
                             def.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: disabledByConfig
-                                      ? scheme.onSurface.withOpacity(0.45)
-                                      : scheme.onSurface,
-                                ),
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: disabledByConfig
+                                  ? _secondaryText.withOpacity(0.5)
+                                  : _deepNavy,
+                              height: 1.2,
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         _riskPill(def.riskLevel),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       def.description,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        height: 1.2,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: _secondaryText,
+                        height: 1.3,
                       ),
                     ),
                     if (disabledByConfig) ...[
@@ -1695,9 +1776,10 @@ class _PermissionsPageState extends State<PermissionsPage> {
                         'Requiere activar el flujo completo de cotizaciones desde Configuracion del negocio.',
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _warningAmber,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -1708,7 +1790,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
             Expanded(
               flex: 2,
               child: Center(
-                child: _buildPermissionTypeChip(def.column, accentColor),
+                child: _buildPermissionTypeChip(def.column),
               ),
             ),
             Expanded(
@@ -1716,7 +1798,6 @@ class _PermissionsPageState extends State<PermissionsPage> {
               child: _buildMatrixToggleCell(
                 active: value,
                 enabled: !disabledByConfig && !_isSaving,
-                accentColor: accentColor,
                 onTap: !disabledByConfig && !_isSaving
                     ? () => _updatePermission(
                         (current) => def.write(current, !value),
@@ -1730,24 +1811,25 @@ class _PermissionsPageState extends State<PermissionsPage> {
     );
   }
 
-  Widget _buildPermissionTypeChip(_PermissionColumn column, Color accentColor) {
-    final scheme = Theme.of(context).colorScheme;
+  Widget _buildPermissionTypeChip(_PermissionColumn column) {
     return Container(
       constraints: const BoxConstraints(minWidth: 74),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: accentColor.withOpacity(0.09),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accentColor.withOpacity(0.18)),
+        color: _white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _primaryBlue.withOpacity(0.3)),
       ),
       child: Text(
         column.label,
         textAlign: TextAlign.center,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: Color.lerp(accentColor, scheme.onSurface, 0.15),
-          fontWeight: FontWeight.w800,
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: _primaryBlue,
+          height: 1.2,
         ),
       ),
     );
@@ -1756,110 +1838,112 @@ class _PermissionsPageState extends State<PermissionsPage> {
   Widget _buildMatrixToggleCell({
     required bool active,
     required bool enabled,
-    required Color accentColor,
     required VoidCallback? onTap,
   }) {
-    final scheme = Theme.of(context).colorScheme;
-
     return Center(
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 140),
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: active ? accentColor.withOpacity(0.10) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Theme(
-          data: Theme.of(context).copyWith(
-            checkboxTheme: CheckboxThemeData(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(4),
-              ),
-              side: BorderSide(
-                color: enabled
-                    ? accentColor.withOpacity(0.55)
-                    : scheme.outlineVariant.withOpacity(0.32),
-              ),
+      child: Theme(
+        data: ThemeData(
+          checkboxTheme: CheckboxThemeData(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
             ),
-          ),
-          child: Checkbox(
-            value: active,
-            onChanged: enabled ? (_) => onTap?.call() : null,
-            activeColor: accentColor,
-            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+            side: BorderSide(
+              color: enabled
+                  ? _borderColor
+                  : _borderColor.withOpacity(0.4),
+              width: 1.5,
+            ),
+            fillColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return _primaryBlue;
+              }
+              return _white;
+            }),
+            checkColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return _white;
+              }
+              return Colors.transparent;
+            }),
+            visualDensity: const VisualDensity(
+              horizontal: -4,
+              vertical: -4,
+            ),
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
+        ),
+        child: Checkbox(
+          value: active,
+          onChanged: enabled ? (_) => onTap?.call() : null,
         ),
       ),
     );
   }
 
   Widget _buildAdminMessage(int enabledCount, int totalCount) {
-    final scheme = Theme.of(context).colorScheme;
     final currentUser = _selectedUser;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.36)),
-      ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 84,
-                height: 84,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6D28D9).withOpacity(0.10),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.admin_panel_settings_outlined,
-                  size: 42,
-                  color: Color(0xFF6D28D9),
-                ),
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: _lightBlueTint,
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 22),
-              Text(
-                'Perfil con acceso total',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+              child: const Icon(
+                Icons.admin_panel_settings_outlined,
+                size: 36,
+                color: _primaryBlue,
               ),
-              const SizedBox(height: 10),
-              Text(
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Perfil con acceso total',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: _deepNavy,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
                 'Este usuario pertenece al rol administrador. El sistema mantiene todos los permisos habilitados para preservar la operacion completa y la capacidad de soporte.',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: _secondaryText,
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 22),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                alignment: WrapAlignment.center,
-                children: [
-                  _buildHeaderBadge(
-                    icon: Icons.check_circle_outline,
-                    label: '$enabledCount de $totalCount permisos activos',
-                    tone: const Color(0xFF15803D),
-                  ),
-                  _buildHeaderBadge(
-                    icon: Icons.lock_open_outlined,
-                    label: currentUser == null
-                        ? 'Selecciona un usuario'
-                        : 'Edicion deshabilitada para ${currentUser.displayLabel}',
-                    tone: const Color(0xFF6D28D9),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                _buildHeaderBadge(
+                  icon: Icons.check_circle_outline,
+                  label: '$enabledCount de $totalCount permisos activos',
+                  tone: _primaryBlue,
+                ),
+                _buildHeaderBadge(
+                  icon: Icons.lock_open_outlined,
+                  label: currentUser == null
+                      ? 'Selecciona un usuario'
+                      : 'Edicion deshabilitada para ${currentUser.displayLabel}',
+                  tone: _secondaryText,
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -1945,41 +2029,42 @@ class _PermissionsPageState extends State<PermissionsPage> {
 
     switch (riskLevel) {
       case _RiskLevel.low:
-        background = const Color(0xFFDCFCE7);
-        foreground = const Color(0xFF166534);
+        background = const Color(0xFFF1F5F9);
+        foreground = const Color(0xFF475569);
         label = 'Bajo';
         break;
       case _RiskLevel.medium:
-        background = const Color(0xFFFEF3C7);
-        foreground = const Color(0xFFB45309);
+        background = const Color(0xFFFFFBEB);
+        foreground = const Color(0xFF92400E);
         label = 'Medio';
         break;
       case _RiskLevel.high:
-        background = const Color(0xFFFEE2E2);
-        foreground = const Color(0xFFB91C1C);
+        background = const Color(0xFFFFF7ED);
+        foreground = const Color(0xFF9A3412);
         label = 'Alto';
         break;
       case _RiskLevel.critical:
-        background = const Color(0xFFFFE4E6);
-        foreground = const Color(0xFF9F1239);
+        background = const Color(0xFFFEF2F2);
+        foreground = const Color(0xFF991B1B);
         label = 'Critico';
         break;
     }
 
     return Container(
-      constraints: const BoxConstraints(minHeight: 22),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      constraints: const BoxConstraints(minHeight: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: foreground.withOpacity(0.14)),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: foreground.withOpacity(0.12)),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: foreground,
           fontSize: 10,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
+          height: 1.2,
         ),
       ),
     );

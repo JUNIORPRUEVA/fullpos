@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../constants/app_sizes.dart';
@@ -7,11 +6,7 @@ import '../theme/app_status_theme.dart';
 import '../theme/color_utils.dart';
 
 class AppErrorPage extends StatefulWidget {
-  const AppErrorPage({
-    super.key,
-    required this.exception,
-    this.onRetry,
-  });
+  const AppErrorPage({super.key, required this.exception, this.onRetry});
 
   final AppException exception;
   final VoidCallback? onRetry;
@@ -21,8 +16,6 @@ class AppErrorPage extends StatefulWidget {
 }
 
 class _AppErrorPageState extends State<AppErrorPage> {
-  bool _showDetails = false;
-
   @override
   Widget build(BuildContext context) {
     final ex = widget.exception;
@@ -32,7 +25,6 @@ class _AppErrorPageState extends State<AppErrorPage> {
     final cardBg = scheme.surface;
     final cardFg = ColorUtils.ensureReadableColor(scheme.onSurface, cardBg);
     final errorColor = status?.error ?? scheme.error;
-    final linkColor = scheme.primary;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -64,7 +56,7 @@ class _AppErrorPageState extends State<AppErrorPage> {
                         Icon(Icons.error_outline, color: errorColor, size: 52),
                         const SizedBox(height: AppSizes.spaceM),
                         Text(
-                          'Ups… ocurrió un problema',
+                          'No pudimos completar la acción',
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w800,
                             color: cardFg,
@@ -80,69 +72,12 @@ class _AppErrorPageState extends State<AppErrorPage> {
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        if (kDebugMode) ...[
-                          const SizedBox(height: AppSizes.spaceM),
-                          InkWell(
-                            onTap: () =>
-                                setState(() => _showDetails = !_showDetails),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  _showDetails
-                                      ? Icons.expand_less
-                                      : Icons.expand_more,
-                                  size: 18,
-                                  color: linkColor,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _showDetails
-                                      ? 'Ocultar detalles'
-                                      : 'Ver detalles',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: linkColor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (_showDetails) ...[
-                            const SizedBox(height: AppSizes.spaceS),
-                            Container(
-                              width: double.infinity,
-                              padding:
-                                  const EdgeInsets.all(AppSizes.paddingM),
-                              decoration: BoxDecoration(
-                                color: scheme.surfaceContainerHighest,
-                                borderRadius:
-                                    BorderRadius.circular(AppSizes.radiusM),
-                                border: Border.all(
-                                  color: scheme.outlineVariant,
-                                ),
-                              ),
-                              child: SelectableText(
-                                [
-                                  ex.messageDev,
-                                  if (ex.stackTrace != null)
-                                    '\n\n${ex.stackTrace}',
-                                ].join(),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontSize: 12,
-                                  color: scheme.onSurface.withOpacity(0.85),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
                         const SizedBox(height: AppSizes.spaceL),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             TextButton.icon(
-                              onPressed: () =>
-                                  Navigator.of(context).maybePop(),
+                              onPressed: () => Navigator.of(context).maybePop(),
                               icon: const Icon(Icons.arrow_back),
                               label: const Text('Volver'),
                             ),
