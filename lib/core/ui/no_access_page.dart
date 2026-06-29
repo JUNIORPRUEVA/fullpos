@@ -205,6 +205,11 @@ String _fallbackLocation(bool isAdmin, UserPermissions permissions) {
   if (permissions.canViewProducts) return '/products';
   if (permissions.canViewClients) return '/clients';
   if (permissions.canViewReports) return '/reports';
+  if (permissions.canViewInventoryMovements) return '/products/movements';
+  if (permissions.canCountInventory) return '/products/count';
+  if (permissions.canViewLayaways) return '/layaways';
+  if (permissions.canViewSuppliers) return '/suppliers';
+  if (permissions.canRegisterSuppliers) return '/suppliers/new';
   if (permissions.canAdjustStock) return '/purchases';
   if (permissions.canAccessSettings) return '/settings';
   return '/account';

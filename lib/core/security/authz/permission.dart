@@ -156,6 +156,41 @@ class Permissions {
     legacyKey: 'can_adjust_stock',
   );
 
+  static final inventoryMovements = Permission.screen(
+    code: 'inventory.movements.view',
+    title: 'Movimiento de inventario',
+    description: 'Acceso al historial de movimientos de inventario.',
+    legacyKey: 'can_view_inventory_movements',
+  );
+
+  static final inventoryCount = Permission.screen(
+    code: 'inventory.count',
+    title: 'Recuento de inventario',
+    description: 'Acceso a la pantalla de recuento de inventario.',
+    legacyKey: 'can_count_inventory',
+  );
+
+  static final layawaysView = Permission.screen(
+    code: 'ventas.apartados.ver',
+    title: 'Apartados',
+    description: 'Acceso a la pantalla de apartados.',
+    legacyKey: 'can_view_layaways',
+  );
+
+  static final suppliersView = Permission.screen(
+    code: 'suplidores.ver',
+    title: 'Ver suplidores',
+    description: 'Acceso a la pantalla de consulta de suplidores.',
+    legacyKey: 'can_view_suppliers',
+  );
+
+  static final suppliersRegister = Permission.screen(
+    code: 'suplidores.registrar',
+    title: 'Registrar suplidores',
+    description: 'Acceso a la pantalla de registro de suplidores.',
+    legacyKey: 'can_register_suppliers',
+  );
+
   // Acciones críticas (AppActions)
   static final processReturn = Permission.action(AppActions.processReturn);
 }

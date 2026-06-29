@@ -40,11 +40,18 @@ class ModuleAccess {
     if (path == '/products/stock-adjustment') {
       return permissions.canAdjustStock;
     }
+    if (path == '/products/movements') {
+      return permissions.canViewInventoryMovements;
+    }
+    if (path == '/products/count') return permissions.canCountInventory;
     if (path.startsWith('/products/add-stock')) {
       return permissions.canAdjustStock;
     }
 
     if (path == '/clients') return permissions.canViewClients;
+    if (path == '/layaways') return permissions.canViewLayaways;
+    if (path == '/suppliers') return permissions.canViewSuppliers;
+    if (path == '/suppliers/new') return permissions.canRegisterSuppliers;
 
     if (path.startsWith('/purchases')) return permissions.canAdjustStock;
 
@@ -74,9 +81,16 @@ class ModuleAccess {
     if (path == '/sales') return 'Ventas';
     if (path == '/factura') return 'Factura';
     if (path == '/quotes' || path == '/quotes-list') return 'Cotizaciones';
+    if (path == '/layaways') return 'Apartados';
     if (path == '/credits' || path == '/credits-list') return 'Creditos';
+    if (path == '/products/movements' || path == '/products/history') {
+      return 'Movimiento de inventario';
+    }
+    if (path == '/products/count') return 'Recuento de inventario';
     if (path.startsWith('/products')) return 'Catalogo';
     if (path == '/clients') return 'Clientes';
+    if (path == '/suppliers') return 'Ver suplidores';
+    if (path == '/suppliers/new') return 'Registrar suplidores';
     if (path.startsWith('/purchases')) return 'Compras';
     if (path.startsWith('/cash/expenses')) return 'Gastos';
     if (path.startsWith('/cash')) return 'Caja';

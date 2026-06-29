@@ -248,6 +248,46 @@ class _PermissionsPageState extends State<PermissionsPage> {
         write: (permissions, value) =>
             permissions.copyWith(canAdjustStock: value),
       ),
+      _PermissionDef(
+        id: 'inventario.movimientos',
+        title: 'Movimiento de inventario',
+        description: 'Permite consultar el historial de movimientos de stock.',
+        riskLevel: _RiskLevel.medium,
+        column: _PermissionColumn.view,
+        read: (permissions) => permissions.canViewInventoryMovements,
+        write: (permissions, value) =>
+            permissions.copyWith(canViewInventoryMovements: value),
+      ),
+      _PermissionDef(
+        id: 'inventario.recuento',
+        title: 'Recuento de inventario',
+        description: 'Permite entrar a la pantalla de conteo de inventario.',
+        riskLevel: _RiskLevel.high,
+        column: _PermissionColumn.operate,
+        read: (permissions) => permissions.canCountInventory,
+        write: (permissions, value) =>
+            permissions.copyWith(canCountInventory: value),
+      ),
+      _PermissionDef(
+        id: 'suplidores.ver',
+        title: 'Ver suplidores',
+        description: 'Permite consultar suplidores registrados.',
+        riskLevel: _RiskLevel.medium,
+        column: _PermissionColumn.view,
+        read: (permissions) => permissions.canViewSuppliers,
+        write: (permissions, value) =>
+            permissions.copyWith(canViewSuppliers: value),
+      ),
+      _PermissionDef(
+        id: 'suplidores.registrar',
+        title: 'Registrar suplidores',
+        description: 'Permite crear nuevos suplidores desde compras.',
+        riskLevel: _RiskLevel.high,
+        column: _PermissionColumn.create,
+        read: (permissions) => permissions.canRegisterSuppliers,
+        write: (permissions, value) =>
+            permissions.copyWith(canRegisterSuppliers: value),
+      ),
     ],
     _UserPermissionCategory.clients: [
       _PermissionDef(
@@ -409,6 +449,16 @@ class _PermissionsPageState extends State<PermissionsPage> {
         read: (permissions) => permissions.canManageCredits,
         write: (permissions, value) =>
             permissions.copyWith(canManageCredits: value),
+      ),
+      _PermissionDef(
+        id: 'apartados.ver',
+        title: 'Ver apartados',
+        description: 'Permite entrar a la pantalla de apartados.',
+        riskLevel: _RiskLevel.high,
+        column: _PermissionColumn.view,
+        read: (permissions) => permissions.canViewLayaways,
+        write: (permissions, value) =>
+            permissions.copyWith(canViewLayaways: value),
       ),
     ],
     _UserPermissionCategory.users: [

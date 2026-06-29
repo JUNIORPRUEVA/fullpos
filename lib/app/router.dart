@@ -382,15 +382,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/products/movements',
-            builder: (context, state) => const InventoryMovementsPage(),
+            builder: (context, state) => BlankPermissionGate(
+              permission: Permissions.inventoryMovements,
+              autoPromptOnce: true,
+              reason: 'Acceso a movimiento de inventario',
+              resourceType: 'screen',
+              resourceId: 'products.movements',
+              child: const InventoryMovementsPage(),
+            ),
           ),
           GoRoute(
             path: '/products/count',
-            builder: (context, state) => const InventoryCountPage(),
+            builder: (context, state) => BlankPermissionGate(
+              permission: Permissions.inventoryCount,
+              autoPromptOnce: true,
+              reason: 'Acceso a recuento de inventario',
+              resourceType: 'screen',
+              resourceId: 'products.count',
+              child: const InventoryCountPage(),
+            ),
           ),
           GoRoute(
             path: '/products/history',
-            builder: (context, state) => const InventoryMovementsPage(),
+            builder: (context, state) => BlankPermissionGate(
+              permission: Permissions.inventoryMovements,
+              autoPromptOnce: true,
+              reason: 'Acceso a movimiento de inventario',
+              resourceType: 'screen',
+              resourceId: 'products.history',
+              child: const InventoryMovementsPage(),
+            ),
           ),
           GoRoute(
             path: '/clients',
@@ -536,7 +557,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/layaways',
             builder: (context, state) => PermissionGate(
-              permission: Permissions.creditsView,
+              permission: Permissions.layawaysView,
               autoPromptOnce: false,
               reason: 'Acceso a apartados',
               child: const ClientLayawaysPage(),
@@ -570,11 +591,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/suppliers',
-            builder: (context, state) => const SuppliersListPage(),
+            builder: (context, state) => BlankPermissionGate(
+              permission: Permissions.suppliersView,
+              autoPromptOnce: true,
+              reason: 'Acceso a ver suplidores',
+              resourceType: 'screen',
+              resourceId: 'suppliers',
+              child: const SuppliersListPage(),
+            ),
           ),
           GoRoute(
             path: '/suppliers/new',
-            builder: (context, state) => const SupplierRegistrationPage(),
+            builder: (context, state) => BlankPermissionGate(
+              permission: Permissions.suppliersRegister,
+              autoPromptOnce: true,
+              reason: 'Acceso a registrar suplidores',
+              resourceType: 'screen',
+              resourceId: 'suppliers.new',
+              child: const SupplierRegistrationPage(),
+            ),
           ),
           // Alias legacy: mantener el listado original accesible.
           GoRoute(

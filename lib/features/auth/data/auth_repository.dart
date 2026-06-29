@@ -161,6 +161,14 @@ class AuthRepository {
         return permissions.canDeleteProducts;
       case 'can_adjust_stock':
         return permissions.canAdjustStock;
+      case 'can_view_inventory_movements':
+        return permissions.canViewInventoryMovements;
+      case 'can_count_inventory':
+        return permissions.canCountInventory;
+      case 'can_view_suppliers':
+        return permissions.canViewSuppliers;
+      case 'can_register_suppliers':
+        return permissions.canRegisterSuppliers;
       case 'can_view_purchase_price':
         return permissions.canViewPurchasePrice;
       case 'can_view_profit':
@@ -205,6 +213,8 @@ class AuthRepository {
         return permissions.canViewCredits;
       case 'can_manage_credits':
         return permissions.canManageCredits;
+      case 'can_view_layaways':
+        return permissions.canViewLayaways;
       case 'can_manage_users':
         return permissions.canManageUsers;
       case 'can_access_settings':

@@ -6,9 +6,7 @@ class RoutePermissions {
 
   static Permission? forPath(String path) {
     if (path == '/sales') return Permissions.salesAccess;
-    if (path == '/products' || path == '/products/history') {
-      return Permissions.productsView;
-    }
+    if (path == '/products') return Permissions.productsView;
     if (path == '/clients') return Permissions.clientsView;
     if (path == '/reports') return Permissions.reportsView;
     if (path == '/settings') return Permissions.settingsAccess;
@@ -25,6 +23,13 @@ class RoutePermissions {
     if (path == '/products/stock-adjustment') {
       return Permissions.stockAdjustment;
     }
+    if (path == '/products/movements' || path == '/products/history') {
+      return Permissions.inventoryMovements;
+    }
+    if (path == '/products/count') return Permissions.inventoryCount;
+    if (path == '/layaways') return Permissions.layawaysView;
+    if (path == '/suppliers') return Permissions.suppliersView;
+    if (path == '/suppliers/new') return Permissions.suppliersRegister;
     if (path.startsWith('/purchases')) return Permissions.purchasesAccess;
 
     return null;

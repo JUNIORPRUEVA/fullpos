@@ -120,6 +120,10 @@ class UserPermissions {
   final bool canEditProducts;
   final bool canDeleteProducts;
   final bool canAdjustStock;
+  final bool canViewInventoryMovements;
+  final bool canCountInventory;
+  final bool canViewSuppliers;
+  final bool canRegisterSuppliers;
 
   // Costos / Ganancias (finanzas de productos)
   final bool canViewPurchasePrice;
@@ -156,6 +160,7 @@ class UserPermissions {
   // Créditos
   final bool canViewCredits;
   final bool canManageCredits;
+  final bool canViewLayaways;
 
   // Usuarios (solo admin normalmente)
   final bool canManageUsers;
@@ -172,6 +177,10 @@ class UserPermissions {
     this.canEditProducts = false,
     this.canDeleteProducts = false,
     this.canAdjustStock = false,
+    this.canViewInventoryMovements = false,
+    this.canCountInventory = false,
+    this.canViewSuppliers = false,
+    this.canRegisterSuppliers = false,
     this.canViewPurchasePrice = false,
     this.canViewProfit = false,
     this.canViewClients = false,
@@ -194,6 +203,7 @@ class UserPermissions {
     this.canProcessReturns = false,
     this.canViewCredits = false,
     this.canManageCredits = false,
+    this.canViewLayaways = false,
     this.canManageUsers = false,
     this.canAccessSettings = false,
   });
@@ -208,6 +218,10 @@ class UserPermissions {
     canEditProducts: false,
     canDeleteProducts: false,
     canAdjustStock: false,
+    canViewInventoryMovements: false,
+    canCountInventory: false,
+    canViewSuppliers: false,
+    canRegisterSuppliers: false,
     canViewPurchasePrice: false,
     canViewProfit: false,
     canViewClients: false,
@@ -230,6 +244,7 @@ class UserPermissions {
     canProcessReturns: false,
     canViewCredits: false,
     canManageCredits: false,
+    canViewLayaways: false,
     canManageUsers: false,
     canAccessSettings: false,
   );
@@ -244,6 +259,10 @@ class UserPermissions {
     canEditProducts: true,
     canDeleteProducts: true,
     canAdjustStock: true,
+    canViewInventoryMovements: true,
+    canCountInventory: true,
+    canViewSuppliers: true,
+    canRegisterSuppliers: true,
     canViewPurchasePrice: true,
     canViewProfit: true,
     canViewClients: true,
@@ -266,6 +285,7 @@ class UserPermissions {
     canProcessReturns: true,
     canViewCredits: true,
     canManageCredits: true,
+    canViewLayaways: true,
     canManageUsers: true,
     canAccessSettings: true,
   );
@@ -280,6 +300,10 @@ class UserPermissions {
     canEditProducts: false,
     canDeleteProducts: false,
     canAdjustStock: false,
+    canViewInventoryMovements: true,
+    canCountInventory: false,
+    canViewSuppliers: false,
+    canRegisterSuppliers: false,
     canViewPurchasePrice: false,
     canViewProfit: false,
     canViewClients: true,
@@ -302,6 +326,7 @@ class UserPermissions {
     canProcessReturns: false,
     canViewCredits: true,
     canManageCredits: false,
+    canViewLayaways: true,
     canManageUsers: false,
     canAccessSettings: false,
   );
@@ -315,6 +340,10 @@ class UserPermissions {
     'can_edit_products': canEditProducts,
     'can_delete_products': canDeleteProducts,
     'can_adjust_stock': canAdjustStock,
+    'can_view_inventory_movements': canViewInventoryMovements,
+    'can_count_inventory': canCountInventory,
+    'can_view_suppliers': canViewSuppliers,
+    'can_register_suppliers': canRegisterSuppliers,
     'can_view_purchase_price': canViewPurchasePrice,
     'can_view_profit': canViewProfit,
     'can_view_clients': canViewClients,
@@ -337,6 +366,7 @@ class UserPermissions {
     'can_process_returns': canProcessReturns,
     'can_view_credits': canViewCredits,
     'can_manage_credits': canManageCredits,
+    'can_view_layaways': canViewLayaways,
     'can_manage_users': canManageUsers,
     'can_access_settings': canAccessSettings,
   };
@@ -360,6 +390,22 @@ class UserPermissions {
           map['can_delete_products'] as bool? ?? defaults.canDeleteProducts,
       canAdjustStock:
           map['can_adjust_stock'] as bool? ?? defaults.canAdjustStock,
+      canViewInventoryMovements:
+          map['can_view_inventory_movements'] as bool? ??
+          map['can_adjust_stock'] as bool? ??
+          defaults.canViewInventoryMovements,
+      canCountInventory:
+          map['can_count_inventory'] as bool? ??
+          map['can_adjust_stock'] as bool? ??
+          defaults.canCountInventory,
+      canViewSuppliers:
+          map['can_view_suppliers'] as bool? ??
+          map['can_edit_products'] as bool? ??
+          defaults.canViewSuppliers,
+      canRegisterSuppliers:
+          map['can_register_suppliers'] as bool? ??
+          map['can_edit_products'] as bool? ??
+          defaults.canRegisterSuppliers,
       canViewPurchasePrice:
           map['can_view_purchase_price'] as bool? ??
           defaults.canViewPurchasePrice,
@@ -412,6 +458,10 @@ class UserPermissions {
           map['can_view_credits'] as bool? ?? defaults.canViewCredits,
       canManageCredits:
           map['can_manage_credits'] as bool? ?? defaults.canManageCredits,
+      canViewLayaways:
+          map['can_view_layaways'] as bool? ??
+          map['can_view_credits'] as bool? ??
+          defaults.canViewLayaways,
       canManageUsers:
           map['can_manage_users'] as bool? ?? defaults.canManageUsers,
       canAccessSettings:
@@ -428,6 +478,10 @@ class UserPermissions {
     bool? canEditProducts,
     bool? canDeleteProducts,
     bool? canAdjustStock,
+    bool? canViewInventoryMovements,
+    bool? canCountInventory,
+    bool? canViewSuppliers,
+    bool? canRegisterSuppliers,
     bool? canViewPurchasePrice,
     bool? canViewProfit,
     bool? canViewClients,
@@ -450,6 +504,7 @@ class UserPermissions {
     bool? canProcessReturns,
     bool? canViewCredits,
     bool? canManageCredits,
+    bool? canViewLayaways,
     bool? canManageUsers,
     bool? canAccessSettings,
   }) => UserPermissions(
@@ -461,6 +516,11 @@ class UserPermissions {
     canEditProducts: canEditProducts ?? this.canEditProducts,
     canDeleteProducts: canDeleteProducts ?? this.canDeleteProducts,
     canAdjustStock: canAdjustStock ?? this.canAdjustStock,
+    canViewInventoryMovements:
+        canViewInventoryMovements ?? this.canViewInventoryMovements,
+    canCountInventory: canCountInventory ?? this.canCountInventory,
+    canViewSuppliers: canViewSuppliers ?? this.canViewSuppliers,
+    canRegisterSuppliers: canRegisterSuppliers ?? this.canRegisterSuppliers,
     canViewPurchasePrice: canViewPurchasePrice ?? this.canViewPurchasePrice,
     canViewProfit: canViewProfit ?? this.canViewProfit,
     canViewClients: canViewClients ?? this.canViewClients,
@@ -484,6 +544,7 @@ class UserPermissions {
     canProcessReturns: canProcessReturns ?? this.canProcessReturns,
     canViewCredits: canViewCredits ?? this.canViewCredits,
     canManageCredits: canManageCredits ?? this.canManageCredits,
+    canViewLayaways: canViewLayaways ?? this.canViewLayaways,
     canManageUsers: canManageUsers ?? this.canManageUsers,
     canAccessSettings: canAccessSettings ?? this.canAccessSettings,
   );

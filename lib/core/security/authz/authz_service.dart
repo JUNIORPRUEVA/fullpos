@@ -313,6 +313,14 @@ class AuthzService {
         return perms.canDeleteProducts;
       case 'can_adjust_stock':
         return perms.canAdjustStock;
+      case 'can_view_inventory_movements':
+        return perms.canViewInventoryMovements;
+      case 'can_count_inventory':
+        return perms.canCountInventory;
+      case 'can_view_suppliers':
+        return perms.canViewSuppliers;
+      case 'can_register_suppliers':
+        return perms.canRegisterSuppliers;
       case 'can_view_purchase_price':
         return perms.canViewPurchasePrice;
       case 'can_view_profit':
@@ -357,6 +365,8 @@ class AuthzService {
         return perms.canViewCredits;
       case 'can_manage_credits':
         return perms.canManageCredits;
+      case 'can_view_layaways':
+        return perms.canViewLayaways;
       case 'can_manage_users':
         return perms.canManageUsers;
       case 'can_access_settings':
