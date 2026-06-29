@@ -56,6 +56,21 @@ void main() {
     expect(policy.decide(AppVersion.parse('1.1.0+1')), UpdateDecision.none);
   });
 
+  test('accepts legacy version and buildNumber aliases', () {
+    final json = policyJson()
+      ..remove('latestVersion')
+      ..remove('latestBuild')
+      ..['version'] = '1.0.2'
+      ..['buildNumber'] = 6;
+
+    final policy = AppUpdatePolicy.fromJson(json);
+
+    expect(policy.latest.semantic, '1.0.2');
+    expect(policy.latest.build, 6);
+    expect(policy.toJson()['latestVersion'], '1.0.2');
+    expect(policy.toJson()['latestBuild'], 6);
+  });
+
   test('rejects malformed policy and unsafe URLs', () {
     expect(
       () => AppUpdatePolicy.fromJson(

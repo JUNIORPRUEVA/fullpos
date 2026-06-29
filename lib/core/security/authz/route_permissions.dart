@@ -12,7 +12,9 @@ class RoutePermissions {
     if (path == '/clients') return Permissions.clientsView;
     if (path == '/reports') return Permissions.reportsView;
     if (path == '/settings') return Permissions.settingsAccess;
-    if (path.startsWith('/settings/')) return Permissions.settingsAccess;
+    if (path.startsWith('/settings/') && path != '/settings/updates') {
+      return Permissions.settingsAccess;
+    }
     if (path == '/factura') return Permissions.salesHistoryView;
     if (path == '/quotes' || path == '/quotes-list') {
       return Permissions.quotesView;

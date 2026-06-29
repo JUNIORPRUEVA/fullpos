@@ -6,7 +6,9 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:fullpos/core/identity/license_reactivation_marker.dart';
 import 'package:fullpos/features/license/license_config.dart';
+import 'package:fullpos/features/license/data/license_models.dart';
 import 'package:fullpos/features/license/services/license_api.dart';
 import 'package:fullpos/features/license/services/license_controller.dart';
 import 'package:fullpos/features/license/services/license_storage.dart';
@@ -77,9 +79,7 @@ void main() {
   });
 
   tearDown(() async {
-    if (await tempDir.exists()) {
-      await tempDir.delete(recursive: true);
-    }
+    await _deleteTempDir(tempDir);
   });
 
   test(
@@ -105,4 +105,62 @@ void main() {
       expect(info?.isActive, isTrue);
     },
   );
+
+  test(
+    'reactivación requerida bloquea cache activo y se limpia al activar',
+    () async {
+      final storage = LicenseStorage();
+      await storage.setLicenseKey('LIC-REMOTE-123');
+      await storage.setDeviceId('terminal-previo');
+      await storage.setLastInfo(
+        LicenseInfo(
+          backendBaseUrl: kLicenseBackendBaseUrl,
+          licenseKey: 'LIC-REMOTE-123',
+          deviceId: 'terminal-previo',
+          projectCode: kFullposProjectCode,
+          businessId: 'biz_remote_123',
+          ok: true,
+          code: 'OK',
+          estado: 'ACTIVA',
+          fechaFin: DateTime.now().toUtc().add(const Duration(days: 30)),
+        ),
+      );
+      await storage.markReactivationRequired(
+        reason: 'test_missing_terminal',
+        temporaryTerminalId: 'terminal-temp',
+      );
+
+      final controller = LicenseController(
+        api: _FakeLicenseApi(),
+        storage: storage,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.load();
+
+      expect(controller.state.info?.isActive, isFalse);
+      expect(controller.state.info?.code, 'REACTIVATION_REQUIRED');
+      expect(await const LicenseReactivationMarker().isRequired(), isTrue);
+
+      await controller.activate();
+
+      expect(controller.state.info?.isActive, isTrue);
+      expect(await const LicenseReactivationMarker().isRequired(), isFalse);
+    },
+  );
+}
+
+Future<void> _deleteTempDir(Directory dir) async {
+  for (var attempt = 0; attempt < 5; attempt++) {
+    if (!await dir.exists()) return;
+    try {
+      await dir.delete(recursive: true);
+      return;
+    } on FileSystemException {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
+  if (await dir.exists()) {
+    await dir.delete(recursive: true);
+  }
 }

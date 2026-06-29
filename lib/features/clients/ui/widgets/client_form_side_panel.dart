@@ -154,7 +154,8 @@ class _ClientFormSidePanelState extends State<ClientFormSidePanel> {
       final rawPhone = _phoneController.text.trim();
       final normalizedPhone = rawPhone.isEmpty
           ? null
-          : PhoneValidator.normalizeRDPhone(rawPhone);
+          : PhoneValidator.normalizePhone(rawPhone);
+
       final rawTaxId = _taxIdController.text.trim();
       final normalizedTaxDigits = rawTaxId.replaceAll(RegExp(r'\D'), '');
       final rnc = normalizedTaxDigits.length == 9
@@ -310,13 +311,14 @@ class _ClientFormSidePanelState extends State<ClientFormSidePanel> {
                                     return 'Indica teléfono o RNC/Cédula';
                                   }
                                   if (phone.isNotEmpty &&
-                                      PhoneValidator.normalizeRDPhone(phone) ==
+                                      PhoneValidator.normalizePhone(phone) ==
                                           null) {
                                     return 'Teléfono inválido';
                                   }
                                   return null;
                                 },
                               ),
+
                               const SizedBox(height: 12),
                               TextFormField(
                                 controller: _taxIdController,

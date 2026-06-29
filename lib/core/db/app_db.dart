@@ -1,14 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../backup/backup_zip.dart';
 import '../config/app_config.dart';
 import '../database/migrations/migration_safety.dart';
+import '../identity/identity_recovery_bundle.dart';
+import '../recovery/app_recovery.dart';
 import '../utils/color_utils.dart';
 import '../../features/fiscal_receipts/data/fiscal_receipt_repository.dart';
 import 'db_init.dart';
@@ -43,7 +48,7 @@ class AppDb {
   static const String demoProductCodePrefix = 'DEMO-';
 
   // Bump para forzar upgrade en PCs con DB creada sin columnas nuevas.
-  static const int _dbVersion = 35;
+  static const int _dbVersion = 36;
 
   /// FULLPOS DB HARDENING: exponer versión del esquema.
   static int get schemaVersion => _dbVersion;
@@ -116,8 +121,26 @@ class AppDb {
     }
 
     final dbFile = File(path);
+    final hadExistingDb = await dbFile.exists();
+    final priorInstallation = await hasPriorInstallationEvidence(
+      primaryPath: primaryPath,
+      resolvedPath: path,
+    );
+    final allowDemoCatalog = !priorInstallation && !hadExistingDb;
     Directory? preMigrationBackupDir;
     int? existingUserVersion;
+
+    if (priorInstallation && !hadExistingDb) {
+      await AppRecoveryController.instance.requireDatabaseRecovery(
+        'main_database_missing_prior_installation',
+        details:
+            'Existe evidencia de instalación previa, pero falta $dbFileName.',
+        dbPath: path,
+      );
+      throw const AppRecoveryRequiredException(
+        'Falta la base principal de una instalación previa',
+      );
+    }
 
     if (await dbFile.exists()) {
       Database? ro;
@@ -152,7 +175,7 @@ class AppDb {
     }
 
     try {
-      return await _openMainDatabase(path);
+      return await _openMainDatabase(path, allowDemoCatalog: allowDemoCatalog);
     } catch (error) {
       if (_isReadOnlyError(error) && path == primaryPath) {
         final supportDir = await getApplicationSupportDirectory();
@@ -162,7 +185,10 @@ class AppDb {
           sourcePath: primaryPath,
           targetPath: fallbackPath,
         );
-        return await _openMainDatabase(fallbackPath);
+        return await _openMainDatabase(
+          fallbackPath,
+          allowDemoCatalog: allowDemoCatalog,
+        );
       }
 
       // 1) Si tenemos backup pre-migración, intentar restaurar y REINTENTAR abrir.
@@ -177,6 +203,7 @@ class AppDb {
             path,
             singleInstance: false,
             timeout: const Duration(seconds: 5),
+            allowDemoCatalog: false,
           );
         } catch (_) {
           // Si falla, seguimos con otras estrategias.
@@ -189,6 +216,19 @@ class AppDb {
           await close();
         } catch (_) {}
 
+        final repaired = await _tryRepairCorruptionInPlace(
+          dbPath: path,
+          reason: 'open_corruption',
+        );
+        if (repaired) {
+          return await _openMainDatabase(
+            path,
+            singleInstance: false,
+            timeout: const Duration(seconds: 5),
+            allowDemoCatalog: false,
+          );
+        }
+
         // 2a) Intentar restaurar desde el backup ZIP más reciente.
         final restored = await _tryRestoreFromLatestBackupZip(dbPath: path);
         if (restored) {
@@ -197,13 +237,24 @@ class AppDb {
               path,
               singleInstance: false,
               timeout: const Duration(seconds: 5),
+              allowDemoCatalog: false,
             );
           } catch (_) {
             // Si aún falla, caer a cuarentena.
           }
         }
 
-        // 2b) Si no hay backup, poner DB en cuarentena y recrear una nueva.
+        if (priorInstallation || hadExistingDb) {
+          await AppRecoveryController.instance.requireDatabaseRecovery(
+            'db_open_corruption_unrepaired',
+            details: error.toString(),
+          );
+          throw const AppRecoveryRequiredException(
+            'DB previa requiere recuperacion controlada',
+          );
+        }
+
+        // 2b) Solo en instalación nueva real: poner DB en cuarentena y recrear.
         final quarantined = await _quarantineDbFiles(dbPath: path);
         if (quarantined) {
           try {
@@ -211,6 +262,7 @@ class AppDb {
               path,
               singleInstance: false,
               timeout: const Duration(seconds: 5),
+              allowDemoCatalog: allowDemoCatalog,
             );
           } catch (_) {
             // Si vuelve a fallar, dejamos que propague.
@@ -234,22 +286,197 @@ class AppDb {
     String path, {
     bool singleInstance = true,
     Duration? timeout,
+    required bool allowDemoCatalog,
   }) async {
     final future = openDatabase(
       path,
       version: _dbVersion,
       singleInstance: singleInstance,
       onConfigure: _onConfigure,
-      onCreate: _onCreate,
+      onCreate: (db, version) async {
+        await db.transaction((txn) async {
+          await _createFullSchema(txn);
+          if (allowDemoCatalog) {
+            await _syncDemoCatalog(txn);
+          }
+        });
+      },
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
         // Defensa: algunas instalaciones pueden tener la versión actual
         // pero carecer de columnas por una migración fallida/interrumpida.
         await _ensureSchemaIntegrity(db);
-        await _syncDemoCatalog(db);
+        if (allowDemoCatalog) {
+          await _syncDemoCatalog(db);
+        }
       },
     );
     return timeout == null ? future : future.timeout(timeout);
+  }
+
+  static Future<bool> hasPriorInstallationEvidence({
+    String? primaryPath,
+    String? resolvedPath,
+  }) async {
+    final docsDir = await getApplicationDocumentsDirectory();
+    final supportDir = await getApplicationSupportDirectory();
+    final paths = <String>{
+      primaryPath ?? join(docsDir.path, dbFileName),
+      resolvedPath ?? join(docsDir.path, dbFileName),
+      join(supportDir.path, dbFileName),
+    };
+
+    for (final path in paths) {
+      if (await File(path).exists()) return true;
+      if (await File('$path-wal').exists()) return true;
+      if (await File('$path-shm').exists()) return true;
+    }
+
+    final backupsDir = Directory(join(docsDir.path, 'FULLPOS_BACKUPS'));
+    if (await backupsDir.exists()) return true;
+
+    if (await IdentityRecoveryBundle.instance.hasPriorInstallationEvidence()) {
+      return true;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in const [
+        IdentityRecoveryBundle.businessIdKey,
+        IdentityRecoveryBundle.terminalIdKey,
+        IdentityRecoveryBundle.licenseKeyKey,
+        IdentityRecoveryBundle.licenseDeviceIdKey,
+        IdentityRecoveryBundle.licenseLastInfoKey,
+      ]) {
+        final value = (prefs.getString(key) ?? '').trim();
+        if (value.isNotEmpty) return true;
+      }
+    } catch (_) {}
+
+    for (final file
+        in await IdentityRecoveryBundle.instance
+            .sharedPreferencesCandidateFiles()) {
+      if (await file.exists()) return true;
+    }
+
+    return false;
+  }
+
+  static Future<bool> _tryRepairCorruptionInPlace({
+    required String dbPath,
+    required String reason,
+  }) async {
+    await _createSafetyCopy(dbPath: dbPath, reason: reason);
+    final quick = await _runIntegrityPragma(dbPath, 'quick_check');
+    if (quick == 'ok') return true;
+    final integrity = await _runIntegrityPragma(dbPath, 'integrity_check');
+    if (integrity == 'ok') return true;
+    final shouldReindex =
+        _looksLikeIndexDamage(quick) ||
+        _looksLikeIndexDamage(integrity) ||
+        _isCorruptionText(quick) ||
+        _isCorruptionText(integrity);
+    if (!shouldReindex) return false;
+    final reindexed = await _tryReindex(dbPath);
+    if (!reindexed) return false;
+    return await _runIntegrityPragma(dbPath, 'integrity_check') == 'ok';
+  }
+
+  static Future<void> _createSafetyCopy({
+    required String dbPath,
+    required String reason,
+  }) async {
+    final source = File(dbPath);
+    if (!await source.exists()) return;
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final dir = Directory(
+        join(docsDir.path, 'FULLPOS_BACKUPS', 'pre_repair'),
+      );
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final backupPath = join(dir.path, '${dbFileName}_${reason}_$stamp');
+      final beforeHash = await _sha256File(source);
+      final backup = await source.copy(backupPath);
+      final backupHash = await _sha256File(backup);
+      await File('$backupPath.sha256.json').writeAsString(
+        jsonEncode({
+          'dbPath': dbPath,
+          'reason': reason,
+          'beforeSha256': beforeHash,
+          'backupSha256': backupHash,
+          'createdAt': DateTime.now().toUtc().toIso8601String(),
+        }),
+        flush: true,
+      );
+      final wal = File('$dbPath-wal');
+      if (await wal.exists()) {
+        await wal.copy(join(dir.path, '${dbFileName}_${reason}_$stamp-wal'));
+      }
+      final shm = File('$dbPath-shm');
+      if (await shm.exists()) {
+        await shm.copy(join(dir.path, '${dbFileName}_${reason}_$stamp-shm'));
+      }
+    } catch (_) {}
+  }
+
+  static Future<String> _runIntegrityPragma(
+    String dbPath,
+    String pragma,
+  ) async {
+    Database? db;
+    try {
+      db = await openDatabase(
+        dbPath,
+        readOnly: false,
+        singleInstance: false,
+      ).timeout(const Duration(seconds: 5));
+      final rows = await db
+          .rawQuery('PRAGMA $pragma;')
+          .timeout(const Duration(seconds: 8));
+      if (rows.isEmpty || rows.first.values.isEmpty) return 'missing';
+      return rows.first.values.first.toString().trim().toLowerCase();
+    } catch (e) {
+      return e.toString().toLowerCase();
+    } finally {
+      try {
+        await db?.close();
+      } catch (_) {}
+    }
+  }
+
+  static Future<bool> _tryReindex(String dbPath) async {
+    Database? db;
+    try {
+      db = await openDatabase(
+        dbPath,
+        readOnly: false,
+        singleInstance: false,
+      ).timeout(const Duration(seconds: 5));
+      await db.execute('REINDEX;').timeout(const Duration(seconds: 20));
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      try {
+        await db?.close();
+      } catch (_) {}
+    }
+  }
+
+  static bool _looksLikeIndexDamage(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('index') ||
+        lower.contains('rowid') ||
+        lower.contains('missing from index') ||
+        lower.contains('wrong # of entries');
+  }
+
+  static bool _isCorruptionText(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('malformed') ||
+        lower.contains('not a database') ||
+        lower.contains('database disk image');
   }
 
   static Future<bool> _tryRestoreFromLatestBackupZip({
@@ -2211,6 +2438,19 @@ class AppDb {
         'TEXT',
       );
     }
+
+    if (oldVersion < 36) {
+      // Migración v36: Agregar columna is_featured a la tabla products.
+      // Esta columna faltaba en todas las migraciones anteriores y causaba
+      // SqliteFfiException("no such column: is_featured") al guardar productos
+      // en clientes con bases de datos antiguas.
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'is_featured',
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   static Future<void> _migratePurchaseOrderItemsToSnapshots(
@@ -2681,6 +2921,7 @@ class AppDb {
         updated_at_ms INTEGER NOT NULL
       )
     ''');
+    await ensureIdentitySchema(db);
 
     // Clientes
     await db.execute('''
@@ -2777,6 +3018,7 @@ class AppDb {
         placeholder_type TEXT NOT NULL DEFAULT 'image',
         category_id INTEGER,
         supplier_id INTEGER,
+        is_featured INTEGER NOT NULL DEFAULT 0,
         purchase_price REAL NOT NULL DEFAULT 0.0,
         sale_price REAL NOT NULL DEFAULT 0.0,
         stock REAL NOT NULL DEFAULT 0.0,
@@ -4420,7 +4662,41 @@ class AppDb {
   static Future<void> ensureSchema(DatabaseExecutor db) =>
       _ensureSchemaIntegrity(db);
 
+  static Future<void> ensureIdentitySchema(DatabaseExecutor db) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS app_identity (
+        id INTEGER PRIMARY KEY CHECK(id = 1),
+        terminal_id TEXT NULL,
+        business_id TEXT NULL,
+        license_key TEXT NULL,
+        license_device_id TEXT NULL,
+        install_id TEXT NULL,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS app_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NULL,
+        updated_at_ms INTEGER NOT NULL
+      )
+    ''');
+    await db.insert('app_identity', {
+      'id': 1,
+      'created_at_ms': now,
+      'updated_at_ms': now,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  static Future<String> _sha256File(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
+  }
+
   static Future<void> _ensureSchemaIntegrity(DatabaseExecutor db) async {
+    await ensureIdentitySchema(db);
     await _ensureSecurityTables(db);
     await _ensureBackupTables(db);
     await _ensureElectronicInvoicingTables(db);
@@ -5298,6 +5574,12 @@ class AppDb {
         DbTables.products,
         'placeholder_type',
         "TEXT NOT NULL DEFAULT 'image'",
+      );
+      await _addColumnIfMissing(
+        db,
+        DbTables.products,
+        'is_featured',
+        'INTEGER NOT NULL DEFAULT 0',
       );
       await _addColumnIfMissing(
         db,

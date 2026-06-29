@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../../features/settings/data/user_model.dart';
 import '../../../features/settings/data/users_repository.dart';
+import '../../identity/identity_recovery_bundle.dart';
+import '../../recovery/app_recovery.dart';
 import '../../session/session_manager.dart';
 import '../permission_service.dart';
 import '../../security/security_config.dart';
@@ -62,9 +64,18 @@ class AuthzService {
     if (userId == null) return null;
     final role = await SessionManager.role() ?? PermissionService.roleCashier;
     final companyId = await SessionManager.companyId() ?? 1;
-    final terminalId =
-        await SessionManager.terminalId() ??
-        await SessionManager.ensureTerminalId();
+    String terminalId;
+    try {
+      terminalId =
+          await SessionManager.terminalId() ??
+          await SessionManager.ensureTerminalId();
+    } on IdentityRecoveryException catch (e) {
+      await AppRecoveryController.instance.requireIdentityRecovery(
+        'authz_terminal_id_recovery_required',
+        details: e.message,
+      );
+      return null;
+    }
 
     final isAdmin = await SessionManager.isAdmin();
 

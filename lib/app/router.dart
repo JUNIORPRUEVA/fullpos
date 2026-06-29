@@ -42,6 +42,7 @@ import '../features/sales/ui/client_credit_pages.dart';
 import '../features/sales/ui/quotes_page.dart';
 import '../features/sales/ui/factura_page.dart';
 import '../features/sales/ui/sales_page.dart';
+import '../core/update/update_center_page.dart';
 import '../features/settings/ui/printer_settings_page.dart';
 import '../features/settings/ui/logs_page.dart';
 import '../features/settings/ui/backup_settings_page.dart';
@@ -60,9 +61,12 @@ import '../features/license/data/license_models.dart';
 import '../features/license/license_config.dart';
 import '../core/session/session_manager.dart';
 import '../core/identity/identity_recovery_bundle.dart';
+import '../core/recovery/app_recovery.dart';
+import '../core/recovery/recovery_screen.dart';
 import '../features/settings/data/user_model.dart';
 import '../features/registration/services/business_identity_guard.dart';
 import '../features/registration/services/business_identity_storage.dart';
+
 Future<_LicenseGateDecision>? _licenseGateInFlight;
 _LicenseGateDecision? _licenseGateCached;
 DateTime? _licenseGateCachedAt;
@@ -113,6 +117,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     bootstrap,
     heartbeat,
     licenseGateRefreshToken,
+    AppRecoveryController.instance,
   ]);
   ref.onDispose(() {
     refresh.dispose();
@@ -133,6 +138,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isOnLicensePurchase = path == '/license/purchase';
       final isOnSettingsLicense = path == '/settings/license';
       final isOnBlocked = path == '/license-blocked';
+      final isOnRecovery = path == '/recovery';
       final isOnCashGate = path == '/cash-gate';
       final isOnNoAccess = path == '/no-access';
 
@@ -150,7 +156,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       User? authzUserCache;
       Future<User?> loadAuthzUser() async {
-        authzUserCache ??= await AuthzService.currentUser();
+        try {
+          authzUserCache ??= await AuthzService.currentUser();
+        } on IdentityRecoveryException catch (e) {
+          await AppRecoveryController.instance.requireIdentityRecovery(
+            'router_authz_identity_exception',
+            details: e.message,
+          );
+          return null;
+        }
         return authzUserCache;
       }
 
@@ -160,6 +174,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ).toString();
 
       Future<bool> canAccessPath(String targetPath) async {
+        if (AppRecoveryController.instance.isActive) return false;
         final screenPermission = RoutePermissions.forPath(targetPath);
         if (screenPermission != null) {
           final user = await loadAuthzUser();
@@ -177,6 +192,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Mientras el bootstrap corre, no redirigir rutas: AppEntry muestra Splash/Error.
       if (bootStatus != BootStatus.ready) return null;
+
+      if (AppRecoveryController.instance.isActive) {
+        return isOnRecovery ? null : '/recovery';
+      }
 
       ActiveSession? activeSessionCache;
       Future<ActiveSession?> loadActiveSession() async {
@@ -197,6 +216,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         );
         return true;
       }());
+
+      if (gate.code == 'RECOVERY_REQUIRED') {
+        await AppRecoveryController.instance.requireIdentityRecovery(
+          'router_license_gate_recovery_required',
+        );
+        return isOnRecovery ? null : '/recovery';
+      }
 
       // Si está BLOQUEADA: no permitir hacer nada, solo mostrar pantalla de bloqueo.
       if (gate.isBlocked) {
@@ -233,7 +259,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }());
       if (!isLoggedIn) {
         if (isOnForceChangePassword) return '/login';
-        return (isOnLogin || isOnPublicLicense) ? null : '/login';
+        return (isOnLogin || isOnPublicLicense || isOnRecovery)
+            ? null
+            : '/login';
       }
 
       // Cambio de contraseña obligatorio: debe ganar sobre cualquier ruta privada.
@@ -304,6 +332,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/license-blocked',
         builder: (context, state) =>
             const FullposBrandScope(child: LicenseBlockedPage()),
+      ),
+      GoRoute(
+        path: '/recovery',
+        builder: (context, state) =>
+            const FullposBrandScope(child: RecoveryScreen()),
       ),
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
@@ -416,6 +449,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings/backup',
             builder: (context, state) => const BackupSettingsPage(),
+          ),
+          GoRoute(
+            path: '/settings/updates',
+            builder: (context, state) => const UpdateCenterPage(),
           ),
           GoRoute(
             path: '/account',
@@ -748,6 +785,13 @@ Future<_LicenseGateDecision> _getLicenseGateDecisionImpl() async {
   // permitir acceso sin red y sin device_id.
   final businessSync = BusinessLicenseSync();
   final storage = LicenseStorage();
+  if (await storage.isReactivationRequired()) {
+    return const _LicenseGateDecision(
+      isActive: false,
+      isBlocked: false,
+      code: 'REACTIVATION_REQUIRED',
+    );
+  }
 
   // Nuevo flujo por negocio: si existe businessId, Apyra/backend manda sobre
   // cualquier token local. Esto evita que un license.dat viejo deje entrar

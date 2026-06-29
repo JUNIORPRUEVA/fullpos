@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/core/errors/error_handler.dart';
@@ -29,18 +27,6 @@ class _SafeValidator extends AppUpdateSafetyValidator {
   }
 }
 
-class _BlockedValidator extends AppUpdateSafetyValidator {
-  const _BlockedValidator();
-
-  @override
-  Future<AppUpdateSafetyResult> validate() async {
-    return const AppUpdateSafetyResult(
-      safe: false,
-      blockReason: 'Hay una venta activa.',
-    );
-  }
-}
-
 AppUpdatePolicy _policy({required bool mandatory}) {
   return AppUpdatePolicy.fromJson({
     'projectCode': 'fullpos',
@@ -62,13 +48,10 @@ AppUpdatePolicy _policy({required bool mandatory}) {
   });
 }
 
-AppUpdateCoordinator _coordinator(
-  AppUpdatePolicy policy, {
-  AppUpdateSafetyValidator? safetyValidator,
-}) {
+AppUpdateCoordinator _coordinator(AppUpdatePolicy policy) {
   return AppUpdateCoordinator.testing(
     repository: _PolicyRepository(policy),
-    safetyValidator: safetyValidator ?? const _SafeValidator(),
+    safetyValidator: const _SafeValidator(),
     installedVersionLoader: () async => AppVersion.parse('1.0.1+5'),
   );
 }
@@ -90,17 +73,15 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  // Test 1: When update is checking/downloading, app content is visible
-  // and no update gate is shown.
+  // Test 1: App content is always visible, no blocking UI.
   testWidgets(
-    'during checking/downloading, app content is visible and no update gate',
+    'app content is always visible regardless of update state',
     (tester) async {
       final coordinator = _coordinator(_policy(mandatory: true));
       await tester.pumpWidget(_app(coordinator));
 
       // Before check, app content is visible
       expect(find.text('FullPOS listo'), findsOneWidget);
-      expect(find.text('Actualización requerida'), findsNothing);
 
       // Start check in background
       await tester.runAsync(
@@ -113,18 +94,23 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // During checking/downloading, app content must still be visible
-      // and no update gate should replace the content.
+      // During any phase, app content must still be visible
       expect(find.text('FullPOS listo'), findsOneWidget);
-      // The overlay should NOT be shown during downloading/checking
+
+      // No blocking UI should ever appear
       expect(find.text('Actualización requerida'), findsNothing);
+      expect(find.text('Instalar ahora'), findsNothing);
+      expect(find.text('Cerrar FullPOS'), findsNothing);
+      expect(find.text('Actualización lista para instalar'), findsNothing);
+      expect(find.text('No se puede actualizar todavía'), findsNothing);
+      expect(find.text('Revisar proceso'), findsNothing);
+      expect(find.text('Más tarde'), findsNothing);
     },
   );
 
-  // Test 2: When update download finishes and installer validates,
-  // mandatory update overlay is shown (not replacing content).
+  // Test 2: Center dialog notification appears when new update is detected.
   testWidgets(
-    'mandatory update ready shows overlay without replacing content',
+    'center dialog notification appears when new update is available',
     (tester) async {
       final coordinator = _coordinator(_policy(mandatory: true));
       await tester.pumpWidget(_app(coordinator));
@@ -139,28 +125,85 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // The coordinator transitions through checking -> mandatory -> downloading
-      // -> verifying -> ready. The downloader is mocked so it completes instantly.
-      // After ready, the overlay should appear but content should still be visible.
-      final state = coordinator.state;
-      if (state.phase == AppUpdatePhase.ready) {
-        // App content is still visible behind the overlay
-        expect(find.text('FullPOS listo'), findsOneWidget);
-        // Overlay shows "Actualización requerida"
-        expect(find.text('Actualización requerida'), findsOneWidget);
-        // "Instalar ahora" button is present
-        expect(find.text('Instalar ahora'), findsOneWidget);
-        // "Cerrar FullPOS" button is present for mandatory
-        expect(find.text('Cerrar FullPOS'), findsOneWidget);
-      }
-      // If not ready yet (e.g. still downloading), content is visible
-      // and no overlay is shown - that's also correct.
+      expect(find.text('Actualización disponible'), findsOneWidget);
+      expect(
+        find.text('Hay una nueva actualización de FullPOS disponible.'),
+        findsOneWidget,
+      );
+      expect(find.text('Ver'), findsOneWidget);
+      expect(find.text('Cerrar'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
     },
   );
 
-  // Test 3: Normal (optional) update ready shows dialog, not overlay.
+  // Test 3: Dialog appears only once per session.
   testWidgets(
-    'optional update ready shows dialog with Instalar ahora and Más tarde',
+    'update dialog appears only once per session',
+    (tester) async {
+      final coordinator = _coordinator(_policy(mandatory: true));
+      await tester.pumpWidget(_app(coordinator));
+
+      // First check
+      await tester.runAsync(
+        () => coordinator.check().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => null,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Actualización disponible'), findsOneWidget);
+
+      await tester.tap(find.text('Cerrar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Actualización disponible'), findsNothing);
+
+      // Simulate a second state change (e.g., re-check)
+      await tester.runAsync(
+        () => coordinator.check().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => null,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Actualización disponible'), findsNothing);
+    },
+  );
+
+  // Test 4: Mandatory update does not block the user.
+  testWidgets(
+    'mandatory update does not block the user',
+    (tester) async {
+      final coordinator = _coordinator(_policy(mandatory: true));
+      await tester.pumpWidget(_app(coordinator));
+
+      await tester.runAsync(
+        () => coordinator.check().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => null,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      // App content is always visible
+      expect(find.text('FullPOS listo'), findsOneWidget);
+
+      // No blocking overlay or dialog
+      expect(find.text('Actualización requerida'), findsNothing);
+      expect(find.text('Cerrar FullPOS'), findsNothing);
+    },
+  );
+
+  // Test 5: Optional update shows only the small notification dialog.
+  testWidgets(
+    'optional update shows only the small notification dialog',
     (tester) async {
       final coordinator = _coordinator(_policy(mandatory: false));
       await tester.pumpWidget(_app(coordinator));
@@ -175,191 +218,61 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      final state = coordinator.state;
-      if (state.phase == AppUpdatePhase.ready) {
-        // App content is visible
-        expect(find.text('FullPOS listo'), findsOneWidget);
-        // Dialog shows "Actualización lista para instalar"
-        expect(find.text('Actualización lista para instalar'), findsOneWidget);
-        // Buttons
-        expect(find.text('Instalar ahora'), findsOneWidget);
-        expect(find.text('Más tarde'), findsOneWidget);
-        // "Cerrar FullPOS" should NOT be present for optional
-        expect(find.text('Cerrar FullPOS'), findsNothing);
-      }
-    },
-  );
-
-  // Test 4: If active sale exists and user clicks install,
-  // updater is not launched and resolver dialog appears.
-  testWidgets(
-    'blocked update shows resolver dialog with Revisar proceso',
-    (tester) async {
-      final coordinator = _coordinator(
-        _policy(mandatory: false),
-        safetyValidator: const _BlockedValidator(),
-      );
-      await tester.pumpWidget(_app(coordinator));
-
-      await tester.runAsync(
-        () => coordinator.check().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () => null,
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
-
-      final state = coordinator.state;
-      if (state.phase == AppUpdatePhase.ready) {
-        // App content is visible
-        expect(find.text('FullPOS listo'), findsOneWidget);
-        // Dialog shows "No se puede actualizar todavía"
-        expect(
-          find.text('No se puede actualizar todavía'),
-          findsOneWidget,
-        );
-        // Buttons
-        expect(find.text('Revisar proceso'), findsOneWidget);
-        expect(find.text('Más tarde'), findsOneWidget);
-      }
-    },
-  );
-
-  // Test 8: Mandatory update blocked by active sale shows overlay + blocked dialog.
-  testWidgets(
-    'mandatory blocked by active sale shows overlay and Revisar proceso',
-    (tester) async {
-      final coordinator = _coordinator(
-        _policy(mandatory: true),
-        safetyValidator: const _BlockedValidator(),
-      );
-      await tester.pumpWidget(_app(coordinator));
-
-      await tester.runAsync(
-        () => coordinator.check().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () => null,
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
-
-      final state = coordinator.state;
-      if (state.phase == AppUpdatePhase.ready) {
-        // App content is visible behind overlay
-        expect(find.text('FullPOS listo'), findsOneWidget);
-        // Overlay shows "Actualización requerida" (mandatory)
-        expect(find.text('Actualización requerida'), findsOneWidget);
-        // Blocked dialog shows "No se puede actualizar todavía"
-        expect(
-          find.text('No se puede actualizar todavía'),
-          findsOneWidget,
-        );
-        // "Revisar proceso" button is present
-        expect(find.text('Revisar proceso'), findsOneWidget);
-        // "Cerrar FullPOS" is present in overlay
-        expect(find.text('Cerrar FullPOS'), findsOneWidget);
-      }
-    },
-  );
-
-  // Test 5: Mandatory update does not block UI while downloading.
-  testWidgets(
-    'mandatory update does not block UI while downloading',
-    (tester) async {
-      final coordinator = _coordinator(_policy(mandatory: true));
-      await tester.pumpWidget(_app(coordinator));
-
-      // Simulate the coordinator being in downloading phase
-      // by checking that the app content is visible.
+      // App content is visible
       expect(find.text('FullPOS listo'), findsOneWidget);
+
+      expect(find.text('Actualización disponible'), findsOneWidget);
+      expect(find.text('Actualización lista para instalar'), findsNothing);
+      expect(find.text('Instalar ahora'), findsNothing);
+      expect(find.text('Más tarde'), findsNothing);
+    },
+  );
+
+  // Test 6: Back navigation is never blocked.
+  testWidgets(
+    'back navigation is never blocked',
+    (tester) async {
+      final coordinator = _coordinator(_policy(mandatory: true));
+      await tester.pumpWidget(_app(coordinator));
+
+      await tester.runAsync(
+        () => coordinator.check().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => null,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+
+      // App content is visible
+      expect(find.text('FullPOS listo'), findsOneWidget);
+
+      // Back navigation should work (no overlay to block it)
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump();
+
+      // No blocking UI should appear
       expect(find.text('Actualización requerida'), findsNothing);
-
-      // Start check
-      await tester.runAsync(
-        () => coordinator.check().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () => null,
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-
-      // During any phase other than ready, content must be visible
-      // and no overlay/dialog should replace it.
-      final currentState = coordinator.state;
-      if (currentState.phase != AppUpdatePhase.ready) {
-        expect(find.text('FullPOS listo'), findsOneWidget);
-        expect(find.text('Actualización requerida'), findsNothing);
-      }
     },
   );
 
-  // Test 6: Mandatory update blocks only when installer is ready.
+  // Test 7: build() always returns child widget.
   testWidgets(
-    'mandatory update blocks only when installer is ready',
+    'build always returns child widget',
     (tester) async {
       final coordinator = _coordinator(_policy(mandatory: true));
       await tester.pumpWidget(_app(coordinator));
 
-      await tester.runAsync(
-        () => coordinator.check().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () => null,
-        ),
+      // The child widget is always rendered
+      expect(find.text('FullPOS listo'), findsOneWidget);
+
+      // No update gate overlay replaces the child
+      expect(
+        find.byType(UpdateGate),
+        findsOneWidget,
       );
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
-
-      final state = coordinator.state;
-      if (state.phase == AppUpdatePhase.ready) {
-        // Only when ready, the overlay appears
-        expect(find.text('Actualización requerida'), findsOneWidget);
-        expect(find.text('Instalar ahora'), findsOneWidget);
-        expect(find.text('Cerrar FullPOS'), findsOneWidget);
-        // App content is still visible behind overlay
-        expect(find.text('FullPOS listo'), findsOneWidget);
-      } else {
-        // Not ready yet - content is visible, no overlay
-        expect(find.text('FullPOS listo'), findsOneWidget);
-        expect(find.text('Actualización requerida'), findsNothing);
-      }
-    },
-  );
-
-  // Test 7: Back navigation is blocked on mandatory overlay.
-  testWidgets(
-    'mandatory overlay blocks back navigation',
-    (tester) async {
-      final coordinator = _coordinator(_policy(mandatory: true));
-      await tester.pumpWidget(_app(coordinator));
-
-      await tester.runAsync(
-        () => coordinator.check().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () => null,
-        ),
-      );
-      await tester.pump();
-      await tester.pump();
-      await tester.pump();
-
-      final state = coordinator.state;
-      if (state.phase == AppUpdatePhase.ready) {
-        expect(find.text('Actualización requerida'), findsOneWidget);
-
-        // Try back navigation - should be blocked
-        await tester.binding.handlePopRoute();
-        await tester.pump();
-        await tester.pump();
-
-        expect(find.text('Actualización requerida'), findsOneWidget);
-        expect(find.text('FullPOS listo'), findsOneWidget);
-      }
     },
   );
 }

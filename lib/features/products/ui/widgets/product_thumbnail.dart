@@ -107,21 +107,16 @@ class ProductThumbnail extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: borderRadius,
         border: showBorder
-            ? Border.all(color: Colors.grey.shade300, width: 1)
+            ? Border.all(color: const Color(0xFFDDE6F0), width: 1)
             : null,
-        color: shouldShowImage ? Colors.grey.shade100 : placeholderSurface,
+        color: shouldShowImage ? const Color(0xFFF8FAFC) : placeholderSurface,
         boxShadow: showShadow
             ? [
                 BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: Colors.white24,
-                  blurRadius: 6,
-                  offset: const Offset(-1, -1),
-                  spreadRadius: -2,
+                  color: Colors.black.withOpacity(0.055),
+                  blurRadius: 8,
+                  spreadRadius: -3,
+                  offset: const Offset(0, 3),
                 ),
               ]
             : null,
@@ -144,7 +139,10 @@ class ProductThumbnail extends StatelessWidget {
     if (path.isNotEmpty) {
       return Image.file(
         File(path),
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
+        alignment: Alignment.center,
+        filterQuality: FilterQuality.high,
+        isAntiAlias: true,
         errorBuilder: (context, error, stackTrace) => _buildPlaceholder(
           ColorUtils.colorFromHex(
             placeholderColorHex,
@@ -156,7 +154,10 @@ class ProductThumbnail extends StatelessWidget {
     }
     return Image.network(
       url,
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
+      alignment: Alignment.center,
+      filterQuality: FilterQuality.high,
+      isAntiAlias: true,
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) return child;
         return _buildPlaceholder(
@@ -190,8 +191,7 @@ class ProductThumbnail extends StatelessWidget {
 
   Widget _buildPlaceholder(Color color, Color surface) {
     final effectiveSize = width ?? size;
-    // Icono más grande y elegante: entre 40% y 50% del contenedor, con mínimo 40px
-    final iconSize = (effectiveSize * 0.48).clamp(56.0, 64.0);
+    final iconSize = (effectiveSize * 0.48).clamp(18.0, 64.0);
     return ColoredBox(
       color: surface,
       child: Center(

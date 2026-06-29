@@ -6,7 +6,11 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:fullpos/core/db/app_db.dart';
+import 'package:fullpos/core/recovery/app_recovery.dart';
+import 'package:fullpos/core/security/authz/authz_service.dart';
 import 'package:fullpos/core/identity/identity_recovery_bundle.dart';
+import 'package:fullpos/core/identity/license_reactivation_marker.dart';
 import 'package:fullpos/core/session/session_manager.dart';
 
 class _FakePathProvider extends PathProviderPlatform
@@ -39,12 +43,13 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('fullpos_identity_test_');
     PathProviderPlatform.instance = _FakePathProvider(tempDir);
     SharedPreferences.setMockInitialValues({});
+    await AppDb.resetForTests();
+    AppRecoveryController.instance.clearForTests();
   });
 
   tearDown(() async {
-    if (await tempDir.exists()) {
-      await tempDir.delete(recursive: true);
-    }
+    await AppDb.resetForTests();
+    await _deleteTempDir(tempDir);
   });
 
   test(
@@ -110,7 +115,7 @@ void main() {
     expect(prefs.getBool(IdentityRecoveryBundle.recoveryRequiredKey), isTrue);
   });
 
-  test('no regenera terminal_id si hay evidencia de prefs corrupto', () async {
+  test('prefs corrupto genera terminal nuevo y exige reactivación', () async {
     final support = await PathProviderPlatform.instance
         .getApplicationSupportPath();
     final corrupt = File(
@@ -120,11 +125,61 @@ void main() {
 
     SharedPreferences.setMockInitialValues({});
 
-    expect(
-      () => SessionManager.ensureTerminalId(),
-      throwsA(isA<IdentityRecoveryException>()),
-    );
+    final terminalId = await SessionManager.ensureTerminalId();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(terminalId, startsWith('terminal-'));
+    expect(prefs.getString(IdentityRecoveryBundle.terminalIdKey), terminalId);
+    expect(await const LicenseReactivationMarker().isRequired(), isTrue);
   });
+
+  test(
+    'DB previa sin terminal_id genera terminal nuevo y exige reactivación',
+    () async {
+      final docs = await PathProviderPlatform.instance
+          .getApplicationDocumentsPath();
+      final db = File(p.join(docs!, 'fullpos.db'));
+      await db.create(recursive: true);
+
+      SharedPreferences.setMockInitialValues({});
+
+      final terminalId = await SessionManager.ensureTerminalId();
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(terminalId, startsWith('terminal-'));
+      expect(prefs.getString(IdentityRecoveryBundle.terminalIdKey), terminalId);
+      expect(await const LicenseReactivationMarker().isRequired(), isTrue);
+      await Future<void>.delayed(Duration.zero);
+      expect(AppRecoveryController.instance.state.active, isFalse);
+    },
+  );
+
+  test(
+    'AuthzService.currentUser usa terminal nuevo y marca reactivación',
+    () async {
+      final docs = await PathProviderPlatform.instance
+          .getApplicationDocumentsPath();
+      final db = File(p.join(docs!, 'fullpos.db'));
+      await db.create(recursive: true);
+
+      SharedPreferences.setMockInitialValues({
+        'flutter.logged_in': true,
+        'flutter.logged_user_id': 77,
+        'flutter.logged_user': 'admin',
+        'flutter.logged_display_name': 'Admin',
+        'flutter.logged_role': 'admin',
+        'flutter.logged_company_id': 1,
+      });
+
+      final user = await AuthzService.currentUser();
+
+      expect(user, isNotNull);
+      expect(user?.terminalId, startsWith('terminal-'));
+      expect(await const LicenseReactivationMarker().isRequired(), isTrue);
+      await Future<void>.delayed(Duration.zero);
+      expect(AppRecoveryController.instance.state.active, isFalse);
+    },
+  );
 
   test('instalacion nueva sin bundle no marca recovery_required', () async {
     SharedPreferences.setMockInitialValues({});
@@ -165,4 +220,19 @@ void main() {
       );
     },
   );
+}
+
+Future<void> _deleteTempDir(Directory dir) async {
+  for (var attempt = 0; attempt < 5; attempt++) {
+    if (!await dir.exists()) return;
+    try {
+      await dir.delete(recursive: true);
+      return;
+    } on FileSystemException {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
+  if (await dir.exists()) {
+    await dir.delete(recursive: true);
+  }
 }

@@ -51,7 +51,14 @@ class AppUpdatePolicy {
       }
       hash = rawHash;
     }
-    final latestBuild = _positiveInt(json['latestBuild'], 'latestBuild');
+    final latestVersion = _requiredStringAny(json, const [
+      'latestVersion',
+      'version',
+    ]);
+    final latestBuild = _positiveIntAny(json, const [
+      'latestBuild',
+      'buildNumber',
+    ]);
     final minimumBuild = _positiveInt(
       json['minimumSupportedBuild'],
       'minimumSupportedBuild',
@@ -78,10 +85,7 @@ class AppUpdatePolicy {
     }
 
     return AppUpdatePolicy(
-      latest: AppVersion.parse(
-        _requiredString(json, 'latestVersion'),
-        buildNumber: latestBuild,
-      ),
+      latest: AppVersion.parse(latestVersion, buildNumber: latestBuild),
       minimumSupported: AppVersion.parse(
         _requiredString(json, 'minimumSupportedVersion'),
         buildNumber: minimumBuild,
@@ -143,9 +147,30 @@ class AppUpdatePolicy {
     return value;
   }
 
+  static String _requiredStringAny(
+    Map<String, dynamic> json,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = json[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    throw FormatException('Missing ${keys.join('/')}');
+  }
+
   static int _positiveInt(dynamic value, String key) {
     final parsed = value is num ? value.toInt() : int.tryParse('$value');
     if (parsed == null || parsed <= 0) throw FormatException('Invalid $key');
     return parsed;
+  }
+
+  static int _positiveIntAny(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value == null) continue;
+      final parsed = value is num ? value.toInt() : int.tryParse('$value');
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    throw FormatException('Invalid ${keys.join('/')}');
   }
 }

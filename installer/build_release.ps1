@@ -138,6 +138,28 @@ function Get-ReleaseDirectory {
   return $matches[0].FullName
 }
 
+function ConvertTo-RelativePath {
+  param(
+    [Parameter(Mandatory = $true)][string]$BasePath,
+    [Parameter(Mandatory = $true)][string]$TargetPath
+  )
+
+  $baseFullPath = [System.IO.Path]::GetFullPath($BasePath)
+  $targetFullPath = [System.IO.Path]::GetFullPath($TargetPath)
+  if (-not $baseFullPath.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+    $baseFullPath += [System.IO.Path]::DirectorySeparatorChar
+  }
+
+  $baseUri = [System.Uri]::new($baseFullPath)
+  $targetUri = [System.Uri]::new($targetFullPath)
+  return [System.Uri]::UnescapeDataString(
+    $baseUri.MakeRelativeUri($targetUri).ToString().Replace(
+      '/',
+      [System.IO.Path]::DirectorySeparatorChar
+    )
+  )
+}
+
 function Get-PreviousVersion {
   param(
     [Parameter(Mandatory = $true)][string]$ProjectRoot,
@@ -150,7 +172,7 @@ function Get-PreviousVersion {
 
   try {
     $gitRoot = (git -C $ProjectRoot rev-parse --show-toplevel 2>$null).Trim()
-    $relativePubspec = [System.IO.Path]::GetRelativePath($gitRoot, $PubspecPath).Replace('\', '/')
+    $relativePubspec = (ConvertTo-RelativePath -BasePath $gitRoot -TargetPath $PubspecPath).Replace('\', '/')
     $gitValue = git -C $gitRoot show "HEAD:$relativePubspec" 2>$null |
       Select-String -Pattern '^version:\s*\d+\.\d+\.\d+\+[1-9]\d*\s*$' |
       Select-Object -First 1
@@ -463,6 +485,8 @@ try {
   $payload = [ordered]@{
     projectCode = 'fullpos'
     platform = 'windows'
+    latestVersion = $appVersion
+    latestBuild = $buildNumber
     version = $appVersion
     buildNumber = $buildNumber
     minimumSupportedVersion = $minimumPolicy.Version
@@ -542,9 +566,9 @@ El publicador exige escribir ``PUBLICAR`` antes del PUT. No guarda ni imprime la
 llave. No se requiere token de GitHub.
 "@ | Set-Content -LiteralPath $releaseInfoPath -Encoding utf8
 
-  $relativeRelease = [System.IO.Path]::GetRelativePath($projectRoot, $releaseDir)
-  $relativeInstaller = [System.IO.Path]::GetRelativePath($projectRoot, $installerPath)
-  $relativePayload = [System.IO.Path]::GetRelativePath($projectRoot, $payloadPath)
+  $relativeRelease = ConvertTo-RelativePath -BasePath $projectRoot -TargetPath $releaseDir
+  $relativeInstaller = ConvertTo-RelativePath -BasePath $projectRoot -TargetPath $installerPath
+  $relativePayload = ConvertTo-RelativePath -BasePath $projectRoot -TargetPath $payloadPath
 
   Write-Host ''
   Write-Host 'Release listo.' -ForegroundColor Green

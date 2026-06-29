@@ -1,8 +1,43 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/core/errors/error_handler.dart';
+import 'package:fullpos/core/logging/app_logger.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
+
+class _FakePathProvider extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  _FakePathProvider(this.root);
+
+  final Directory root;
+
+  @override
+  Future<String?> getApplicationSupportPath() async {
+    final dir = Directory(p.join(root.path, 'support'));
+    await dir.create(recursive: true);
+    return dir.path;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  late Directory tempDir;
+
+  setUpAll(() async {
+    tempDir = await Directory.systemTemp.createTemp('fullpos_error_test_');
+    PathProviderPlatform.instance = _FakePathProvider(tempDir);
+    await AppLogger.instance.init();
+  });
+
+  tearDownAll(() async {
+    await AppLogger.instance.flush();
+    if (await tempDir.exists()) {
+      await tempDir.delete(recursive: true);
+    }
+  });
 
   test(
     'suppresses Flutter inactive element assertion as transient UI noise',

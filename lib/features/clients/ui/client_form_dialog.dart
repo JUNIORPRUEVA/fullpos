@@ -82,7 +82,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
       final rawPhone = _telefonoController.text.trim();
       final normalizedPhone = rawPhone.isEmpty
           ? null
-          : PhoneValidator.normalizeRDPhone(rawPhone);
+          : PhoneValidator.normalizePhone(rawPhone);
       final rawRnc = _rncController.text.trim();
       final normalizedRnc = rawRnc.isEmpty
           ? null
@@ -96,9 +96,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
 
       if (rawPhone.isNotEmpty && normalizedPhone == null) {
         throw ArgumentError(
-          'Teléfono inválido. Use 10 dígitos RD (ej: 809-555-1234)',
+          'Teléfono inválido. Debe tener entre 7 y 15 dígitos (ej: 809-555-1234, +52 55 1234 5678)',
         );
       }
+
 
       if (rawRnc.isNotEmpty && normalizedRnc == null) {
         throw ArgumentError('RNC inválido. Debe contener 9 dígitos');
@@ -174,9 +175,10 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                             .isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text(
-                            'Teléfono: ${PhoneValidator.formatRDPhone(duplicatedClient.telefono ?? "") ?? duplicatedClient.telefono}',
+                            'Teléfono: ${duplicatedClient.telefono ?? ""}',
                             style: const TextStyle(fontSize: 15),
                           ),
+
                         ],
                         if ((duplicatedClient.rnc ?? '').trim().isNotEmpty) ...[
                           const SizedBox(height: 4),
@@ -347,16 +349,17 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
                         return 'Indique teléfono o RNC';
                       }
 
-                      // Debe poder normalizarse a +1XXXXXXXXXX (10 dígitos RD)
+                      // Acepta números de RD (10 dígitos) e internacionales
                       if (rawPhone.isNotEmpty &&
-                          PhoneValidator.normalizeRDPhone(rawPhone) == null) {
-                        return 'Teléfono inválido. Use 10 dígitos RD (ej: 809-555-1234)';
+                          PhoneValidator.normalizePhone(rawPhone) == null) {
+                        return 'Teléfono inválido. Use formato internacional (ej: +52 55 1234 5678) o RD (809-555-1234)';
                       }
 
                       return null;
                     },
                     enabled: !_isLoading,
                   ),
+
                   const SizedBox(height: AppSizes.spaceM),
 
                   // Dirección

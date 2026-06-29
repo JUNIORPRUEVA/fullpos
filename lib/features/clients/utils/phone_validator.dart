@@ -1,4 +1,4 @@
-/// Validador y normalizador de números telefónicos para República Dominicana
+/// Validador y normalizador de números telefónicos
 class PhoneValidator {
   /// Códigos de área válidos en República Dominicana
   static const List<String> _validAreaCodes = [
@@ -22,7 +22,7 @@ class PhoneValidator {
     // RD: 10 dígitos (código área + número). Aquí ya removimos el prefijo 1.
     if (digits.length != 10) return false;
 
-    // Mantener lista de áreas como “preferencia”, pero no bloquear por completo.
+    // Mantener lista de áreas como "preferencia", pero no bloquear por completo.
     // Si quieres ser más estricto, cambia a: return _validAreaCodes.contains(areaCode);
     final areaCode = digits.substring(0, 3);
     final isKnownAreaCode = _validAreaCodes.contains(areaCode);
@@ -66,6 +66,36 @@ class PhoneValidator {
     final digits = _extractDigitsLenient(phone);
     if (digits.length != 10) return null;
     return '+1$digits';
+  }
+
+  /// Normaliza cualquier número telefónico (nacional o internacional).
+  /// - Si es un número de RD (10 dígitos), lo normaliza como +1XXXXXXXXXX
+  /// - Si es un número internacional, lo normaliza con su código de país
+  /// - Retorna null si no se puede normalizar
+  static String? normalizePhone(String phone) {
+    if (phone.trim().isEmpty) return null;
+
+    // Intentar normalizar como RD primero
+    final rdNormalized = normalizeRDPhone(phone);
+    if (rdNormalized != null) return rdNormalized;
+
+    // Si no es RD, extraer dígitos y preservar el código de país
+    final raw = phone.trim();
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return null;
+
+    // Si tiene entre 7 y 15 dígitos, es un número internacional válido
+    if (digits.length >= 7 && digits.length <= 15) {
+      // Si comienza con código de país (ej: 52 para México, 34 para España)
+      // y el usuario escribió +, preservamos el formato con +
+      if (raw.startsWith('+')) {
+        return '+$digits';
+      }
+      // Si no tiene + pero tiene suficientes dígitos, asumimos internacional
+      return digits;
+    }
+
+    return null;
   }
 
   /// Obtiene el formato legible del teléfono (809) 555-1234

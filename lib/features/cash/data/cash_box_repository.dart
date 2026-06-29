@@ -3,6 +3,7 @@ import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/session/session_manager.dart';
+import '../../settings/data/users_repository.dart';
 import '../data/cash_model.dart';
 
 /// Repositorio de Caja para abrir y cerrar caja
@@ -16,7 +17,7 @@ class CashBoxRepository {
   }) async {
     final db = await AppDb.database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final resolvedUserId = userId ?? await SessionManager.userId() ?? 1;
+    final resolvedUserId = await _requireValidCurrentUser(userId: userId);
 
     final id = await db.insert(DbTables.cashSessions, {
       'opened_by_user_id': resolvedUserId,
@@ -41,6 +42,31 @@ class CashBoxRepository {
     );
 
     return cashBox;
+  }
+
+  static Future<int> _requireValidCurrentUser({int? userId}) async {
+    final resolved = userId ?? await SessionManager.userId();
+    if (resolved == null) {
+      await SessionManager.clearInvalidSession(
+        reason: 'cash_box_repository_user_missing',
+      );
+      throw Exception(
+        'Tu sesión anterior no coincide con los usuarios actuales. Inicia sesión nuevamente.',
+      );
+    }
+    final user = await UsersRepository.getById(
+      resolved,
+      companyId: await SessionManager.companyId(),
+    );
+    if (user == null || !user.isActiveUser || user.deletedAtMs != null) {
+      await SessionManager.clearInvalidSession(
+        reason: 'cash_box_repository_user_invalid',
+      );
+      throw Exception(
+        'Tu sesión anterior no coincide con los usuarios actuales. Inicia sesión nuevamente.',
+      );
+    }
+    return resolved;
   }
 
   /// Obtener caja abierta (la actual)

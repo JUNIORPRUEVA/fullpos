@@ -153,7 +153,6 @@ class SaleInvoicePdfService {
     required String saleCode,
     required String clientName,
   }) {
-    final safeClient = _sanitizeFilenamePart(clientName);
     final safeCode = _sanitizeFilenamePart(saleCode);
     final dateStr = DateTime.now().millisecondsSinceEpoch.toString();
     return 'Factura_${safeCode}_$dateStr.pdf';

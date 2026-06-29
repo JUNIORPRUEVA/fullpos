@@ -27,10 +27,10 @@ class ClientsRepository {
     }
 
     if (hasPhone) {
-      final normalized = PhoneValidator.normalizeRDPhone(telefono);
+      final normalized = PhoneValidator.normalizePhone(telefono);
       if (normalized == null) {
         throw ArgumentError(
-          'Teléfono inválido. Use 10 dígitos RD (ej: 809-555-1234)',
+          'Teléfono inválido. Debe tener entre 7 y 15 dígitos (ej: 809-555-1234, +52 55 1234 5678)',
         );
       }
     }
@@ -39,6 +39,7 @@ class ClientsRepository {
       throw ArgumentError('RNC inválido. Debe contener 9 dígitos');
     }
   }
+
 
   static Future<ClientModel> _restoreExistingClient(
     ClientModel existingClient,
@@ -76,8 +77,9 @@ class ClientsRepository {
   /// Verifica si ya existe un cliente con el teléfono dado
   /// Excluye el cliente con el ID proporcionado (útil para ediciones)
   static Future<bool> existsByPhone(String phone, {int? excludeId}) async {
-    final normalized = PhoneValidator.normalizeRDPhone(phone);
+    final normalized = PhoneValidator.normalizePhone(phone);
     if (normalized == null) return false;
+
 
     final db = await AppDb.database;
     final query = StringBuffer(
@@ -125,7 +127,8 @@ class ClientsRepository {
     final rawPhone = client.telefono?.trim() ?? '';
     final normalizedPhone = rawPhone.isEmpty
         ? null
-        : PhoneValidator.normalizeRDPhone(rawPhone);
+        : PhoneValidator.normalizePhone(rawPhone);
+
     final rawRnc = client.rnc?.trim() ?? '';
     final normalizedRnc = rawRnc.isEmpty ? null : RncValidator.normalize(rawRnc);
 
@@ -194,8 +197,9 @@ class ClientsRepository {
     _validateRequired(client);
 
     final normalizedPhone = (client.telefono?.trim().isNotEmpty ?? false)
-        ? PhoneValidator.normalizeRDPhone(client.telefono!.trim())
+        ? PhoneValidator.normalizePhone(client.telefono!.trim())
         : null;
+
     final normalizedRnc = (client.rnc?.trim().isNotEmpty ?? false)
         ? RncValidator.normalize(client.rnc!.trim())
         : null;
@@ -419,8 +423,9 @@ class ClientsRepository {
 
   /// Busca un cliente por teléfono
   static Future<ClientModel?> getByPhone(String phone) async {
-    final normalized = PhoneValidator.normalizeRDPhone(phone);
+    final normalized = PhoneValidator.normalizePhone(phone);
     if (normalized == null) return null;
+
 
     final db = await AppDb.database;
     final maps = await db.query(

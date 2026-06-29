@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../../../core/config/app_config.dart';
+import '../../../core/update/app_update_coordinator.dart';
 import '../../../core/window/window_service.dart';
 import '../../registration/services/business_identity_storage.dart';
 import '../../settings/data/business_settings_model.dart';
@@ -1050,6 +1051,8 @@ class _LicensePageState extends ConsumerState<LicensePage> {
           ),
         ),
         const SizedBox(height: 12),
+        _buildVersionUpdateCard(),
+        const SizedBox(height: 12),
         _buildWideButton(
           icon: Icons.chat_rounded,
           label: 'Contactar soporte',
@@ -1057,6 +1060,72 @@ class _LicensePageState extends ConsumerState<LicensePage> {
           primary: true,
         ),
       ],
+    );
+  }
+
+  Widget _buildVersionUpdateCard() {
+    final coordinator = AppUpdateCoordinator.instance;
+    final state = coordinator.state;
+    final installed = state.installed;
+    final policy = state.policy;
+    final hasUpdate = state.phase == AppUpdatePhase.optional ||
+        state.phase == AppUpdatePhase.mandatory;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.system_update_rounded, color: _primaryBright, size: 18),
+              SizedBox(width: 8),
+              Text(
+                'Versión de FullPOS',
+                style: TextStyle(
+                  color: _ink,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _metaTile(
+                icon: Icons.info_outline_rounded,
+                label: 'Versión instalada',
+                value: installed != null
+                    ? '${installed.semantic}+${installed.build}'
+                    : 'Cargando...',
+              ),
+              if (hasUpdate && policy != null)
+                _metaTile(
+                  icon: Icons.new_releases_rounded,
+                  label: 'Nueva versión',
+                  value: '${policy.latest.semantic}+${policy.latest.build}',
+                ),
+            ],
+          ),
+          if (hasUpdate) ...[
+            const SizedBox(height: 10),
+            _buildWideButton(
+              icon: Icons.visibility_rounded,
+              label: 'Ver actualización',
+              onPressed: () => context.push('/settings/updates'),
+              primary: false,
+            ),
+          ],
+        ],
+      ),
     );
   }
 

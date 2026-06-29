@@ -18,7 +18,6 @@ import 'update_block_reason.dart';
 import 'update_downloader.dart';
 import 'update_shutdown_coordinator.dart';
 
-
 enum AppUpdatePhase {
   idle,
   checking,
@@ -42,6 +41,7 @@ class AppUpdateState {
     this.receivedBytes = 0,
     this.totalBytes,
     this.message,
+    this.supportDetails,
     this.blockReasons = const [],
     this.preparationStep,
     this.presentationToken = 0,
@@ -53,6 +53,7 @@ class AppUpdateState {
   final int receivedBytes;
   final int? totalBytes;
   final String? message;
+  final String? supportDetails;
 
   /// Razones estructuradas de bloqueo cuando la actualización no puede proceder.
   final List<UpdateBlockReason> blockReasons;
@@ -74,6 +75,7 @@ class AppUpdateState {
     int? receivedBytes,
     int? totalBytes,
     String? message,
+    String? supportDetails,
     List<UpdateBlockReason>? blockReasons,
     UpdatePreparationStep? preparationStep,
     int? presentationToken,
@@ -84,12 +86,12 @@ class AppUpdateState {
     receivedBytes: receivedBytes ?? this.receivedBytes,
     totalBytes: totalBytes ?? this.totalBytes,
     message: message,
+    supportDetails: supportDetails,
     blockReasons: blockReasons ?? this.blockReasons,
     preparationStep: preparationStep,
     presentationToken: presentationToken ?? this.presentationToken,
   );
 }
-
 
 class AppUpdateCoordinator extends ChangeNotifier {
   static int _testingStoreSeed = 0;
@@ -125,7 +127,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
        _safetyValidator = safetyValidator ?? const AppUpdateSafetyValidator(),
        _installedVersionLoader = installedVersionLoader ?? AppVersion.installed,
        _loggingEnabled = loggingEnabled,
-       _autoDownloadUpdates = autoDownloadUpdates ?? loggingEnabled;
+       _autoDownloadUpdates = autoDownloadUpdates ?? false;
 
   static final AppUpdateCoordinator instance = AppUpdateCoordinator._();
 
@@ -136,6 +138,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
     InstallerLauncher? launcher,
     AppUpdateSafetyValidator? safetyValidator,
     required Future<AppVersion> Function() installedVersionLoader,
+    bool? autoDownloadUpdates,
   }) => AppUpdateCoordinator._(
     repository: repository,
     downloader: downloader,
@@ -143,7 +146,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
     safetyValidator: safetyValidator,
     installedVersionLoader: installedVersionLoader,
     loggingEnabled: false,
-    autoDownloadUpdates: downloader != null,
+    autoDownloadUpdates: autoDownloadUpdates ?? downloader != null,
   );
 
   final AppUpdateRepository _repository;
@@ -173,7 +176,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
     final existing = _checkInFlight;
     if (existing != null) return existing;
     if (_state.phase != AppUpdatePhase.idle) return Future<void>.value();
-    _periodicTimer ??= Timer.periodic(const Duration(hours: 5), (_) {
+    _periodicTimer ??= Timer.periodic(const Duration(minutes: 15), (_) {
       unawaited(check());
     });
     return check();
@@ -366,17 +369,59 @@ class AppUpdateCoordinator extends ChangeNotifier {
       );
     } catch (error) {
       _verifiedInstaller = null;
+      final errorStr = error.toString().toLowerCase();
+      String userMessage;
+      String? supportDetail;
+      if (error is UpdateDownloadException) {
+        supportDetail = error.supportDetails;
+      }
+      if (errorStr.contains('sha256') || errorStr.contains('mismatch')) {
+        userMessage =
+            'No se pudo verificar la actualización. El archivo será descargado nuevamente.';
+        supportDetail ??= 'Verification failed: $error';
+      } else if (errorStr.contains('404') || errorStr.contains('not found')) {
+        userMessage =
+            'El instalador de esta versión no está disponible en el servidor. Contacta soporte.';
+        supportDetail ??= 'HTTP 404: $error';
+      } else if (errorStr.contains('403') || errorStr.contains('forbidden')) {
+        userMessage =
+            'No tenemos permiso para descargar el instalador. Verifica la publicación del release.';
+        supportDetail ??= 'HTTP 403: $error';
+      } else if (errorStr.contains('format_exception') &&
+          errorStr.contains('unapproved')) {
+        userMessage =
+            'No encontramos un instalador válido para esta actualización. Contacta soporte.';
+        supportDetail ??= 'Unapproved installer URL: $error';
+      } else if (errorStr.contains('web_error_document') ||
+          errorStr.contains('invalid_pe_header') ||
+          errorStr.contains('empty_file')) {
+        userMessage =
+            'El archivo descargado no parece ser un instalador válido.';
+        supportDetail ??= 'Invalid installer file: $error';
+      } else if (errorStr.contains('permission') ||
+          errorStr.contains('access denied')) {
+        userMessage =
+            'No pudimos guardar el instalador en esta PC. Ejecuta FullPOS como administrador o contacta soporte.';
+        supportDetail ??= 'File permission error: $error';
+      } else if (errorStr.contains('timeout') ||
+          errorStr.contains('timed out')) {
+        userMessage =
+            'La descarga tardó demasiado. Revisa tu conexión e intenta nuevamente.';
+        supportDetail ??= 'Timeout: $error';
+      } else {
+        userMessage =
+            'No pudimos descargar la actualización. Revisa tu conexión e intenta nuevamente.';
+        supportDetail ??= '$error';
+      }
       _setState(
         _state.copyWith(
           phase: AppUpdatePhase.failed,
-          message:
-              error.toString().contains('sha256') ||
-                  error.toString().contains('mismatch')
-              ? 'No se pudo verificar la actualización. El archivo será descargado nuevamente.'
-              : 'No se pudo descargar la actualización. Verifica tu conexión y vuelve a intentarlo.',
+          message: userMessage,
+          supportDetails: supportDetail,
         ),
       );
       await _logWarn('Update download or verification failed: $error');
+      await _logInfo('Download support detail: $supportDetail');
     }
   }
 
@@ -475,9 +520,7 @@ class AppUpdateCoordinator extends ChangeNotifier {
               safety.blockReason ?? AppUpdateSafetyValidator.pendingWorkMessage,
         ),
       );
-      await _logWarn(
-        'closeFullPos blocked: ${safety.blockReason}',
-      );
+      await _logWarn('closeFullPos blocked: ${safety.blockReason}');
       return;
     }
     CloudSyncService.instance.stopRealtimeSyncEngine();

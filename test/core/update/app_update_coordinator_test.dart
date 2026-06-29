@@ -183,6 +183,41 @@ void main() {
     },
   );
 
+  test('available update can wait for manual download request', () async {
+    final downloader = _FakeDownloader();
+    final coordinator = AppUpdateCoordinator.testing(
+      repository: _FakeRepository(remote: policy()),
+      downloader: downloader,
+      safetyValidator: const _SafeValidator(),
+      installedVersionLoader: () async => AppVersion.parse('1.0.1+5'),
+      autoDownloadUpdates: false,
+    );
+
+    await coordinator.check();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(coordinator.state.phase, AppUpdatePhase.optional);
+    expect(downloader.calls, 0);
+
+    final download = coordinator.downloadAndInstall(presentWhenReady: false);
+    await Future<void>.delayed(Duration.zero);
+    expect(downloader.calls, 1);
+    expect(coordinator.state.phase, AppUpdatePhase.downloading);
+
+    final temp = await Directory.systemTemp.createTemp(
+      'fullpos_manual_download_test_',
+    );
+    final installer = File(
+      '${temp.path}${Platform.pathSeparator}FullPOS-Setup-v1.0.2-build6.exe',
+    );
+    await installer.writeAsBytes([0x4d, 0x5a]);
+    downloader.completer.complete(installer);
+    await download;
+
+    expect(coordinator.state.phase, AppUpdatePhase.ready);
+    await temp.delete(recursive: true);
+  });
+
   test('manual request during active download presents when ready', () async {
     final downloader = _FakeDownloader();
     final coordinator = AppUpdateCoordinator.testing(

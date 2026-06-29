@@ -5,6 +5,7 @@ import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/errors/app_exception.dart';
 import '../../../core/session/session_manager.dart';
+import '../../settings/data/users_repository.dart';
 import 'cash_repository.dart';
 import 'cash_session_model.dart';
 import 'cash_summary_model.dart';
@@ -550,12 +551,31 @@ class OperationFlowService {
     return cashbox;
   }
 
+  static Future<int> _requireValidCurrentUserForCashbox() async {
+    final userId = await SessionManager.userId();
+    if (userId == null) {
+      await SessionManager.clearInvalidSession(reason: 'cashbox_user_missing');
+      throw Exception(
+        'Tu sesión anterior no coincide con los usuarios actuales. Inicia sesión nuevamente.',
+      );
+    }
+    final companyId = await SessionManager.companyId();
+    final user = await UsersRepository.getById(userId, companyId: companyId);
+    if (user == null || !user.isActiveUser || user.deletedAtMs != null) {
+      await SessionManager.clearInvalidSession(reason: 'cashbox_user_invalid');
+      throw Exception(
+        'Tu sesión anterior no coincide con los usuarios actuales. Inicia sesión nuevamente.',
+      );
+    }
+    return userId;
+  }
+
   static Future<CashboxDailyModel> openDailyCashboxToday({
     required double openingAmount,
     String? note,
   }) async {
     final db = await AppDb.database;
-    final userId = await SessionManager.userId() ?? 1;
+    final userId = await _requireValidCurrentUserForCashbox();
     final now = DateTime.now().millisecondsSinceEpoch;
     final businessDate = businessDateOf();
 
@@ -727,7 +747,7 @@ class OperationFlowService {
   static Future<void> closeDailyCashboxToday({String? note}) async {
     final db = await AppDb.database;
     final today = businessDateOf();
-    final userId = await SessionManager.userId() ?? 1;
+    final userId = await _requireValidCurrentUserForCashbox();
 
     final cashbox = await getDailyCashbox(today);
     if (cashbox == null || !cashbox.isOpen) {
@@ -782,7 +802,7 @@ class OperationFlowService {
   static Future<CashSessionModel> openShiftForCurrentUser({
     double openingAmount = 0,
   }) async {
-    final userId = await SessionManager.userId() ?? 1;
+    final userId = await _requireValidCurrentUserForCashbox();
     final userName =
         await SessionManager.displayName() ??
         await SessionManager.username() ??
@@ -855,7 +875,7 @@ class OperationFlowService {
     String? note,
   }) async {
     final businessDate = businessDateOf();
-    final userId = await SessionManager.userId() ?? 1;
+    final userId = await _requireValidCurrentUserForCashbox();
     final userName =
         await SessionManager.displayName() ??
         await SessionManager.username() ??

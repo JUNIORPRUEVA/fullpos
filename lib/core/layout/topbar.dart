@@ -58,6 +58,7 @@ enum _TopbarMenuAction {
   license,
   cloud,
   settings,
+  updates,
   logout,
   makeShiftCut,
   currentShift,
@@ -66,6 +67,11 @@ enum _TopbarMenuAction {
 
 class _TopbarState extends ConsumerState<Topbar> {
   static const Color _strongTextColor = Color(0xFF0F172A);
+  static const Color _topbarBg = Color(0xFFFCFDFE);
+  static const Color _chromeBorder = Color(0xFFDDE6F0);
+  static const Color _chromeBorderHover = Color(0xFFC9D7E8);
+  static const Color _chromeFillHover = Color(0xFFF7FAFD);
+  static const Color _subtleIconColor = Color(0xFF52647A);
 
   Timer? _cashTimer;
   StreamSubscription<void>? _sessionSub;
@@ -199,6 +205,9 @@ class _TopbarState extends ConsumerState<Topbar> {
         return;
       case _TopbarMenuAction.settings:
         context.go('/settings');
+        return;
+      case _TopbarMenuAction.updates:
+        context.go('/settings/updates');
         return;
       case _TopbarMenuAction.logout:
         await LogoutFlowService.requestLogout(
@@ -390,6 +399,13 @@ class _TopbarState extends ConsumerState<Topbar> {
         label: 'Configuración',
         width: menuWidth,
       ),
+      _buildMenuItem(
+        context,
+        value: _TopbarMenuAction.updates,
+        icon: Icons.system_update_alt_rounded,
+        label: 'Actualizaciones',
+        width: menuWidth,
+      ),
       const PopupMenuDivider(height: 8),
       _buildMenuItem(
         context,
@@ -503,7 +519,7 @@ class _TopbarState extends ConsumerState<Topbar> {
         _cleanText(businessSettings.businessName) ?? 'Mi negocio';
     final businessLogoPath = _cleanText(businessSettings.logoPath);
 
-    const topbarBg = Colors.white;
+    const topbarBg = _topbarBg;
 
     final appBarFg = ColorUtils.ensureReadableColor(
       tokens.topbarText,
@@ -511,12 +527,9 @@ class _TopbarState extends ConsumerState<Topbar> {
       minRatio: 4.5,
     );
 
-    final chromeBorderColor = Color.alphaBlend(
-      tokens.outline.withOpacity(
-        theme.brightness == Brightness.dark ? 0.34 : 0.52,
-      ),
-      topbarBg,
-    );
+    final chromeBorderColor = theme.brightness == Brightness.dark
+        ? Color.alphaBlend(tokens.outline.withOpacity(0.42), topbarBg)
+        : _chromeBorder;
 
     final screenSize = MediaQuery.sizeOf(context);
     final screenWidth = screenSize.width;
@@ -575,15 +588,15 @@ class _TopbarState extends ConsumerState<Topbar> {
             color: topbarBg,
             border: widget.showBottomBorder
                 ? const Border(
-                    bottom: BorderSide(color: Color(0xFF7C8A99), width: 1.15),
+                    bottom: BorderSide(color: Color(0xFFD7E1EC), width: 1),
                   )
                 : null,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.045),
-                blurRadius: 5,
-                spreadRadius: -2,
-                offset: const Offset(0, 2),
+                color: Colors.black.withOpacity(0.025),
+                blurRadius: 4,
+                spreadRadius: -3,
+                offset: const Offset(0, 1),
               ),
             ],
           ),
@@ -599,6 +612,10 @@ class _TopbarState extends ConsumerState<Topbar> {
                     child: InkWell(
                       onTap: widget.onMenuPressed,
                       borderRadius: BorderRadius.circular(10),
+                      hoverColor: brandAccent.withOpacity(0.055),
+                      splashColor: brandAccent.withOpacity(0.08),
+                      highlightColor: brandAccent.withOpacity(0.045),
+                      focusColor: brandAccent.withOpacity(0.075),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 190),
                         curve: Curves.easeOutCubic,
@@ -607,12 +624,15 @@ class _TopbarState extends ConsumerState<Topbar> {
                         decoration: BoxDecoration(
                           color: widget.isMenuOpen
                               ? brandAccent
-                              : brandAccent.withOpacity(0.07),
+                              : Color.alphaBlend(
+                                  brandAccent.withOpacity(0.055),
+                                  topbarBg,
+                                ),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: widget.isMenuOpen
                                 ? brandAccent
-                                : brandAccent.withOpacity(0.18),
+                                : brandAccent.withOpacity(0.20),
                             width: 1,
                           ),
                           boxShadow: widget.isMenuOpen
@@ -674,8 +694,8 @@ class _TopbarState extends ConsumerState<Topbar> {
                             .clamp(15.5, 19.0)
                             .toDouble(),
                     fontWeight: FontWeight.w700,
-                    letterSpacing: -0.18,
-                    height: 1.1,
+                    letterSpacing: -0.08,
+                    height: 1.08,
                     fontFamilyFallback: const [
                       'Poppins',
                       'Segoe UI',
@@ -783,6 +803,8 @@ class _TopbarState extends ConsumerState<Topbar> {
                         showText: showBusinessText,
                         accentColor: brandAccent,
                         borderColor: chromeBorderColor,
+                        hoverBorderColor: _chromeBorderHover,
+                        hoverFillColor: _chromeFillHover,
                       ),
                     ),
                   ),
@@ -817,6 +839,8 @@ class _BusinessMenuButton extends StatelessWidget {
     required this.showText,
     required this.accentColor,
     required this.borderColor,
+    required this.hoverBorderColor,
+    required this.hoverFillColor,
   });
 
   final double scale;
@@ -825,6 +849,8 @@ class _BusinessMenuButton extends StatelessWidget {
   final bool showText;
   final Color accentColor;
   final Color borderColor;
+  final Color hoverBorderColor;
+  final Color hoverFillColor;
 
   @override
   Widget build(BuildContext context) {
@@ -837,26 +863,16 @@ class _BusinessMenuButton extends StatelessWidget {
 
     final buttonRadius = BorderRadius.circular(11);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOutCubic,
+    return _TopbarHoverSurface(
       height: height,
       padding: EdgeInsets.only(
         left: (7 * scale).clamp(6.0, 8.0).toDouble(),
         right: (8 * scale).clamp(7.0, 10.0).toDouble(),
       ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: buttonRadius,
-        border: Border.all(color: const Color(0xFFD9E3F0), width: 0.95),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.015),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      borderRadius: buttonRadius,
+      borderColor: borderColor,
+      hoverBorderColor: hoverBorderColor,
+      hoverFillColor: hoverFillColor,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -876,9 +892,9 @@ class _BusinessMenuButton extends StatelessWidget {
                 style: TextStyle(
                   color: _TopbarState._strongTextColor,
                   fontSize: (12.8 * scale).clamp(12.2, 13.4).toDouble(),
-                  fontWeight: FontWeight.w800,
-                  height: 1.05,
-                  letterSpacing: 0.05,
+                  fontWeight: FontWeight.w700,
+                  height: 1,
+                  letterSpacing: 0,
                 ),
               ),
             ),
@@ -887,7 +903,7 @@ class _BusinessMenuButton extends StatelessWidget {
           Icon(
             Icons.keyboard_arrow_down_rounded,
             size: (16 * scale).clamp(14.0, 17.0).toDouble(),
-            color: const Color(0xFF64748B),
+            color: _TopbarState._subtleIconColor,
           ),
         ],
       ),
@@ -953,8 +969,8 @@ class _BusinessLogoMark extends StatelessWidget {
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         borderRadius: logoRadius,
-        color: const Color(0xFFEFF6FF),
-        border: Border.all(color: const Color(0xFFD9E3F0), width: 0.85),
+        color: const Color(0xFFF2F7FF),
+        border: Border.all(color: const Color(0xFFD8E4F2), width: 0.85),
       ),
       clipBehavior: Clip.antiAlias,
       child: hasLogo
@@ -976,7 +992,7 @@ class _BusinessLogoPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Icon(Icons.storefront_rounded, size: 17, color: accentColor);
+    return Icon(Icons.storefront_rounded, size: 16.5, color: accentColor);
   }
 }
 
@@ -999,8 +1015,6 @@ class _TurnMenuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final height = (36 * scale).clamp(32.0, 38.0).toDouble();
 
-    const bg = Colors.white;
-
     final buttonRadius = BorderRadius.circular(11);
 
     final iconRadius = BorderRadius.circular(8);
@@ -1008,26 +1022,17 @@ class _TurnMenuButton extends StatelessWidget {
     return Tooltip(
       message: isOpen ? 'Turno abierto' : 'Gestionar turno',
       waitDuration: const Duration(milliseconds: 350),
-      child: Container(
+      child: _TopbarHoverSurface(
         height: height,
         padding: EdgeInsets.symmetric(
           horizontal: visibleLabel
               ? (10 * scale).clamp(9.0, 12.0).toDouble()
               : 7,
         ),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: buttonRadius,
-          border: Border.all(color: const Color(0xFFD9E3F0), width: 0.95),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.015),
-              blurRadius: 6,
-              spreadRadius: -3,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
+        borderRadius: buttonRadius,
+        borderColor: borderColor,
+        hoverBorderColor: _TopbarState._chromeBorderHover,
+        hoverFillColor: _TopbarState._chromeFillHover,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1035,9 +1040,9 @@ class _TurnMenuButton extends StatelessWidget {
               width: (23 * scale).clamp(21.0, 25.0).toDouble(),
               height: (23 * scale).clamp(21.0, 25.0).toDouble(),
               decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
+                color: const Color(0xFFF2F7FF),
                 borderRadius: iconRadius,
-                border: Border.all(color: const Color(0xFFD9E3F0), width: 0.8),
+                border: Border.all(color: const Color(0xFFD8E4F2), width: 0.8),
               ),
               alignment: Alignment.center,
               child: Icon(
@@ -1053,19 +1058,78 @@ class _TurnMenuButton extends StatelessWidget {
                 style: TextStyle(
                   color: accentColor,
                   fontSize: (12 * scale).clamp(11.2, 12.8).toDouble(),
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   height: 1,
+                  letterSpacing: 0,
                 ),
               ),
               SizedBox(width: (3 * scale).clamp(2.0, 4.0).toDouble()),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 size: (17 * scale).clamp(15.0, 18.0).toDouble(),
-                color: const Color(0xFF64748B),
+                color: _TopbarState._subtleIconColor,
               ),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TopbarHoverSurface extends StatefulWidget {
+  const _TopbarHoverSurface({
+    required this.height,
+    required this.padding,
+    required this.borderRadius,
+    required this.borderColor,
+    required this.hoverBorderColor,
+    required this.hoverFillColor,
+    required this.child,
+  });
+
+  final double height;
+  final EdgeInsetsGeometry padding;
+  final BorderRadius borderRadius;
+  final Color borderColor;
+  final Color hoverBorderColor;
+  final Color hoverFillColor;
+  final Widget child;
+
+  @override
+  State<_TopbarHoverSurface> createState() => _TopbarHoverSurfaceState();
+}
+
+class _TopbarHoverSurfaceState extends State<_TopbarHoverSurface> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        height: widget.height,
+        padding: widget.padding,
+        decoration: BoxDecoration(
+          color: _hovered ? widget.hoverFillColor : Colors.white,
+          borderRadius: widget.borderRadius,
+          border: Border.all(
+            color: _hovered ? widget.hoverBorderColor : widget.borderColor,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(_hovered ? 0.022 : 0.014),
+              blurRadius: _hovered ? 7 : 5,
+              spreadRadius: -3,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: widget.child,
       ),
     );
   }

@@ -1,29 +1,46 @@
-# Plan de Corrección: Bug de Permiso de Ajuste de Inventario
+# Auditoría del Sistema de Actualización Automática de FullPOS
 
-## Diagnóstico
+## Progreso
 
-### Problema 1: Ruta no registrada
-La ruta `/products/stock-adjustment` NO está registrada en:
-- `RoutePermissions.forPath()` → devuelve `null`
-- `ModuleAccess.canAccessPath()` → devuelve `false` (fallback genérico)
-
-Cuando el router intenta acceder, `canAccessPath()` en `router.dart` primero busca en `RoutePermissions.forPath()` (null), luego en `ModuleAccess.canAccessPath()` (false), resultando en redirección a `/no-access?from=/products/stock-adjustment`.
-
-El mensaje "Catalogo" viene de `ModuleAccess.moduleLabelForPath()` que dice `if (path.startsWith('/products')) return 'Catalogo'`.
-
-### Problema 2: TemporaryAuthorizationService duración incorrecta
-- `defaultDuration` es 3 minutos, debe ser 2 minutos
-- No hay limpieza al salir de la pantalla
-
-### Problema 3: No hay PermissionGate en la ruta
-La ruta en `router.dart` línea 346-348 no tiene `PermissionGate` ni `BlankPermissionGate`.
-
-## Archivos a modificar
-
-1. **lib/core/security/authz/route_permissions.dart** - Agregar ruta `/products/stock-adjustment`
-2. **lib/core/security/module_access.dart** - Agregar ruta `/products/stock-adjustment`
-3. **lib/core/security/temporary_authorization_service.dart** - Cambiar defaultDuration a 2 min
-4. **lib/app/router.dart** - Agregar BlankPermissionGate a la ruta stock-adjustment
-5. **lib/features/products/ui/inventory_module_pages.dart** - Agregar limpieza de temp auth en dispose()
-6. **test/core/security/temporary_authorization_service_test.dart** - Actualizar tests
-7. **test/core/security/permission_service_test.dart** - Agregar tests de ruta
+- [x] Explorar estructura del proyecto y sistema de actualización
+- [x] Auditar detección de actualizaciones (A)
+- [x] Auditar descarga en segundo plano (B)
+- [x] Auditar validación del instalador (C)
+- [x] Auditar diálogo de actualización lista (D)
+- [x] Auditar validación de seguridad pre-instalación (E)
+- [x] Auditar manejo controlado de procesos (F)
+- [x] Auditar manejo de turno/caja (G)
+- [x] Auditar FullPOSUpdater.exe (H)
+- [x] Auditar cierre limpio de FullPOS (I)
+- [x] Auditar estado de actualización pendiente (J)
+- [x] Auditar logging (K)
+- [x] Auditar manejo de errores (L)
+- [x] Auditar regresión (M)
+- [x] Verificar escenarios de prueba (N)
+- [x] Aplicar correcciones necesarias (trackers de actividad + fix test gate)
+- [x] Verificar compilación sin errores
+- [x] Generar reporte final de auditoría
+- [x] Ejecutar flutter analyze (✅ pasa)
+- [x] Ejecutar flutter test test/core/update/ (✅ 29/29 tests pasan)
+- [x] Verificar build scripts (✅ correctos)
+- [x] Verificar FullPOSUpdater.exe compilation (✅ integrado)
+- [x] Verificar todos los casos de bloqueo (✅ 12/12 implementados)
+- [x] Generar verificación final de release en AUDIT_UPDATE_SYSTEM.md
+- [x] Crear UpdateBlockReason model con códigos, títulos, mensajes y acciones de navegación
+- [x] Crear UpdateBlockResolverService para navegar a la pantalla correcta según el bloqueo
+- [x] Actualizar AppUpdateSafetyResult para incluir List<UpdateBlockReason>
+- [x] Actualizar AppUpdateState para incluir blockReasons y isBlocked
+- [x] Actualizar UpdateGate con _showBlockedDialog() y botón "Revisar proceso"
+- [x] Verificar flutter analyze y tests existentes
+- [x] Fix crítico: mandatory update + blocked state no debe atrapar al usuario sin poder navegar
+- [x] Fix build_release.ps1: separar tests de update (obligatorios) del resto (opcionales)
+- [x] Verificación final completa: flutter analyze + flutter test + sintaxis script
+- [x] Fix UpdateGate.build(): NO mostrar _UpdateScreen durante checking/downloading/verifying
+- [x] Fix UpdateGate.build(): Mostrar overlay (no pantalla completa) cuando readyToInstall
+- [x] Fix UpdateGate.build(): Mandatory solo bloquea cuando installer está ready
+- [x] Actualizar test existente para nuevo comportamiento (7 tests nuevos)
+- [x] Verificar flutter analyze (✅ 2 issues no-fatales)
+- [x] Verificar flutter test (✅ 28/28 tests pasan)
+- [x] **Fix crítico: `ensureStarted()` movido del redirect del router a `AppEntry.initState()`**
+- [x] **Import no utilizado removido de `router.dart`**
+- [x] **Verificación final: flutter analyze ✅ + flutter test ✅ (29/29)**

@@ -522,13 +522,34 @@ class _QuickItemDialogState extends State<QuickItemDialog> {
     }
   }
 
+  /// Verifica si el foco actual está dentro de un campo de texto editable.
+  /// Si es así, los atajos de la calculadora no deben interceptar las teclas.
+  bool _isTextInputFocused() {
+    final focus = FocusManager.instance.primaryFocus;
+    final context = focus?.context;
+    if (context == null) return false;
+
+    // Buscar si el widget enfocado es o está dentro de un EditableText
+    final editable = context.findAncestorWidgetOfExactType<EditableText>();
+    if (editable != null) return true;
+
+    final widget = context.widget;
+    return widget is EditableText;
+  }
+
   KeyEventResult _handleCalculatorKeyboard(KeyEvent event) {
+    // Si un campo de texto está enfocado, no interceptar las teclas
+    if (_isTextInputFocused()) {
+      return KeyEventResult.ignored;
+    }
+
     if (event is! KeyDownEvent) {
       return KeyEventResult.ignored;
     }
 
     final key = event.logicalKey;
     final character = event.character;
+
 
     String? digit;
 

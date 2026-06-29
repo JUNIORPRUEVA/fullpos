@@ -12,11 +12,14 @@ import '../db/app_db.dart';
 import '../db/auto_repair.dart';
 import '../db_hardening/db_hardening.dart';
 import '../errors/error_mapper.dart';
+import '../identity/identity_health_service.dart';
 import '../identity/identity_recovery_bundle.dart';
 import '../logging/app_logger.dart';
+import '../recovery/app_recovery.dart';
 import '../database/recovery/database_recovery_service.dart';
 import '../debug/loader_watchdog.dart';
 import '../session/session_manager.dart';
+import '../self_healing/self_healing_engine.dart';
 import '../window/window_service.dart';
 import '../../features/registration/services/business_registration_service.dart';
 
@@ -110,7 +113,25 @@ class AppBootstrapController extends ChangeNotifier {
     _log('start');
 
     try {
+      await AppRecoveryController.instance.loadPersisted();
       await WidgetsBinding.instance.endOfFrame;
+      if (token != _runToken) return;
+
+      _setMessage('Reparando instalación...');
+      final healingReport = await const SelfHealingEngine()
+          .run(reason: 'bootstrap')
+          .timeout(const Duration(seconds: 60));
+      _log(
+        'self healing ok repaired=${healingReport.repaired} '
+        'needsRecovery=${healingReport.needsRecovery}',
+      );
+      if (healingReport.needsRecovery ||
+          AppRecoveryController.instance.isActive) {
+        _setSnapshot(
+          _snapshot.copyWith(status: BootStatus.ready, errorMessage: null),
+        );
+        return;
+      }
       if (token != _runToken) return;
 
       _setMessage('Cargando configuración...');
@@ -154,6 +175,22 @@ class AppBootstrapController extends ChangeNotifier {
       _setMessage('Verificando integridad...');
       await DatabaseRecoveryService.run().timeout(const Duration(seconds: 45));
       _log('recovery ok');
+      if (token != _runToken) return;
+
+      _setMessage('Verificando identidad...');
+      final identity = await const IdentityHealthService().check().timeout(
+        const Duration(seconds: 20),
+      );
+      await IdentityHealthService.validateCurrentSessionUser().timeout(
+        const Duration(seconds: 10),
+      );
+      if (identity.needsRecovery || AppRecoveryController.instance.isActive) {
+        _setSnapshot(
+          _snapshot.copyWith(status: BootStatus.ready, errorMessage: null),
+        );
+        return;
+      }
+      _log('identity health ok');
       if (token != _runToken) return;
 
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {

@@ -107,6 +107,38 @@ void main() {
   });
 
   test(
+    'abrir caja sin user valido limpia sesion y no inserta cashbox_daily',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'flutter.logged_in': true,
+        'flutter.logged_user_id': 999,
+        'flutter.logged_user': 'fantasma',
+        'flutter.logged_display_name': 'Fantasma',
+        'flutter.logged_role': 'cashier',
+        'flutter.logged_company_id': 1,
+      });
+      final db = await AppDb.database;
+
+      await expectLater(
+        OperationFlowService.openDailyCashboxToday(openingAmount: 100),
+        throwsA(
+          predicate(
+            (e) => e.toString().contains(
+              'Tu sesión anterior no coincide con los usuarios actuales',
+            ),
+          ),
+        ),
+      );
+
+      final rows = await db.query(DbTables.cashboxDaily);
+      final prefs = await SharedPreferences.getInstance();
+      expect(rows, isEmpty);
+      expect(prefs.getBool('logged_in'), isNull);
+      expect(prefs.getInt('logged_user_id'), isNull);
+    },
+  );
+
+  test(
     'abre turno propio aunque otro usuario tenga turno abierto en la misma caja',
     () async {
       SharedPreferences.setMockInitialValues({

@@ -289,8 +289,11 @@ class LicenseController extends StateNotifier<LicenseState> {
     );
     try {
       final licenseKey = await storage.getLicenseKey();
-      final deviceId = await _ensureDeviceId();
       final last = await storage.getLastInfo();
+      final reactivationRequired = await storage.isReactivationRequired();
+      final deviceId = reactivationRequired
+          ? ((await storage.getDeviceId()) ?? last?.deviceId ?? '')
+          : await _ensureDeviceId();
       final identityStorage = BusinessIdentityStorage();
       var localBusinessId = _resolveBusinessIdValue(
         await identityStorage.getBusinessId(),
@@ -369,7 +372,30 @@ class LicenseController extends StateNotifier<LicenseState> {
       // "activo" para que la UI no muestre nuevamente el formulario de demo.
       final hasActiveLicense =
           merged?.isActive == true && merged?.isExpired == false;
-      if (!hasActiveLicense && canFallbackToTrial) {
+      if (reactivationRequired) {
+        merged = LicenseInfo(
+          backendBaseUrl: kLicenseBackendBaseUrl,
+          licenseKey: licenseKey ?? merged?.licenseKey ?? '',
+          deviceId: deviceId,
+          projectCode: merged?.projectCode.isNotEmpty == true
+              ? merged!.projectCode
+              : kFullposProjectCode,
+          businessId: _resolveBusinessIdValue(
+            localBusinessId,
+            merged?.businessId,
+          ),
+          ok: false,
+          code: 'REACTIVATION_REQUIRED',
+          tipo: merged?.tipo,
+          estado: 'REACTIVACION_REQUERIDA',
+          motivo: 'Terminal local no recuperado. Requiere reactivación.',
+          fechaInicio: merged?.fechaInicio,
+          fechaFin: merged?.fechaFin,
+          maxDispositivos: merged?.maxDispositivos,
+          usados: merged?.usados,
+          lastCheckedAt: merged?.lastCheckedAt,
+        );
+      } else if (!hasActiveLicense && canFallbackToTrial) {
         final identityStorage = BusinessIdentityStorage();
         final trialStart = await identityStorage.getTrialStart();
         if (trialStart != null) {
@@ -438,6 +464,8 @@ class LicenseController extends StateNotifier<LicenseState> {
 
   Future<String> _ensureDeviceId() async {
     // Reusar el terminalId existente para mantener consistencia en desktop.
+    final existingDeviceId = (await storage.getDeviceId() ?? '').trim();
+    if (existingDeviceId.isNotEmpty) return existingDeviceId;
     final terminalId = await SessionManager.ensureTerminalId();
     await storage.setDeviceId(terminalId);
     return terminalId;

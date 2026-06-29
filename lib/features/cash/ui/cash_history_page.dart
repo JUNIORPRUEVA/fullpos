@@ -49,9 +49,6 @@ class _SessionDetailData {
 enum _CortesHeaderAction { pickRange, showSessions, showMovements }
 
 class _CashHistoryPageState extends State<CashHistoryPage> {
-  static const double _compactMaxContentWidth = 1080;
-  static const double _wideMaxContentWidth = 1240;
-
   late DateTime _from;
   late DateTime _to;
   bool _loading = true;
@@ -107,15 +104,13 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     BoxConstraints constraints, {
     required bool isWide,
   }) {
-    const minSide = 16.0;
-    final maxContentWidth = isWide
-        ? _wideMaxContentWidth
-        : _compactMaxContentWidth;
-    final side = math.max(
-      minSide,
-      (constraints.maxWidth - maxContentWidth) / 2,
-    );
-    return EdgeInsets.fromLTRB(side, 12, side, 16);
+    const maxContentWidth = 1440.0;
+    final contentWidth = math.min(constraints.maxWidth * 0.92, maxContentWidth);
+    final side = ((constraints.maxWidth - contentWidth) / 2)
+        .clamp(24.0, 160.0)
+        .toDouble();
+
+    return EdgeInsets.fromLTRB(side, 22, side, 24);
   }
 
   String _normalizeSearch(String input) {
@@ -166,34 +161,97 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final theme = Theme.of(headerContext);
     final scheme = theme.colorScheme;
     final tabController = DefaultTabController.of(headerContext);
+    final money = CurrencyDisplay.currency();
 
-    final controlRadius = BorderRadius.circular(12);
+    double totalIn = 0;
+    double totalOut = 0;
+    for (final movement in _filteredMovements) {
+      if (movement.isIn) {
+        totalIn += movement.amount;
+      } else {
+        totalOut += movement.amount;
+      }
+    }
+    final netBalance = totalIn - totalOut;
+
+    Widget summaryBadge({
+      required String label,
+      required String value,
+      required Color borderColor,
+      Color? backgroundColor,
+      Color? textColor,
+    }) {
+      return Expanded(
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: backgroundColor ?? Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: textColor ?? scheme.onSurface.withOpacity(0.72),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: textColor ?? scheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     final searchField = SizedBox(
       height: 48,
       child: TextField(
         controller: _searchController,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
         decoration: InputDecoration(
-          hintText: 'Buscar (ID, cajero, motivo...)',
-          prefixIcon: const Icon(Icons.search, size: 18),
+          hintText: 'Buscar cajero, motivo, monto, sesión...',
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            size: 20,
+            color: scheme.onSurface.withOpacity(0.48),
+          ),
           isDense: true,
           filled: true,
-          fillColor: scheme.surface,
+          fillColor: Colors.white,
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
+            horizontal: 14,
             vertical: 14,
           ),
           border: OutlineInputBorder(
-            borderRadius: controlRadius,
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide(color: scheme.outlineVariant),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: controlRadius,
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide(color: scheme.outlineVariant),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: controlRadius,
-            borderSide: BorderSide(color: scheme.primary.withOpacity(0.7)),
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFF1A56DB), width: 1.6),
           ),
           suffixIcon: _searchQuery.trim().isNotEmpty
               ? IconButton(
@@ -202,7 +260,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                     _searchController.clear();
                     _safeSetState(() => _searchQuery = '');
                   },
-                  icon: const Icon(Icons.clear, size: 18),
+                  icon: const Icon(Icons.close_rounded, size: 18),
                 )
               : null,
         ),
@@ -230,136 +288,219 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         itemBuilder: (context) => const [
           PopupMenuItem(
             value: _CortesHeaderAction.pickRange,
-            child: Text('Rango de fechas'),
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.date_range_rounded),
+              title: Text('Rango de fechas'),
+            ),
           ),
           PopupMenuDivider(),
           PopupMenuItem(
             value: _CortesHeaderAction.showSessions,
-            child: Text('Ver sesiones'),
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.lock_clock_rounded),
+              title: Text('Ver sesiones'),
+            ),
           ),
           PopupMenuItem(
             value: _CortesHeaderAction.showMovements,
-            child: Text('Ver movimientos'),
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.payments_outlined),
+              title: Text('Ver movimientos'),
+            ),
           ),
         ],
         child: Container(
           height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: controlRadius,
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: scheme.outlineVariant),
           ),
-          alignment: Alignment.center,
-          child: Icon(Icons.filter_list, size: 20, color: scheme.onSurface),
-        ),
-      ),
-    );
-
-    final refreshButton = SizedBox(
-      height: 48,
-      child: OutlinedButton(
-        onPressed: _load,
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          shape: RoundedRectangleBorder(borderRadius: controlRadius),
-          side: BorderSide(color: scheme.outlineVariant),
-        ),
-        child: Icon(Icons.refresh, size: 20, color: scheme.onSurface),
-      ),
-    );
-
-    final actions = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [filterButton, const SizedBox(width: 8), refreshButton],
-    );
-
-    final row = Row(
-      children: [
-        Expanded(child: searchField),
-        const SizedBox(width: 12),
-        actions,
-      ],
-    );
-
-    if (!isNarrow) {
-      return Padding(
-        padding: EdgeInsets.fromLTRB(
-          contentPadding.left,
-          contentPadding.top,
-          contentPadding.right,
-          12,
-        ),
-        child: row,
-      );
-    }
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        contentPadding.left,
-        contentPadding.top,
-        contentPadding.right,
-        12,
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(width: 520, child: row),
-      ),
-    );
-  }
-
-  Widget _buildPageHero(
-    BuildContext context, {
-    required EdgeInsets contentPadding,
-  }) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        contentPadding.left,
-        contentPadding.top,
-        contentPadding.right,
-        14,
-      ),
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.9)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              Icon(Icons.filter_list_rounded, size: 18, color: scheme.onSurface),
+              const SizedBox(width: 8),
               Text(
-                'CAJA',
+                'Filtros',
                 style: theme.textTheme.labelMedium?.copyWith(
-                  color: scheme.primary,
+                  color: scheme.onSurface,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Movimiento de efectivo',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Consulta sesiones, entradas y salidas en una vista más compacta, limpia y fácil de revisar.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.66),
-                  height: 1.35,
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+
+    final actionsButton = SizedBox(
+      height: 48,
+      child: PopupMenuButton<String>(
+        tooltip: 'Acciones',
+        onSelected: (value) async {
+          switch (value) {
+            case 'refresh':
+              await _load();
+              break;
+            case 'range':
+              await _pickRange();
+              break;
+            case 'sessions':
+              tabController.animateTo(0);
+              break;
+            case 'movements':
+              tabController.animateTo(1);
+              break;
+          }
+        },
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: 'refresh',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.refresh_rounded),
+              title: Text('Actualizar'),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'range',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.date_range_rounded),
+              title: Text('Cambiar rango'),
+            ),
+          ),
+          PopupMenuDivider(),
+          PopupMenuItem(
+            value: 'sessions',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.lock_clock_rounded),
+              title: Text('Ver sesiones'),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'movements',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.payments_outlined),
+              title: Text('Ver movimientos'),
+            ),
+          ),
+        ],
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A56DB),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF1A56DB)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.more_horiz_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Acciones',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(width: 4),
+              Icon(Icons.expand_more_rounded, color: Colors.white, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final searchRow = Row(
+      children: [
+        Expanded(child: searchField),
+        const SizedBox(width: 10),
+        filterButton,
+        const SizedBox(width: 8),
+        actionsButton,
+      ],
+    );
+
+    final summaryRow = Row(
+      children: [
+        summaryBadge(
+          label: 'Movimientos',
+          value: '${_filteredMovements.length}',
+          borderColor: scheme.outlineVariant,
+        ),
+        const SizedBox(width: 8),
+        summaryBadge(
+          label: 'Entradas',
+          value: money.format(totalIn),
+          borderColor: scheme.primary.withOpacity(0.26),
+          backgroundColor: scheme.primary.withOpacity(0.10),
+          textColor: scheme.primary,
+        ),
+        const SizedBox(width: 8),
+        summaryBadge(
+          label: 'Salidas',
+          value: money.format(totalOut),
+          borderColor: scheme.error.withOpacity(0.22),
+          backgroundColor: scheme.error.withOpacity(0.08),
+          textColor: scheme.error,
+        ),
+        const SizedBox(width: 8),
+        summaryBadge(
+          label: 'Balance',
+          value: money.format(netBalance),
+          borderColor: scheme.outlineVariant,
+        ),
+      ],
+    );
+
+    return Padding(
+      padding: contentPadding.copyWith(bottom: 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: LayoutBuilder(
+          builder: (context, headerConstraints) {
+            final stacked = headerConstraints.maxWidth < 760;
+
+            if (stacked) {
+              return Column(
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(width: 620, child: searchRow),
+                  ),
+                  const SizedBox(height: 10),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(width: 680, child: summaryRow),
+                  ),
+                ],
+              );
+            }
+
+            return Column(
+              children: [
+                searchRow,
+                const SizedBox(height: 10),
+                summaryRow,
+              ],
+            );
+          },
         ),
       ),
     );
@@ -391,7 +532,6 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   Future<void> _showSessionDetails(CashSessionModel session) async {
     if (session.id == null) return;
 
-    // Cargar datos completos antes de mostrar
     final detailFuture = _loadSessionDetail(session);
 
     await showModalBottomSheet(
@@ -681,94 +821,64 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   }
 
   Future<void> _showMovementDetails(CashMovementModel movement) async {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final money = CurrencyDisplay.currency();
-    final dateTime = _dateTimeFormat;
-    final isIn = movement.isIn;
-    final color = isIn ? scheme.primary : scheme.error;
+    if (!mounted) return;
 
-    await showModalBottomSheet(
+    _safeSetState(() {
+      _selectedMovement = movement;
+      _selectedSession = null;
+    });
+
+    await showGeneralDialog<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: scheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Movimiento',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar detalle del movimiento',
+      barrierColor: Colors.black.withOpacity(0.18),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        final availableWidth = MediaQuery.of(context).size.width;
+        final panelWidth = math.min(392.0, availableWidth);
+
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: panelWidth,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  bottomLeft: Radius.circular(18),
                 ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: color.withOpacity(0.3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 28,
+                    offset: const Offset(-8, 0),
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isIn
-                            ? Icons.add_circle_outline
-                            : Icons.remove_circle_outline,
-                        color: color,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          movement.reason,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${isIn ? '+' : '-'}${money.format(movement.amount)}',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: color,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 8,
-                  children: [
-                    _pill('Tipo: ${isIn ? 'Entrada' : 'Retiro'}', scheme),
-                    _pill('Sesión: #${movement.sessionId}', scheme),
-                    _pill(
-                      'Fecha: ${dateTime.format(movement.createdAt)}',
-                      scheme,
-                    ),
-                  ],
-                ),
-              ],
+                ],
+              ),
+              child: _buildMovementDetailsDrawer(
+                movement,
+                onClose: () => Navigator.of(context).pop(),
+              ),
             ),
           ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(opacity: curved, child: child),
         );
       },
     );
@@ -1018,74 +1128,66 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const SizedBox.shrink(),
-        toolbarHeight: 8,
-        elevation: 0,
-        surfaceTintColor: scheme.surface,
-      ),
-      backgroundColor: scheme.surface,
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 1200;
-          final padding = _contentPadding(constraints, isWide: isWide);
-          final isNarrow = constraints.maxWidth < 720;
-          final contentWidth =
-              constraints.maxWidth - padding.left - padding.right;
-          final sideWidth = (contentWidth * 0.32).clamp(320.0, 420.0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 1200;
+        final padding = _contentPadding(constraints, isWide: isWide);
+        final isNarrow = constraints.maxWidth < 720;
 
-          return DefaultTabController(
-            length: 2,
-            child: Column(
-              children: [
-                _buildPageHero(context, contentPadding: padding),
-                Builder(
-                  builder: (headerContext) => _buildTopHeaderLine(
-                    headerContext,
-                    isNarrow: isNarrow,
-                    contentPadding: padding.copyWith(top: 0),
-                  ),
+        return DefaultTabController(
+          length: 2,
+          initialIndex: 1,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Builder(
+                builder: (headerContext) => _buildTopHeaderLine(
+                  headerContext,
+                  isNarrow: isNarrow,
+                  contentPadding: padding,
                 ),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      padding.left,
-                      0,
-                      padding.right,
-                      padding.bottom,
-                    ),
-                    child: _loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : _error != null
-                        ? Center(
-                            child: Text(
-                              _error!,
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                          )
-                        : TabBarView(
-                            children: [
-                              _buildSessionsList(context, isWide, sideWidth),
-                              _buildMovementsList(context, isWide, sideWidth),
-                            ],
+              ),
+              const SizedBox(height: 20),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    padding.left,
+                    0,
+                    padding.right,
+                    padding.bottom,
+                  ),
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _error != null
+                      ? Center(
+                          child: Text(
+                            _error!,
+                            style: theme.textTheme.bodyMedium,
                           ),
-                  ),
+                        )
+                      : TabBarView(
+                          children: [
+                            _buildSessionsList(context, isWide),
+                            _buildMovementsList(context, isWide),
+                          ],
+                        ),
                 ),
-              ],
-            ),
-          );
-        },
-      ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // SESIONES
+  // ─────────────────────────────────────────────────────────────
 
   Widget _buildSessionsList(
     BuildContext context,
     bool isWide,
-    double sideWidth,
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -1239,7 +1341,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
         Container(width: 1, color: scheme.outlineVariant.withOpacity(0.35)),
         const SizedBox(width: 12),
         SizedBox(
-          width: sideWidth,
+          width: 340,
           child: _buildSessionDetailsPanel(_selectedSession),
         ),
       ],
@@ -1414,10 +1516,13 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // MOVIMIENTOS
+  // ─────────────────────────────────────────────────────────────
+
   Widget _buildMovementsList(
     BuildContext context,
     bool isWide,
-    double sideWidth,
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -1425,166 +1530,358 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final money = CurrencyDisplay.currency();
 
     final movements = _filteredMovements;
-    if (movements.isEmpty) {
-      return Center(
-        child: Text(
-          'Sin movimientos en el rango seleccionado.',
-          style: theme.textTheme.bodyMedium,
+    final mutedText = scheme.onSurface.withOpacity(0.6);
+
+    Widget listHeader() {
+      final muted = scheme.onSurface.withOpacity(0.70);
+
+      Text label(String text, {TextAlign? align}) {
+        return Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: align,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: muted,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.15,
+          ),
+        );
+      }
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: 34,
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(width: 32, child: label('')),
+            const SizedBox(width: 12),
+            Expanded(flex: 2, child: label('Motivo')),
+            const SizedBox(width: 12),
+            Expanded(flex: 1, child: label('Cajero')),
+            const SizedBox(width: 8),
+            Expanded(flex: 1, child: label('Sesión')),
+            const SizedBox(width: 8),
+            Expanded(flex: 1, child: label('Fecha')),
+            const SizedBox(width: 8),
+            SizedBox(width: 128, child: label('Monto', align: TextAlign.right)),
+            const SizedBox(width: 8),
+            SizedBox(width: 28, child: label('', align: TextAlign.center)),
+          ],
         ),
       );
     }
 
-    final list = ListView.separated(
-      padding: EdgeInsets.zero,
-      itemCount: movements.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        thickness: 1,
-        color: scheme.outlineVariant.withOpacity(0.35),
-      ),
-      itemBuilder: (context, index) {
-        final movement = movements[index];
-        final isSelected = _selectedMovement?.id == movement.id;
-        final isIn = movement.isIn;
-        final color = isIn ? scheme.primary : scheme.error;
+    Widget emptyState() {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.payments_outlined, size: 64, color: mutedText),
+            const SizedBox(height: 14),
+            Text(
+              'Sin movimientos',
+              style: theme.textTheme.titleMedium?.copyWith(color: mutedText),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _searchQuery.trim().isNotEmpty
+                  ? 'Intenta cambiar la búsqueda o el rango de fechas.'
+                  : 'No hay entradas ni salidas en el rango seleccionado.',
+              style: theme.textTheme.bodySmall?.copyWith(color: mutedText),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
 
-        final title = movement.reason;
-        final meta =
-            '${dateTime.format(movement.createdAt)} · Sesión #${movement.sessionId}';
-        final amountLabel =
-            '${isIn ? '+' : '-'}${money.format(movement.amount)}';
+    Widget movementRow(CashMovementModel movement) {
+      final isSelected = _selectedMovement?.id == movement.id;
+      final isIn = movement.isIn;
+      final typeColor = isIn ? scheme.primary : scheme.error;
+      final typeLabel = isIn ? 'Entrada' : 'Salida';
+      final amountLabel = '${isIn ? '+' : '-'}${money.format(movement.amount)}';
 
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Material(
-            color: isSelected
-                ? scheme.primary.withOpacity(0.06)
-                : Colors.transparent,
-            child: InkWell(
-              onTap: () => _selectMovement(movement, showDetails: !isWide),
-              hoverColor: scheme.surfaceVariant.withOpacity(0.35),
-              child: SizedBox(
-                height: 54,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isIn
-                            ? Icons.add_circle_outline
-                            : Icons.remove_circle_outline,
-                        color: color,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 5,
-                        child: Text(
-                          title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 4,
-                        child: Text(
-                          meta,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurface.withOpacity(0.68),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: 130,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            amountLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: color,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 44,
-                        child: IconButton(
-                          tooltip: 'Detalle',
-                          icon: const Icon(Icons.chevron_right, size: 20),
-                          onPressed: () => _showMovementDetails(movement),
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
+      return Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => _selectMovement(movement, showDetails: true),
+          borderRadius: BorderRadius.circular(12),
+          hoverColor: scheme.primary.withOpacity(0.04),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFFEAF2FF).withOpacity(0.82)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected
+                    ? const Color(0xFF8FB3FF)
+                    : Colors.transparent,
+                width: isSelected ? 1 : 0,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFF1A56DB)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Tooltip(
+                  message: typeLabel,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: typeColor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: typeColor.withOpacity(0.18)),
+                    ),
+                    child: Icon(
+                      isIn
+                          ? Icons.add_circle_outline_rounded
+                          : Icons.remove_circle_outline_rounded,
+                      color: typeColor,
+                      size: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    movement.reason,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    'Usuario #${movement.userId}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.66),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    '#${movement.sessionId}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.66),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    dateTime.format(movement.createdAt),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.66),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 128,
+                  child: Text(
+                    amountLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: typeColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 28,
+                  child: PopupMenuButton<String>(
+                    tooltip: 'Acciones',
+                    icon: Icon(
+                      Icons.more_vert_rounded,
+                      color: scheme.onSurface.withOpacity(0.58),
+                      size: 18,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onSelected: (value) {
+                      if (value == 'details') {
+                        _showMovementDetails(movement);
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'details',
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(Icons.visibility_outlined, size: 18),
+                          title: Text('Ver detalle'),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
+              ],
             ),
           ),
-        );
-      },
-    );
-
-    if (!isWide) return list;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: list),
-        const SizedBox(width: 12),
-        Container(width: 1, color: scheme.outlineVariant.withOpacity(0.35)),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: sideWidth,
-          child: _buildMovementDetailsPanel(_selectedMovement),
         ),
-      ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.85)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Column(
+          children: [
+            if (movements.isNotEmpty) ...[
+              listHeader(),
+              const SizedBox(height: 8),
+            ],
+            Expanded(
+              child: movements.isEmpty
+                  ? emptyState()
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                      itemCount: movements.length,
+                      separatorBuilder: (context, index) => Divider(
+                        height: 1,
+                        color: scheme.outlineVariant,
+                      ),
+                      itemBuilder: (context, index) {
+                        return movementRow(movements[index]);
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildMovementDetailsPanel(CashMovementModel? movement) {
+  // ─────────────────────────────────────────────────────────────
+  // DRAWER LATERAL DE DETALLE DE MOVIMIENTO (estilo Client Detail)
+  // ─────────────────────────────────────────────────────────────
+
+  Widget _buildMovementDetailsDrawer(
+    CashMovementModel? movement, {
+    VoidCallback? onClose,
+  }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final money = CurrencyDisplay.currency();
     final dateTime = _dateTimeFormat;
+    final muted = scheme.onSurface.withOpacity(0.62);
+    final border = scheme.outlineVariant.withOpacity(0.85);
 
-    Widget kvRow({required String label, required String value}) {
+    Widget sectionTitle(String title) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.only(top: 20, bottom: 10),
+        child: Text(
+          title,
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: scheme.onSurface,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.1,
+          ),
+        ),
+      );
+    }
+
+    Widget cleanDivider() {
+      return Divider(height: 1, thickness: 1, color: border);
+    }
+
+    Widget infoLine({
+      required IconData icon,
+      required String label,
+      required String value,
+      int maxLines = 1,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 110,
-              child: Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.65),
-                  fontWeight: FontWeight.w700,
-                ),
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF2FF),
+                borderRadius: BorderRadius.circular(9),
               ),
+              child: Icon(icon, size: 16, color: const Color(0xFF1A56DB)),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                value,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: muted,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    value,
+                    maxLines: maxLines,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                      height: 1.18,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1592,66 +1889,283 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       );
     }
 
-    if (movement == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            'Selecciona un movimiento para ver el detalle.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurface.withOpacity(0.66),
-              fontWeight: FontWeight.w600,
+    Widget pill({
+      required String text,
+      required bool active,
+      required IconData icon,
+    }) {
+      final color = active
+          ? const Color(0xFF1A56DB)
+          : scheme.onSurfaceVariant.withOpacity(0.85);
+
+      return Expanded(
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFFEAF2FF) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: active ? const Color(0xFFBFD1F7) : scheme.outlineVariant,
             ),
-            textAlign: TextAlign.center,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (movement == null) {
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(left: BorderSide(color: border, width: 1)),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Selecciona un movimiento para ver el detalle.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       );
     }
 
     final isIn = movement.isIn;
-    final color = isIn ? scheme.primary : scheme.error;
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    final movementColor = isIn ? const Color(0xFF1A56DB) : scheme.error;
+    final typeText = isIn ? 'Entrada de efectivo' : 'Salida de efectivo';
+    final amountLabel = '${isIn ? '+' : '-'}${money.format(movement.amount)}';
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(left: BorderSide(color: border, width: 1)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: 64,
+            padding: const EdgeInsets.fromLTRB(18, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: border)),
+            ),
+            child: Row(
               children: [
                 Expanded(
                   child: Text(
-                    'Movimiento',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
+                    'Detalle del movimiento',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.15,
                     ),
                   ),
                 ),
                 IconButton(
-                  onPressed: () => _showMovementDetails(movement),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  tooltip: 'Abrir detalle',
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Cerrar detalle',
+                  onPressed: onClose ??
+                      () => _safeSetState(() => _selectedMovement = null),
+                  icon: const Icon(Icons.close_rounded, size: 19),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              '${isIn ? '+' : '-'}${money.format(movement.amount)}',
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w800,
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: const Color(0xFFEAF2FF),
+                        foregroundColor: const Color(0xFF1A56DB),
+                        child: Icon(
+                          isIn
+                              ? Icons.add_circle_outline_rounded
+                              : Icons.remove_circle_outline_rounded,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                typeText,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: muted,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                movement.reason,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.05,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      pill(
+                        text: isIn ? 'Entrada' : 'Salida',
+                        active: true,
+                        icon: isIn
+                            ? Icons.add_circle_outline_rounded
+                            : Icons.remove_circle_outline_rounded,
+                      ),
+                      const SizedBox(width: 8),
+                      pill(
+                        text: 'Sesión #${movement.sessionId}',
+                        active: false,
+                        icon: Icons.lock_clock_rounded,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 13,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: border),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Monto',
+                            style: theme.textTheme.labelMedium?.copyWith(
+                              color: muted,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          amountLabel,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: movementColor,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  sectionTitle('Datos del movimiento'),
+                  infoLine(
+                    icon: Icons.person_outline,
+                    label: 'Cajero',
+                    value: 'Usuario #${movement.userId}',
+                  ),
+                  cleanDivider(),
+                  infoLine(
+                    icon: Icons.calendar_month_outlined,
+                    label: 'Fecha y hora',
+                    value: dateTime.format(movement.createdAt),
+                  ),
+                  cleanDivider(),
+                  infoLine(
+                    icon: Icons.lock_clock_outlined,
+                    label: 'Sesión',
+                    value: '#${movement.sessionId}',
+                  ),
+                  cleanDivider(),
+                  infoLine(
+                    icon: Icons.description_outlined,
+                    label: 'Motivo / razón',
+                    value: movement.reason,
+                    maxLines: 3,
+                  ),
+                  sectionTitle('Auditoría'),
+                  infoLine(
+                    icon: Icons.person_outline,
+                    label: 'Registrado por',
+                    value: 'Usuario #${movement.userId}',
+                  ),
+                  cleanDivider(),
+                  infoLine(
+                    icon: Icons.update_rounded,
+                    label: 'Fecha de registro',
+                    value: dateTime.format(movement.createdAt),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 11,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: border),
+                    ),
+                    child: Text(
+                      'Movimiento registrado el ${dateTime.format(movement.createdAt)}.',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: muted,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            const Divider(height: 24),
-            kvRow(label: 'Motivo', value: movement.reason),
-            kvRow(label: 'Tipo', value: isIn ? 'Entrada' : 'Retiro'),
-            kvRow(label: 'Sesión', value: '#${movement.sessionId}'),
-            kvRow(label: 'Fecha', value: dateTime.format(movement.createdAt)),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+
 }

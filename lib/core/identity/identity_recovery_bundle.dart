@@ -129,6 +129,8 @@ class IdentityRecoveryBundle {
   static const String recoveryRequiredKey = 'identity.recovery_required';
   static const String recoveryReasonKey = 'identity.recovery_reason';
 
+  static String checksumForJson(Map<String, dynamic> map) => _checksumFor(map);
+
   Future<void> _queue = Future<void>.value();
 
   Future<File> primaryFile() async {
@@ -346,7 +348,22 @@ class IdentityRecoveryBundle {
       return true;
     }
     if (await hasCorruptPreferencesQuarantine()) return true;
+    final docs = await getApplicationDocumentsDirectory();
+    for (final name in const ['fullpos.db', 'fullpos_test.db']) {
+      final db = File(p.join(docs.path, name));
+      if (await db.exists()) return true;
+      if (await File('${db.path}-wal').exists()) return true;
+      if (await File('${db.path}-shm').exists()) return true;
+    }
+    final backupsDir = Directory(p.join(docs.path, 'FULLPOS_BACKUPS'));
+    if (await _hasSignificantBackupEvidence(backupsDir)) return true;
     final support = await getApplicationSupportDirectory();
+    for (final name in const ['fullpos.db', 'fullpos_test.db']) {
+      final db = File(p.join(support.path, name));
+      if (await db.exists()) return true;
+      if (await File('${db.path}-wal').exists()) return true;
+      if (await File('${db.path}-shm').exists()) return true;
+    }
     final licenseFallback = File(
       p.join(support.path, 'FullPOS', 'license.dat'),
     );
@@ -528,11 +545,11 @@ class IdentityRecoveryBundle {
     final existing = await loadBestAvailable();
     final now = DateTime.now().toUtc();
     final data = IdentityRecoveryBundleData(
-      businessId: businessId,
-      licenseKey: licenseKey,
-      licenseDeviceId: licenseDeviceId,
-      terminalId: terminalId,
-      licenseLastInfo: licenseLastInfo,
+      businessId: businessId ?? existing?.businessId,
+      licenseKey: licenseKey ?? existing?.licenseKey,
+      licenseDeviceId: licenseDeviceId ?? existing?.licenseDeviceId,
+      terminalId: terminalId ?? existing?.terminalId,
+      licenseLastInfo: licenseLastInfo ?? existing?.licenseLastInfo,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       source: source,
@@ -557,6 +574,25 @@ class IdentityRecoveryBundle {
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
+}
+
+Future<bool> _hasSignificantBackupEvidence(Directory backupsDir) async {
+  try {
+    if (!await backupsDir.exists()) return false;
+    await for (final entity in backupsDir.list(recursive: true)) {
+      if (entity is! File) continue;
+      final path = entity.path.toLowerCase();
+      if (path.endsWith('.zip') ||
+          path.endsWith('.db') ||
+          path.endsWith('.sqlite') ||
+          path.contains('${p.separator}quarantine${p.separator}') ||
+          path.contains('${p.separator}pre_repair${p.separator}') ||
+          path.contains('${p.separator}pre_migration${p.separator}')) {
+        return true;
+      }
+    }
+  } catch (_) {}
+  return false;
 }
 
 String _checksumFor(Map<String, dynamic> map) {

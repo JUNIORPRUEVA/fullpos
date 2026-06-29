@@ -93,7 +93,7 @@ class _AppShellState extends State<AppShell> {
                   scale: 1.0,
                   topPadding: 0,
                   showMenuButton: true,
-                  showBottomBorder: false,
+                  showBottomBorder: true,
                   onMenuPressed: () => _openDrawer(context),
                 ),
               ),

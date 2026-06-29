@@ -8,7 +8,6 @@ import '../../../core/printing/unified_ticket_printer.dart';
 import '../../../core/session/session_manager.dart';
 import '../../../core/ui/dialog_keyboard_shortcuts.dart';
 import '../../../core/utils/currency_display.dart';
-import '../../../theme/app_colors.dart';
 import '../../cash/data/cash_repository.dart' as cash_repo;
 import '../../settings/data/printer_settings_repository.dart';
 import '../data/credits_repository.dart';
@@ -16,6 +15,12 @@ import '../data/layaway_repository.dart';
 import '../data/sales_repository.dart';
 
 enum _AccountStatusFilter { all, pending, paid }
+
+const Color _fullPosBlue = Color(0xFF1A56DB);
+const Color _softBlue = Color(0xFFEAF2FF);
+const Color _softPanel = Color(0xFFF8FAFC);
+const Color _paidGreen = Color(0xFF15803D);
+const Color _paidGreenBg = Color(0xFFDCFCE7);
 
 class ClientCreditsPage extends StatefulWidget {
   const ClientCreditsPage({super.key});
@@ -118,13 +123,14 @@ class _ClientCreditsPageState extends State<ClientCreditsPage> {
   }
 
   double _pendingAmount(Map<String, dynamic> sale) =>
-      ((sale['amount_pending'] as num?)?.toDouble() ?? 0.0)
-          .clamp(0.0, double.infinity);
+      (((sale['amount_pending'] as num?)?.toDouble() ?? 0.0)
+              .clamp(0.0, double.infinity))
+          .toDouble();
 
   String _formatCurrency(double value) => _currency.format(value);
 
   String _formatDate(int? ms) {
-    if (ms == null) return 'Sin fecha';
+    if (ms == null) return '-';
     return DateFormat(
       'dd/MM/yyyy',
     ).format(DateTime.fromMillisecondsSinceEpoch(ms));
@@ -136,6 +142,7 @@ class _ClientCreditsPageState extends State<ClientCreditsPage> {
     final side = ((constraints.maxWidth - contentWidth) / 2)
         .clamp(24.0, 160.0)
         .toDouble();
+
     return EdgeInsets.fromLTRB(side, 22, side, 24);
   }
 
@@ -238,21 +245,19 @@ class _ClientCreditsPageState extends State<ClientCreditsPage> {
       builder: (dialogContext) => DialogKeyboardShortcuts(
         onSubmit: () => submit(dialogContext),
         child: _TinyPaymentDialog(
+          title: 'Registrar abono',
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Registrar abono',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+              _PaymentDialogInfo(label: 'Factura', value: saleCode),
+              _PaymentDialogInfo(label: 'Cliente', value: clientName),
+              _PaymentDialogInfo(label: 'Total', value: _formatCurrency(saleTotal)),
+              _PaymentDialogInfo(
+                label: 'Pendiente',
+                value: _formatCurrency(pendingAmount),
+                highlighted: true,
               ),
-              const SizedBox(height: 8),
-              Text('Factura: $saleCode'),
-              Text('Cliente: $clientName'),
-              Text('Total: ${_formatCurrency(saleTotal)}'),
-              Text('Pendiente: ${_formatCurrency(pendingAmount)}'),
               const SizedBox(height: 14),
               TextField(
                 controller: amountController,
@@ -288,146 +293,287 @@ class _ClientCreditsPageState extends State<ClientCreditsPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  void _showCreditDetailsSidePanel(Map<String, dynamic> sale) {
+    if (!mounted) return;
+
+    setState(() => _selectedSaleId = sale['id'] as int?);
+
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar ficha del crédito',
+      barrierColor: Colors.black.withOpacity(0.18),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 392,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  bottomLeft: Radius.circular(18),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 28,
+                    offset: const Offset(-8, 0),
+                  ),
+                ],
+              ),
+              child: _CreditSideDetailsPanel(
+                sale: sale,
+                formatCurrency: _formatCurrency,
+                formatDate: _formatDate,
+                onClose: () => Navigator.of(context).pop(),
+                onRegisterPayment: () {
+                  Navigator.of(context).pop();
+                  final totalDue = (sale['total_due'] as num?)?.toDouble() ??
+                      ((sale['total'] as num?)?.toDouble() ?? 0.0);
+                  _showPaymentDialog(
+                    sale['id'] as int,
+                    (sale['local_code'] ?? 'N/A').toString(),
+                    (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
+                    totalDue,
+                    _pendingAmount(sale),
+                    sale['customer_id'] as int?,
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(opacity: curved, child: child),
+        );
+      },
+    );
+  }
+
+  Widget _buildActionsMenu() {
+    return SizedBox(
+      height: 48,
+      child: PopupMenuButton<String>(
+        tooltip: 'Acciones',
+        onSelected: (value) {
+          switch (value) {
+            case 'refresh':
+              _loadCredits();
+              break;
+            case 'details':
+              final sale = _selectedSale;
+              if (sale != null) _showCreditDetailsSidePanel(sale);
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'refresh',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.refresh_rounded),
+              title: Text('Actualizar'),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'details',
+            enabled: _selectedSale != null,
+            child: const ListTile(
+              dense: true,
+              leading: Icon(Icons.visibility_outlined),
+              title: Text('Abrir ficha'),
+            ),
+          ),
+        ],
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: _fullPosBlue,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _fullPosBlue),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.more_horiz_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Acciones',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(width: 4),
+              Icon(Icons.expand_more_rounded, color: Colors.white, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopHeaderLine({
+    required double minWidth,
+  }) {
     final filteredSales = _filteredSales;
-    final selectedSale = _selectedSale;
     final totalPending = filteredSales.fold<double>(
       0,
       (sum, sale) => sum + _pendingAmount(sale),
     );
+    final pendingCount = filteredSales.where((sale) => _pendingAmount(sale) > 0).length;
+    final paidCount = filteredSales.where((sale) => _pendingAmount(sale) <= 0).length;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final padding = _contentPadding(constraints);
-        final isWide = constraints.maxWidth >= 1200;
-        final detailWidth = (constraints.maxWidth * 0.28).clamp(340.0, 430.0);
+    return _AccountsTopHeaderLine(
+      minWidth: minWidth,
+      searchController: _searchController,
+      searchHint: 'Buscar cliente, teléfono o código...',
+      statusFilter: _statusFilter,
+      onFilterChanged: (value) => setState(() => _statusFilter = value),
+      onSearchChanged: (_) => setState(() {}),
+      onClearSearch: () {
+        setState(() => _searchController.clear());
+      },
+      actionsMenu: _buildActionsMenu(),
+      summaryItems: [
+        _SummaryItem(label: 'Créditos', value: '${filteredSales.length}'),
+        _SummaryItem(
+          label: 'Pendientes',
+          value: '$pendingCount',
+          backgroundColor: _softBlue,
+          borderColor: _fullPosBlue.withOpacity(0.26),
+          textColor: _fullPosBlue,
+        ),
+        _SummaryItem(
+          label: 'Pagados',
+          value: '$paidCount',
+          backgroundColor: _softPanel,
+        ),
+        _SummaryItem(
+          label: 'Saldo pendiente',
+          value: _formatCurrency(totalPending),
+          backgroundColor: _softBlue,
+          borderColor: _fullPosBlue.withOpacity(0.26),
+          textColor: _fullPosBlue,
+        ),
+      ],
+    );
+  }
 
-        final header = _AccountsHeaderCard(
-          eyebrow: 'Clientes',
-          title: 'Créditos',
-          subtitle:
-              'Consulta cuentas por cobrar, revisa el estado actual y registra abonos sin salir de esta pantalla.',
-          searchController: _searchController,
-          searchHint: 'Buscar por cliente, teléfono o código...',
-          statusFilter: _statusFilter,
-          onFilterChanged: (value) => setState(() => _statusFilter = value),
-          onSearchChanged: (_) => setState(() {}),
-          summaryItems: [
-            _SummaryItem(
-              label: 'Créditos visibles',
-              value: '${filteredSales.length}',
-              tone: _SummaryTone.neutral,
+  Widget _buildListCard() {
+    final filteredSales = _filteredSales;
+    final selectedSale = _selectedSale;
+
+    return _AccountsListCard(
+      emptyTitle: 'No hay créditos',
+      emptyMessage: _searchController.text.trim().isNotEmpty
+          ? 'Intenta cambiar la búsqueda o el filtro.'
+          : 'Cuando existan ventas a crédito aparecerán aquí.',
+      loading: _loading,
+      itemCount: filteredSales.length,
+      header: const _AccountsListHeader(
+        firstColumn: 'Cliente',
+        codeColumn: 'Factura',
+        dateColumn: 'Vence',
+      ),
+      itemBuilder: (context, index) {
+        final sale = filteredSales[index];
+        final pending = _pendingAmount(sale);
+        final totalDue =
+            (sale['total_due'] as num?)?.toDouble() ??
+            ((sale['total'] as num?)?.toDouble() ?? 0.0);
+        final isSelected = sale['id'] == (selectedSale?['id']);
+
+        return _AccountTableRow(
+          isSelected: isSelected,
+          icon: Icons.receipt_long_outlined,
+          title: (sale['customer_name_snapshot'] ?? 'Cliente sin nombre').toString(),
+          phone: (sale['customer_phone_snapshot'] ?? '-').toString(),
+          code: (sale['local_code'] ?? 'N/A').toString(),
+          date: _formatDate(sale['credit_due_date_ms'] as int?),
+          total: _formatCurrency(totalDue),
+          pending: pending > 0 ? _formatCurrency(pending) : '-',
+          statusLabel: pending > 0 ? 'Pendiente' : 'Pagado',
+          isPaid: pending <= 0,
+          onTap: () => _showCreditDetailsSidePanel(sale),
+          menuItems: [
+            PopupMenuItem<String>(
+              value: 'pay',
+              enabled: pending > 0,
+              child: const Row(
+                children: [
+                  Icon(Icons.payments_outlined, size: 18),
+                  SizedBox(width: 10),
+                  Text('Registrar abono'),
+                ],
+              ),
             ),
-            _SummaryItem(
-              label: 'Saldo pendiente',
-              value: _formatCurrency(totalPending),
-              tone: _SummaryTone.primary,
+            const PopupMenuItem<String>(
+              value: 'details',
+              child: Row(
+                children: [
+                  Icon(Icons.visibility_outlined, size: 18),
+                  SizedBox(width: 10),
+                  Text('Ver ficha'),
+                ],
+              ),
             ),
           ],
-        );
-
-        final listCard = _AccountsListCard(
-          title: 'Cuentas registradas',
-          emptyTitle: 'No hay créditos para mostrar',
-          emptyMessage: _searchController.text.trim().isNotEmpty
-              ? 'Prueba ajustando la búsqueda o el filtro.'
-              : 'Cuando existan ventas a crédito activas aparecerán aquí.',
-          loading: _loading,
-          itemCount: filteredSales.length,
-          itemBuilder: (context, index) {
-            final sale = filteredSales[index];
-            final pending = _pendingAmount(sale);
-            final totalDue =
-                (sale['total_due'] as num?)?.toDouble() ??
-                ((sale['total'] as num?)?.toDouble() ?? 0.0);
-            final isSelected = sale['id'] == (selectedSale?['id']);
-
-            return _AccountRow(
-              isSelected: isSelected,
-              icon: Icons.receipt_long_outlined,
-              title: (sale['customer_name_snapshot'] ?? 'Cliente sin nombre')
-                  .toString(),
-              subtitle:
-                  '${sale['local_code'] ?? 'N/A'} • vence ${_formatDate(sale['credit_due_date_ms'] as int?)}',
-              trailingTop: _formatCurrency(totalDue),
-              trailingBottom: pending > 0
-                  ? 'Pendiente ${_formatCurrency(pending)}'
-                  : 'Pagado',
-              trailingTone: pending > 0
-                  ? const Color(0xFF2563EB)
-                  : const Color(0xFF15803D),
-              statusLabel: pending > 0 ? 'PENDIENTE' : 'PAGADO',
-              onTap: () => setState(() => _selectedSaleId = sale['id'] as int?),
-              menuItems: [
-                PopupMenuItem<String>(
-                  value: 'pay',
-                  enabled: pending > 0,
-                  child: const Text('Registrar abono'),
-                ),
-              ],
-              onMenuSelected: (value) {
-                if (value != 'pay') return;
-                _showPaymentDialog(
-                  sale['id'] as int,
-                  (sale['local_code'] ?? 'N/A').toString(),
-                  (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
-                  totalDue,
-                  pending,
-                  sale['customer_id'] as int?,
-                );
-              },
+          onMenuSelected: (value) {
+            if (value == 'details') {
+              _showCreditDetailsSidePanel(sale);
+              return;
+            }
+            if (value != 'pay') return;
+            _showPaymentDialog(
+              sale['id'] as int,
+              (sale['local_code'] ?? 'N/A').toString(),
+              (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
+              totalDue,
+              pending,
+              sale['customer_id'] as int?,
             );
           },
         );
+      },
+    );
+  }
 
-        final detailCard = _CreditDetailCard(
-          sale: selectedSale,
-          formatCurrency: _formatCurrency,
-          formatDate: _formatDate,
-          onRegisterPayment: selectedSale == null
-              ? null
-              : () => _showPaymentDialog(
-                  selectedSale['id'] as int,
-                  (selectedSale['local_code'] ?? 'N/A').toString(),
-                  (selectedSale['customer_name_snapshot'] ?? 'Cliente')
-                      .toString(),
-                  (selectedSale['total_due'] as num?)?.toDouble() ??
-                      ((selectedSale['total'] as num?)?.toDouble() ?? 0.0),
-                  _pendingAmount(selectedSale),
-                  selectedSale['customer_id'] as int?,
-                ),
-        );
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final padding = _contentPadding(constraints);
+        final headerMinWidth = math
+            .max(0.0, constraints.maxWidth - padding.left - padding.right)
+            .toDouble();
 
-        return Container(
-          color: scheme.surface,
-          child: Padding(
-            padding: padding,
-            child: Column(
-              children: [
-                header,
-                const SizedBox(height: 18),
-                Expanded(
-                  child: isWide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(child: listCard),
-                            const SizedBox(width: 18),
-                            SizedBox(width: detailWidth, child: detailCard),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            Expanded(flex: 6, child: listCard),
-                            const SizedBox(height: 18),
-                            Expanded(flex: 5, child: detailCard),
-                          ],
-                        ),
-                ),
-              ],
-            ),
+        return Padding(
+          padding: padding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTopHeaderLine(minWidth: headerMinWidth),
+              const SizedBox(height: 18),
+              Expanded(child: _buildListCard()),
+            ],
           ),
         );
       },
@@ -536,10 +682,28 @@ class _ClientLayawaysPageState extends State<ClientLayawaysPage> {
   }
 
   double _pendingAmount(Map<String, dynamic> sale) =>
-      ((sale['amount_pending'] as num?)?.toDouble() ?? 0.0)
-          .clamp(0.0, double.infinity);
+      (((sale['amount_pending'] as num?)?.toDouble() ?? 0.0)
+              .clamp(0.0, double.infinity))
+          .toDouble();
 
   String _formatCurrency(double value) => _currency.format(value);
+
+  String _formatDate(int? ms) {
+    if (ms == null) return '-';
+    return DateFormat(
+      'dd/MM/yyyy',
+    ).format(DateTime.fromMillisecondsSinceEpoch(ms));
+  }
+
+  EdgeInsets _contentPadding(BoxConstraints constraints) {
+    const maxContentWidth = 1440.0;
+    final contentWidth = math.min(constraints.maxWidth * 0.92, maxContentWidth);
+    final side = ((constraints.maxWidth - contentWidth) / 2)
+        .clamp(24.0, 160.0)
+        .toDouble();
+
+    return EdgeInsets.fromLTRB(side, 22, side, 24);
+  }
 
   Future<void> _showPaymentDialog(
     int saleId,
@@ -645,21 +809,19 @@ class _ClientLayawaysPageState extends State<ClientLayawaysPage> {
       builder: (dialogContext) => DialogKeyboardShortcuts(
         onSubmit: () => submit(dialogContext),
         child: _TinyPaymentDialog(
+          title: 'Registrar abono',
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Registrar abono',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+              _PaymentDialogInfo(label: 'Apartado', value: saleCode),
+              _PaymentDialogInfo(label: 'Cliente', value: clientName),
+              _PaymentDialogInfo(label: 'Total', value: _formatCurrency(saleTotal)),
+              _PaymentDialogInfo(
+                label: 'Pendiente',
+                value: _formatCurrency(pendingAmount),
+                highlighted: true,
               ),
-              const SizedBox(height: 8),
-              Text('Apartado: $saleCode'),
-              Text('Cliente: $clientName'),
-              Text('Total: ${_formatCurrency(saleTotal)}'),
-              Text('Pendiente: ${_formatCurrency(pendingAmount)}'),
               const SizedBox(height: 14),
               TextField(
                 controller: amountController,
@@ -695,150 +857,283 @@ class _ClientLayawaysPageState extends State<ClientLayawaysPage> {
     );
   }
 
-  EdgeInsets _contentPadding(BoxConstraints constraints) {
-    const maxContentWidth = 1440.0;
-    final contentWidth = math.min(constraints.maxWidth * 0.92, maxContentWidth);
-    final side = ((constraints.maxWidth - contentWidth) / 2)
-        .clamp(24.0, 160.0)
-        .toDouble();
-    return EdgeInsets.fromLTRB(side, 22, side, 24);
+  void _showLayawayDetailsSidePanel(Map<String, dynamic> sale) {
+    if (!mounted) return;
+
+    setState(() => _selectedSaleId = sale['id'] as int?);
+
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar ficha del apartado',
+      barrierColor: Colors.black.withOpacity(0.18),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: 392,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  bottomLeft: Radius.circular(18),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 28,
+                    offset: const Offset(-8, 0),
+                  ),
+                ],
+              ),
+              child: _LayawaySideDetailsPanel(
+                sale: sale,
+                formatCurrency: _formatCurrency,
+                onClose: () => Navigator.of(context).pop(),
+                onRegisterPayment: () {
+                  Navigator.of(context).pop();
+                  final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
+                  _showPaymentDialog(
+                    sale['id'] as int,
+                    (sale['local_code'] ?? 'N/A').toString(),
+                    (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
+                    total,
+                    _pendingAmount(sale),
+                    sale['customer_id'] as int?,
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(opacity: curved, child: child),
+        );
+      },
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  Widget _buildActionsMenu() {
+    return SizedBox(
+      height: 48,
+      child: PopupMenuButton<String>(
+        tooltip: 'Acciones',
+        onSelected: (value) {
+          switch (value) {
+            case 'refresh':
+              _loadLayaways();
+              break;
+            case 'details':
+              final sale = _selectedSale;
+              if (sale != null) _showLayawayDetailsSidePanel(sale);
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'refresh',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.refresh_rounded),
+              title: Text('Actualizar'),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'details',
+            enabled: _selectedSale != null,
+            child: const ListTile(
+              dense: true,
+              leading: Icon(Icons.visibility_outlined),
+              title: Text('Abrir ficha'),
+            ),
+          ),
+        ],
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: _fullPosBlue,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _fullPosBlue),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.more_horiz_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Acciones',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(width: 4),
+              Icon(Icons.expand_more_rounded, color: Colors.white, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopHeaderLine({
+    required double minWidth,
+  }) {
     final filteredSales = _filteredSales;
-    final selectedSale = _selectedSale;
     final totalPending = filteredSales.fold<double>(
       0,
       (sum, sale) => sum + _pendingAmount(sale),
     );
+    final pendingCount = filteredSales.where((sale) => _pendingAmount(sale) > 0).length;
+    final paidCount = filteredSales.where((sale) => _pendingAmount(sale) <= 0).length;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final padding = _contentPadding(constraints);
-        final isWide = constraints.maxWidth >= 1200;
-        final detailWidth = (constraints.maxWidth * 0.28).clamp(340.0, 430.0);
+    return _AccountsTopHeaderLine(
+      minWidth: minWidth,
+      searchController: _searchController,
+      searchHint: 'Buscar cliente, teléfono o código...',
+      statusFilter: _statusFilter,
+      onFilterChanged: (value) => setState(() => _statusFilter = value),
+      onSearchChanged: (_) => setState(() {}),
+      onClearSearch: () {
+        setState(() => _searchController.clear());
+      },
+      actionsMenu: _buildActionsMenu(),
+      summaryItems: [
+        _SummaryItem(label: 'Apartados', value: '${filteredSales.length}'),
+        _SummaryItem(
+          label: 'Pendientes',
+          value: '$pendingCount',
+          backgroundColor: _softBlue,
+          borderColor: _fullPosBlue.withOpacity(0.26),
+          textColor: _fullPosBlue,
+        ),
+        _SummaryItem(
+          label: 'Pagados',
+          value: '$paidCount',
+          backgroundColor: _softPanel,
+        ),
+        _SummaryItem(
+          label: 'Saldo pendiente',
+          value: _formatCurrency(totalPending),
+          backgroundColor: _softBlue,
+          borderColor: _fullPosBlue.withOpacity(0.26),
+          textColor: _fullPosBlue,
+        ),
+      ],
+    );
+  }
 
-        final header = _AccountsHeaderCard(
-          eyebrow: 'Clientes',
-          title: 'Apartados',
-          subtitle:
-              'Gestiona apartados en una pantalla dedicada, compacta y clara, con acceso directo a sus abonos.',
-          searchController: _searchController,
-          searchHint: 'Buscar por cliente, teléfono o código...',
-          statusFilter: _statusFilter,
-          onFilterChanged: (value) => setState(() => _statusFilter = value),
-          onSearchChanged: (_) => setState(() {}),
-          summaryItems: [
-            _SummaryItem(
-              label: 'Apartados visibles',
-              value: '${filteredSales.length}',
-              tone: _SummaryTone.neutral,
+  Widget _buildListCard() {
+    final filteredSales = _filteredSales;
+    final selectedSale = _selectedSale;
+
+    return _AccountsListCard(
+      emptyTitle: 'No hay apartados',
+      emptyMessage: _searchController.text.trim().isNotEmpty
+          ? 'Intenta cambiar la búsqueda o el filtro.'
+          : 'Cuando existan apartados aparecerán aquí.',
+      loading: _loading,
+      itemCount: filteredSales.length,
+      header: const _AccountsListHeader(
+        firstColumn: 'Cliente',
+        codeColumn: 'Apartado',
+        dateColumn: 'Fecha',
+      ),
+      itemBuilder: (context, index) {
+        final sale = filteredSales[index];
+        final pending = _pendingAmount(sale);
+        final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
+        final isSelected = sale['id'] == (selectedSale?['id']);
+
+        return _AccountTableRow(
+          isSelected: isSelected,
+          icon: Icons.bookmark_border_rounded,
+          title: (sale['customer_name_snapshot'] ?? 'Cliente sin nombre').toString(),
+          phone: (sale['customer_phone_snapshot'] ?? '-').toString(),
+          code: (sale['local_code'] ?? 'N/A').toString(),
+          date: _formatDate(sale['created_at_ms'] as int?),
+          total: _formatCurrency(total),
+          pending: pending > 0 ? _formatCurrency(pending) : '-',
+          statusLabel: pending > 0 ? 'Pendiente' : 'Pagado',
+          isPaid: pending <= 0,
+          onTap: () => _showLayawayDetailsSidePanel(sale),
+          menuItems: [
+            PopupMenuItem<String>(
+              value: 'pay',
+              enabled: pending > 0,
+              child: const Row(
+                children: [
+                  Icon(Icons.payments_outlined, size: 18),
+                  SizedBox(width: 10),
+                  Text('Registrar abono'),
+                ],
+              ),
             ),
-            _SummaryItem(
-              label: 'Saldo pendiente',
-              value: _formatCurrency(totalPending),
-              tone: _SummaryTone.primary,
+            const PopupMenuItem<String>(
+              value: 'details',
+              child: Row(
+                children: [
+                  Icon(Icons.visibility_outlined, size: 18),
+                  SizedBox(width: 10),
+                  Text('Ver ficha'),
+                ],
+              ),
             ),
           ],
-        );
-
-        final listCard = _AccountsListCard(
-          title: 'Apartados registrados',
-          emptyTitle: 'No hay apartados para mostrar',
-          emptyMessage: _searchController.text.trim().isNotEmpty
-              ? 'Prueba ajustando la búsqueda o el filtro.'
-              : 'Cuando existan apartados activos aparecerán aquí.',
-          loading: _loading,
-          itemCount: filteredSales.length,
-          itemBuilder: (context, index) {
-            final sale = filteredSales[index];
-            final pending = _pendingAmount(sale);
-            final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
-            final isSelected = sale['id'] == (selectedSale?['id']);
-
-            return _AccountRow(
-              isSelected: isSelected,
-              icon: Icons.bookmark_border_rounded,
-              title: (sale['customer_name_snapshot'] ?? 'Cliente sin nombre')
-                  .toString(),
-              subtitle: '${sale['local_code'] ?? 'N/A'} • total ${_formatCurrency(total)}',
-              trailingTop: _formatCurrency(total),
-              trailingBottom: pending > 0
-                  ? 'Pendiente ${_formatCurrency(pending)}'
-                  : 'Pagado',
-              trailingTone: pending > 0
-                  ? const Color(0xFF2563EB)
-                  : const Color(0xFF15803D),
-              statusLabel: pending > 0 ? 'PENDIENTE' : 'PAGADO',
-              onTap: () => setState(() => _selectedSaleId = sale['id'] as int?),
-              menuItems: [
-                PopupMenuItem<String>(
-                  value: 'pay',
-                  enabled: pending > 0,
-                  child: const Text('Registrar abono'),
-                ),
-              ],
-              onMenuSelected: (value) {
-                if (value != 'pay') return;
-                _showPaymentDialog(
-                  sale['id'] as int,
-                  (sale['local_code'] ?? 'N/A').toString(),
-                  (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
-                  total,
-                  pending,
-                  sale['customer_id'] as int?,
-                );
-              },
+          onMenuSelected: (value) {
+            if (value == 'details') {
+              _showLayawayDetailsSidePanel(sale);
+              return;
+            }
+            if (value != 'pay') return;
+            _showPaymentDialog(
+              sale['id'] as int,
+              (sale['local_code'] ?? 'N/A').toString(),
+              (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
+              total,
+              pending,
+              sale['customer_id'] as int?,
             );
           },
         );
+      },
+    );
+  }
 
-        final detailCard = _LayawayDetailCard(
-          sale: selectedSale,
-          formatCurrency: _formatCurrency,
-          onRegisterPayment: selectedSale == null
-              ? null
-              : () => _showPaymentDialog(
-                  selectedSale['id'] as int,
-                  (selectedSale['local_code'] ?? 'N/A').toString(),
-                  (selectedSale['customer_name_snapshot'] ?? 'Cliente')
-                      .toString(),
-                  (selectedSale['total'] as num?)?.toDouble() ?? 0.0,
-                  _pendingAmount(selectedSale),
-                  selectedSale['customer_id'] as int?,
-                ),
-        );
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final padding = _contentPadding(constraints);
+        final headerMinWidth = math
+            .max(0.0, constraints.maxWidth - padding.left - padding.right)
+            .toDouble();
 
-        return Container(
-          color: scheme.surface,
-          child: Padding(
-            padding: padding,
-            child: Column(
-              children: [
-                header,
-                const SizedBox(height: 18),
-                Expanded(
-                  child: isWide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(child: listCard),
-                            const SizedBox(width: 18),
-                            SizedBox(width: detailWidth, child: detailCard),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            Expanded(flex: 6, child: listCard),
-                            const SizedBox(height: 18),
-                            Expanded(flex: 5, child: detailCard),
-                          ],
-                        ),
-                ),
-              ],
-            ),
+        return Padding(
+          padding: padding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTopHeaderLine(minWidth: headerMinWidth),
+              const SizedBox(height: 18),
+              Expanded(child: _buildListCard()),
+            ],
           ),
         );
       },
@@ -846,124 +1141,294 @@ class _ClientLayawaysPageState extends State<ClientLayawaysPage> {
   }
 }
 
-class _AccountsHeaderCard extends StatelessWidget {
-  const _AccountsHeaderCard({
-    required this.eyebrow,
-    required this.title,
-    required this.subtitle,
+class _AccountsTopHeaderLine extends StatelessWidget {
+  const _AccountsTopHeaderLine({
+    required this.minWidth,
     required this.searchController,
     required this.searchHint,
     required this.statusFilter,
     required this.onFilterChanged,
     required this.onSearchChanged,
+    required this.onClearSearch,
+    required this.actionsMenu,
     required this.summaryItems,
   });
 
-  final String eyebrow;
-  final String title;
-  final String subtitle;
+  final double minWidth;
   final TextEditingController searchController;
   final String searchHint;
   final _AccountStatusFilter statusFilter;
   final ValueChanged<_AccountStatusFilter> onFilterChanged;
   final ValueChanged<String> onSearchChanged;
+  final VoidCallback onClearSearch;
+  final Widget actionsMenu;
   final List<_SummaryItem> summaryItems;
+
+  String _filterLabel(_AccountStatusFilter filter) {
+    switch (filter) {
+      case _AccountStatusFilter.all:
+        return 'Todos';
+      case _AccountStatusFilter.pending:
+        return 'Pendientes';
+      case _AccountStatusFilter.paid:
+        return 'Pagados';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
+    Widget summaryBadge(_SummaryItem item) {
+      return Expanded(
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: item.backgroundColor ?? Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: item.borderColor ?? scheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: item.textColor ?? scheme.onSurface.withOpacity(0.72),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                item.value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: item.textColor ?? scheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final searchField = SizedBox(
+      height: 48,
+      child: TextField(
+        controller: searchController,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurface,
+        ),
+        decoration: InputDecoration(
+          hintText: searchHint,
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            size: 20,
+            color: scheme.onSurface.withOpacity(0.48),
+          ),
+          isDense: true,
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          focusedBorder: const OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(14)),
+            borderSide: BorderSide(color: _fullPosBlue, width: 1.6),
+          ),
+          suffixIcon: searchController.text.trim().isNotEmpty
+              ? IconButton(
+                  tooltip: 'Limpiar búsqueda',
+                  onPressed: onClearSearch,
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                )
+              : null,
+        ),
+        onChanged: onSearchChanged,
+      ),
+    );
+
+    final filterButton = SizedBox(
+      height: 48,
+      child: PopupMenuButton<_AccountStatusFilter>(
+        tooltip: 'Filtros',
+        initialValue: statusFilter,
+        onSelected: onFilterChanged,
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: _AccountStatusFilter.all,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.select_all_rounded),
+              title: Text('Todos'),
+            ),
+          ),
+          PopupMenuItem(
+            value: _AccountStatusFilter.pending,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.schedule_rounded),
+              title: Text('Pendientes'),
+            ),
+          ),
+          PopupMenuItem(
+            value: _AccountStatusFilter.paid,
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.check_circle_outline_rounded),
+              title: Text('Pagados'),
+            ),
+          ),
+        ],
+        child: Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.filter_list_rounded, size: 18, color: scheme.onSurface),
+              const SizedBox(width: 6),
+              Text(
+                _filterLabel(statusFilter),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final searchRow = Row(
+      children: [
+        Expanded(child: searchField),
+        const SizedBox(width: 10),
+        filterButton,
+        const SizedBox(width: 8),
+        actionsMenu,
+      ],
+    );
+
+    final summaryChildren = <Widget>[];
+    for (var i = 0; i < summaryItems.length; i++) {
+      if (i > 0) summaryChildren.add(const SizedBox(width: 8));
+      summaryChildren.add(summaryBadge(summaryItems[i]));
+    }
+    final summaryRow = Row(children: summaryChildren);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: LayoutBuilder(
+        builder: (context, headerConstraints) {
+          final stacked = headerConstraints.maxWidth < 820;
+
+          if (stacked) {
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: 820,
+                child: Column(
+                  children: [searchRow, const SizedBox(height: 10), summaryRow],
+                ),
+              ),
+            );
+          }
+
+          return ConstrainedBox(
+            constraints: BoxConstraints(minWidth: minWidth),
+            child: Column(
+              children: [searchRow, const SizedBox(height: 10), summaryRow],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AccountsListCard extends StatelessWidget {
+  const _AccountsListCard({
+    required this.emptyTitle,
+    required this.emptyMessage,
+    required this.loading,
+    required this.itemCount,
+    required this.itemBuilder,
+    required this.header,
+  });
+
+  final String emptyTitle;
+  final String emptyMessage;
+  final bool loading;
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+  final Widget header;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.9)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.85)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              eyebrow.toUpperCase(),
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: AppColors.primaryBlue,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.8,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-                color: scheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurface.withOpacity(0.66),
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                SizedBox(
-                  width: 360,
-                  child: TextField(
-                    controller: searchController,
-                    onChanged: onSearchChanged,
-                    decoration: InputDecoration(
-                      hintText: searchHint,
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                searchController.clear();
-                                onSearchChanged('');
-                              },
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  width: 190,
-                  child: DropdownButtonFormField<_AccountStatusFilter>(
-                    value: statusFilter,
-                    decoration: const InputDecoration(
-                      labelText: 'Estado',
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: _AccountStatusFilter.all,
-                        child: Text('Todos'),
-                      ),
-                      DropdownMenuItem(
-                        value: _AccountStatusFilter.pending,
-                        child: Text('Pendientes'),
-                      ),
-                      DropdownMenuItem(
-                        value: _AccountStatusFilter.paid,
-                        child: Text('Pagados'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) onFilterChanged(value);
-                    },
-                  ),
-                ),
-                for (final item in summaryItems) _SummaryPill(item: item),
-              ],
+            if (itemCount > 0) ...[
+              header,
+              const SizedBox(height: 8),
+            ],
+            Expanded(
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : itemCount == 0
+                      ? _EmptyPanel(
+                          title: emptyTitle,
+                          message: emptyMessage,
+                          icon: Icons.inbox_outlined,
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                          itemCount: itemCount,
+                          separatorBuilder: (context, index) =>
+                              Divider(height: 1, color: scheme.outlineVariant),
+                          itemBuilder: itemBuilder,
+                        ),
             ),
           ],
         ),
@@ -972,85 +1437,79 @@ class _AccountsHeaderCard extends StatelessWidget {
   }
 }
 
-class _AccountsListCard extends StatelessWidget {
-  const _AccountsListCard({
-    required this.title,
-    required this.emptyTitle,
-    required this.emptyMessage,
-    required this.loading,
-    required this.itemCount,
-    required this.itemBuilder,
+class _AccountsListHeader extends StatelessWidget {
+  const _AccountsListHeader({
+    required this.firstColumn,
+    required this.codeColumn,
+    required this.dateColumn,
   });
 
-  final String title;
-  final String emptyTitle;
-  final String emptyMessage;
-  final bool loading;
-  final int itemCount;
-  final IndexedWidgetBuilder itemBuilder;
+  final String firstColumn;
+  final String codeColumn;
+  final String dateColumn;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withOpacity(0.70);
+
+    Text label(String text, {TextAlign? align}) {
+      return Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: align,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: muted,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.15,
+        ),
+      );
+    }
 
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      height: 34,
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.9)),
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: scheme.outlineVariant.withOpacity(0.75)),
-          Expanded(
-            child: loading
-                ? const Center(child: CircularProgressIndicator())
-                : itemCount == 0
-                ? _EmptyPanel(
-                    title: emptyTitle,
-                    message: emptyMessage,
-                    icon: Icons.inbox_outlined,
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-                    itemCount: itemCount,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 10),
-                    itemBuilder: itemBuilder,
-                  ),
-          ),
+          Expanded(flex: 2, child: label(firstColumn)),
+          const SizedBox(width: 14),
+          Expanded(flex: 1, child: label('Teléfono')),
+          const SizedBox(width: 8),
+          Expanded(flex: 1, child: label(codeColumn)),
+          const SizedBox(width: 8),
+          Expanded(flex: 1, child: label(dateColumn)),
+          const SizedBox(width: 8),
+          SizedBox(width: 112, child: label('Total', align: TextAlign.right)),
+          const SizedBox(width: 8),
+          SizedBox(width: 112, child: label('Pendiente', align: TextAlign.right)),
+          const SizedBox(width: 8),
+          SizedBox(width: 86, child: label('Estado', align: TextAlign.center)),
+          const SizedBox(width: 8),
+          SizedBox(width: 28, child: label('', align: TextAlign.center)),
         ],
       ),
     );
   }
 }
 
-class _AccountRow extends StatelessWidget {
-  const _AccountRow({
+class _AccountTableRow extends StatelessWidget {
+  const _AccountTableRow({
     required this.isSelected,
     required this.icon,
     required this.title,
-    required this.subtitle,
-    required this.trailingTop,
-    required this.trailingBottom,
-    required this.trailingTone,
+    required this.phone,
+    required this.code,
+    required this.date,
+    required this.total,
+    required this.pending,
     required this.statusLabel,
+    required this.isPaid,
     required this.onTap,
     required this.menuItems,
     required this.onMenuSelected,
@@ -1059,99 +1518,141 @@ class _AccountRow extends StatelessWidget {
   final bool isSelected;
   final IconData icon;
   final String title;
-  final String subtitle;
-  final String trailingTop;
-  final String trailingBottom;
-  final Color trailingTone;
+  final String phone;
+  final String code;
+  final String date;
+  final String total;
+  final String pending;
   final String statusLabel;
+  final bool isPaid;
   final VoidCallback onTap;
   final List<PopupMenuEntry<String>> menuItems;
   final ValueChanged<String> onMenuSelected;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withOpacity(0.64);
+
+    Text valueText(
+      String text, {
+      TextAlign? align,
+      FontWeight fontWeight = FontWeight.w600,
+      Color? color,
+    }) {
+      return Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: align,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: color ?? muted,
+          fontWeight: fontWeight,
+        ),
+      );
+    }
 
     return Material(
-      color: isSelected
-          ? AppColors.primaryBlue.withOpacity(0.06)
-          : scheme.surface,
-      borderRadius: BorderRadius.circular(16),
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+        hoverColor: _fullPosBlue.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          constraints: const BoxConstraints(minHeight: 54),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            color: isSelected ? _fullPosBlue.withOpacity(0.08) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isSelected
-                  ? AppColors.primaryBlue.withOpacity(0.35)
-                  : scheme.outlineVariant.withOpacity(0.65),
+              color: isSelected ? _fullPosBlue.withOpacity(0.62) : Colors.transparent,
+              width: isSelected ? 1 : 0,
             ),
           ),
           child: Row(
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 4,
+                height: 28,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(14),
+                  color: isSelected ? _fullPosBlue : Colors.transparent,
+                  borderRadius: BorderRadius.circular(4),
                 ),
-                child: Icon(icon, color: AppColors.primaryBlue),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurface.withOpacity(0.62),
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(width: 10),
+              CircleAvatar(
+                radius: 13,
+                backgroundColor: _softBlue,
+                foregroundColor: _fullPosBlue,
+                child: Icon(icon, size: 15),
               ),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    trailingTop,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onSurface,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    trailingBottom,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: trailingTone,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _StatusBadge(label: statusLabel),
-                ],
+                ),
               ),
-              PopupMenuButton<String>(
-                tooltip: 'Acciones',
-                onSelected: onMenuSelected,
-                itemBuilder: (context) => menuItems,
+              const SizedBox(width: 14),
+              Expanded(flex: 1, child: valueText(phone)),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 1,
+                child: valueText(
+                  code,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface.withOpacity(0.72),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(flex: 1, child: valueText(date)),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 112,
+                child: valueText(
+                  total,
+                  align: TextAlign.right,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 112,
+                child: valueText(
+                  pending,
+                  align: TextAlign.right,
+                  fontWeight: FontWeight.w800,
+                  color: isPaid ? muted : _fullPosBlue,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 86,
+                child: Align(
+                  alignment: Alignment.center,
+                  child: _StatusBadge(label: statusLabel, isPaid: isPaid),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 28,
+                child: PopupMenuButton<String>(
+                  tooltip: 'Acciones',
+                  icon: Icon(Icons.more_vert_rounded, color: muted, size: 17),
+                  padding: EdgeInsets.zero,
+                  onSelected: onMenuSelected,
+                  itemBuilder: (context) => menuItems,
+                ),
               ),
             ],
           ),
@@ -1161,247 +1662,405 @@ class _AccountRow extends StatelessWidget {
   }
 }
 
-class _CreditDetailCard extends StatelessWidget {
-  const _CreditDetailCard({
+class _CreditSideDetailsPanel extends StatelessWidget {
+  const _CreditSideDetailsPanel({
     required this.sale,
     required this.formatCurrency,
     required this.formatDate,
+    required this.onClose,
     required this.onRegisterPayment,
   });
 
-  final Map<String, dynamic>? sale;
+  final Map<String, dynamic> sale;
   final String Function(double) formatCurrency;
   final String Function(int?) formatDate;
-  final VoidCallback? onRegisterPayment;
+  final VoidCallback onClose;
+  final VoidCallback onRegisterPayment;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    if (sale == null) {
-      return const _EmptyPanel(
-        title: 'Selecciona un crédito',
-        message: 'Aquí verás el detalle completo y el acceso al registro de abonos.',
-        icon: Icons.receipt_long_outlined,
-      );
-    }
-
-    final total = (sale!['total'] as num?)?.toDouble() ?? 0.0;
-    final totalDue = (sale!['total_due'] as num?)?.toDouble() ?? total;
-    final pending = ((sale!['amount_pending'] as num?)?.toDouble() ?? 0.0)
-        .clamp(0.0, double.infinity);
-    final paid = (sale!['amount_paid'] as num?)?.toDouble() ?? 0.0;
+    final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
+    final totalDue = (sale['total_due'] as num?)?.toDouble() ?? total;
+    final pending = (((sale['amount_pending'] as num?)?.toDouble() ?? 0.0)
+            .clamp(0.0, double.infinity))
+        .toDouble();
+    final paid = (sale['amount_paid'] as num?)?.toDouble() ?? 0.0;
     final interestRate =
-        (sale!['credit_interest_rate'] as num?)?.toDouble() ?? 0.0;
-    final installments = sale!['credit_installments'] as int?;
-    final termDays = sale!['credit_term_days'] as int?;
-    final note = (sale!['credit_note'] ?? '').toString().trim();
+        (sale['credit_interest_rate'] as num?)?.toDouble() ?? 0.0;
+    final installments = sale['credit_installments'] as int?;
+    final termDays = sale['credit_term_days'] as int?;
+    final note = (sale['credit_note'] ?? '').toString().trim();
 
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.9)),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    (sale!['local_code'] ?? 'N/A').toString(),
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                _StatusBadge(label: pending > 0 ? 'PENDIENTE' : 'PAGADO'),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              (sale!['customer_name_snapshot'] ?? 'Cliente').toString(),
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            if ((sale!['customer_phone_snapshot'] ?? '').toString().isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                sale!['customer_phone_snapshot'].toString(),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.62),
-                ),
-              ),
-            ],
-            const SizedBox(height: 18),
-            _DetailMetric(label: 'Total venta', value: formatCurrency(total)),
-            _DetailMetric(label: 'Interés', value: '${interestRate.toStringAsFixed(2)}%'),
-            _DetailMetric(label: 'Total crédito', value: formatCurrency(totalDue)),
-            _DetailMetric(label: 'Pagado', value: formatCurrency(paid)),
-            _DetailMetric(
-              label: 'Pendiente',
-              value: formatCurrency(pending),
-              highlighted: true,
-            ),
-            if (termDays != null && termDays > 0)
-              _DetailMetric(label: 'Plazo', value: '$termDays días'),
-            if (installments != null && installments > 0)
-              _DetailMetric(label: 'Cuotas', value: '$installments'),
-            if (sale!['credit_due_date_ms'] != null)
-              _DetailMetric(
-                label: 'Vence',
-                value: formatDate(sale!['credit_due_date_ms'] as int?),
-              ),
-            if (note.isNotEmpty) _DetailMetric(label: 'Nota', value: note),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: pending > 0 ? onRegisterPayment : null,
-                icon: const Icon(Icons.payments_outlined, size: 18),
-                label: const Text('Registrar abono'),
-              ),
-            ),
-          ],
+    return _AccountSideDetailsScaffold(
+      title: 'Ficha del crédito',
+      icon: Icons.receipt_long_outlined,
+      label: 'Crédito seleccionado',
+      headline: (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
+      subheadline: (sale['local_code'] ?? 'N/A').toString(),
+      isPaid: pending <= 0,
+      onClose: onClose,
+      actionLabel: 'Registrar abono',
+      onAction: pending > 0 ? onRegisterPayment : null,
+      children: [
+        _DetailSectionTitle(title: 'Datos del cliente'),
+        _InfoLine(
+          icon: Icons.person_outline,
+          label: 'Cliente',
+          value: (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
         ),
-      ),
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.phone_outlined,
+          label: 'Teléfono',
+          value: (sale['customer_phone_snapshot'] ?? '-').toString(),
+        ),
+        _DetailSectionTitle(title: 'Información del crédito'),
+        _InfoLine(
+          icon: Icons.receipt_long_outlined,
+          label: 'Factura',
+          value: (sale['local_code'] ?? 'N/A').toString(),
+        ),
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.calendar_month_outlined,
+          label: 'Vencimiento',
+          value: formatDate(sale['credit_due_date_ms'] as int?),
+        ),
+        if (termDays != null && termDays > 0) ...[
+          const _CleanDivider(),
+          _InfoLine(
+            icon: Icons.timelapse_rounded,
+            label: 'Plazo',
+            value: '$termDays días',
+          ),
+        ],
+        if (installments != null && installments > 0) ...[
+          const _CleanDivider(),
+          _InfoLine(
+            icon: Icons.format_list_numbered_rounded,
+            label: 'Cuotas',
+            value: '$installments',
+          ),
+        ],
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.percent_rounded,
+          label: 'Interés',
+          value: '${interestRate.toStringAsFixed(2)}%',
+        ),
+        _DetailSectionTitle(title: 'Balance'),
+        _InfoLine(
+          icon: Icons.attach_money_rounded,
+          label: 'Total venta',
+          value: formatCurrency(total),
+        ),
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.request_quote_outlined,
+          label: 'Total crédito',
+          value: formatCurrency(totalDue),
+        ),
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.payments_outlined,
+          label: 'Pagado',
+          value: formatCurrency(paid),
+        ),
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.account_balance_wallet_outlined,
+          label: 'Pendiente',
+          value: formatCurrency(pending),
+          strong: true,
+        ),
+        if (note.isNotEmpty) ...[
+          _DetailSectionTitle(title: 'Nota'),
+          _InfoNote(text: note),
+        ],
+      ],
     );
   }
 }
 
-class _LayawayDetailCard extends StatelessWidget {
-  const _LayawayDetailCard({
+class _LayawaySideDetailsPanel extends StatelessWidget {
+  const _LayawaySideDetailsPanel({
     required this.sale,
     required this.formatCurrency,
+    required this.onClose,
     required this.onRegisterPayment,
   });
 
-  final Map<String, dynamic>? sale;
+  final Map<String, dynamic> sale;
   final String Function(double) formatCurrency;
-  final VoidCallback? onRegisterPayment;
+  final VoidCallback onClose;
+  final VoidCallback onRegisterPayment;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    if (sale == null) {
-      return const _EmptyPanel(
-        title: 'Selecciona un apartado',
-        message: 'Aquí verás el detalle completo y el acceso al registro de abonos.',
-        icon: Icons.bookmark_border_rounded,
-      );
-    }
+    final total = (sale['total'] as num?)?.toDouble() ?? 0.0;
+    final pending = (((sale['amount_pending'] as num?)?.toDouble() ?? 0.0)
+            .clamp(0.0, double.infinity))
+        .toDouble();
+    final paid = (sale['amount_paid'] as num?)?.toDouble() ?? 0.0;
 
-    final total = (sale!['total'] as num?)?.toDouble() ?? 0.0;
-    final pending = ((sale!['amount_pending'] as num?)?.toDouble() ?? 0.0)
-        .clamp(0.0, double.infinity);
-    final paid = (sale!['amount_paid'] as num?)?.toDouble() ?? 0.0;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.9)),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    (sale!['local_code'] ?? 'N/A').toString(),
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                _StatusBadge(label: pending > 0 ? 'PENDIENTE' : 'PAGADO'),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              (sale!['customer_name_snapshot'] ?? 'Cliente').toString(),
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            if ((sale!['customer_phone_snapshot'] ?? '').toString().isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                sale!['customer_phone_snapshot'].toString(),
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.62),
-                ),
-              ),
-            ],
-            const SizedBox(height: 18),
-            _DetailMetric(label: 'Total', value: formatCurrency(total)),
-            _DetailMetric(label: 'Pagado', value: formatCurrency(paid)),
-            _DetailMetric(
-              label: 'Pendiente',
-              value: formatCurrency(pending),
-              highlighted: true,
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: pending > 0 ? onRegisterPayment : null,
-                icon: const Icon(Icons.payments_outlined, size: 18),
-                label: const Text('Registrar abono'),
-              ),
-            ),
-          ],
+    return _AccountSideDetailsScaffold(
+      title: 'Ficha del apartado',
+      icon: Icons.bookmark_border_rounded,
+      label: 'Apartado seleccionado',
+      headline: (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
+      subheadline: (sale['local_code'] ?? 'N/A').toString(),
+      isPaid: pending <= 0,
+      onClose: onClose,
+      actionLabel: 'Registrar abono',
+      onAction: pending > 0 ? onRegisterPayment : null,
+      children: [
+        _DetailSectionTitle(title: 'Datos del cliente'),
+        _InfoLine(
+          icon: Icons.person_outline,
+          label: 'Cliente',
+          value: (sale['customer_name_snapshot'] ?? 'Cliente').toString(),
         ),
-      ),
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.phone_outlined,
+          label: 'Teléfono',
+          value: (sale['customer_phone_snapshot'] ?? '-').toString(),
+        ),
+        _DetailSectionTitle(title: 'Información del apartado'),
+        _InfoLine(
+          icon: Icons.bookmark_border_rounded,
+          label: 'Código',
+          value: (sale['local_code'] ?? 'N/A').toString(),
+        ),
+        _DetailSectionTitle(title: 'Balance'),
+        _InfoLine(
+          icon: Icons.attach_money_rounded,
+          label: 'Total',
+          value: formatCurrency(total),
+        ),
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.payments_outlined,
+          label: 'Pagado',
+          value: formatCurrency(paid),
+        ),
+        const _CleanDivider(),
+        _InfoLine(
+          icon: Icons.account_balance_wallet_outlined,
+          label: 'Pendiente',
+          value: formatCurrency(pending),
+          strong: true,
+        ),
+      ],
     );
   }
 }
 
-class _DetailMetric extends StatelessWidget {
-  const _DetailMetric({
+class _AccountSideDetailsScaffold extends StatelessWidget {
+  const _AccountSideDetailsScaffold({
+    required this.title,
+    required this.icon,
     required this.label,
-    required this.value,
-    this.highlighted = false,
+    required this.headline,
+    required this.subheadline,
+    required this.isPaid,
+    required this.onClose,
+    required this.actionLabel,
+    required this.onAction,
+    required this.children,
   });
 
+  final String title;
+  final IconData icon;
   final String label;
-  final String value;
-  final bool highlighted;
+  final String headline;
+  final String subheadline;
+  final bool isPaid;
+  final VoidCallback onClose;
+  final String actionLabel;
+  final VoidCallback? onAction;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withOpacity(0.62);
+    final border = scheme.outlineVariant.withOpacity(0.85);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onSurface.withOpacity(0.58),
-                fontWeight: FontWeight.w600,
-              ),
+    Widget pill({
+      required String text,
+      required bool active,
+      required IconData icon,
+    }) {
+      final color = active ? _fullPosBlue : scheme.onSurfaceVariant.withOpacity(0.85);
+
+      return Expanded(
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: active ? _softBlue : _softPanel,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: active ? const Color(0xFFBFD1F7) : scheme.outlineVariant,
             ),
           ),
-          const SizedBox(width: 12),
+          child: Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(left: BorderSide(color: border, width: 1)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: 64,
+            padding: const EdgeInsets.fromLTRB(18, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: border)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.15,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Ocultar ficha',
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close_rounded, size: 19),
+                ),
+              ],
+            ),
+          ),
           Expanded(
-            flex: 6,
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: highlighted ? AppColors.primaryBlue : scheme.onSurface,
-                fontWeight: highlighted ? FontWeight.w800 : FontWeight.w700,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: _softBlue,
+                        foregroundColor: _fullPosBlue,
+                        child: Icon(icon, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: muted,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                headline,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  height: 1.05,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                subheadline,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: muted,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      pill(
+                        text: isPaid ? 'Pagado' : 'Pendiente',
+                        active: !isPaid,
+                        icon: isPaid
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.schedule_rounded,
+                      ),
+                      const SizedBox(width: 8),
+                      pill(
+                        text: isPaid ? 'Sin balance' : 'Con balance',
+                        active: false,
+                        icon: Icons.account_balance_wallet_outlined,
+                      ),
+                    ],
+                  ),
+                  ...children,
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: onAction,
+                      icon: const Icon(Icons.payments_outlined, size: 18),
+                      label: Text(actionLabel),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _fullPosBlue,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: scheme.outlineVariant.withOpacity(0.5),
+                        disabledForegroundColor: scheme.onSurface.withOpacity(0.45),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -1411,26 +2070,178 @@ class _DetailMetric extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.label});
+class _DetailSectionTitle extends StatelessWidget {
+  const _DetailSectionTitle({required this.title});
 
-  final String label;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
-    final isPaid = label == 'PAGADO';
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 10),
+      child: Text(
+        title,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: scheme.onSurface,
+          fontWeight: FontWeight.w900,
+          letterSpacing: -0.1,
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.strong = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withOpacity(0.62);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: _softBlue,
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 16, color: _fullPosBlue),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: muted,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: strong ? _fullPosBlue : scheme.onSurface,
+                    fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+                    height: 1.18,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CleanDivider extends StatelessWidget {
+  const _CleanDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Divider(
+      height: 1,
+      thickness: 1,
+      color: scheme.outlineVariant.withOpacity(0.85),
+    );
+  }
+}
+
+class _InfoNote extends StatelessWidget {
+  const _InfoNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurface.withOpacity(0.62);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
-        color: isPaid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+        color: _softPanel,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.85)),
+      ),
+      child: Text(
+        text,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: muted,
+          fontWeight: FontWeight.w700,
+          height: 1.25,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  const _StatusBadge({
+    required this.label,
+    required this.isPaid,
+  });
+
+  final String label;
+  final bool isPaid;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isPaid ? _paidGreenBg : _softBlue;
+    final color = isPaid ? _paidGreen : _fullPosBlue;
+
+    return Container(
+      height: 24,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bg,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: isPaid ? _paidGreen.withOpacity(0.22) : _fullPosBlue.withOpacity(0.22),
+        ),
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w800,
-          color: isPaid ? const Color(0xFF166534) : const Color(0xFF92400E),
+          color: color,
+          height: 1,
         ),
       ),
     );
@@ -1451,96 +2262,51 @@ class _EmptyPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: scheme.outlineVariant.withOpacity(0.9)),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 42, color: scheme.onSurface.withOpacity(0.35)),
-              const SizedBox(height: 14),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.58),
-                  height: 1.35,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryPill extends StatelessWidget {
-  const _SummaryPill({required this.item});
-
-  final _SummaryItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final isPrimary = item.tone == _SummaryTone.primary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isPrimary ? const Color(0xFFEAF2FF) : const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isPrimary
-              ? AppColors.primaryBlue.withOpacity(0.18)
-              : const Color(0xFFE2E8F0),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            item.label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: const Color(0xFF64748B),
-              fontWeight: FontWeight.w700,
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 52, color: scheme.onSurface.withOpacity(0.32)),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            item.value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: isPrimary ? AppColors.primaryBlue : const Color(0xFF0F172A),
-              fontWeight: FontWeight.w800,
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurface.withOpacity(0.58),
+                height: 1.35,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 class _TinyPaymentDialog extends StatelessWidget {
-  const _TinyPaymentDialog({required this.child});
+  const _TinyPaymentDialog({
+    required this.title,
+    required this.child,
+  });
 
+  final String title;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Center(
       child: ConstrainedBox(
@@ -1556,9 +2322,70 @@ class _TinyPaymentDialog extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: Padding(
             padding: const EdgeInsets.all(20),
-            child: SingleChildScrollView(child: child),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  child,
+                ],
+              ),
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PaymentDialogInfo extends StatelessWidget {
+  const _PaymentDialogInfo({
+    required this.label,
+    required this.value,
+    this.highlighted = false,
+  });
+
+  final String label;
+  final String value;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 88,
+            child: Text(
+              label,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: scheme.onSurface.withOpacity(0.62),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: highlighted ? _fullPosBlue : scheme.onSurface,
+                fontWeight: highlighted ? FontWeight.w900 : FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1568,12 +2395,14 @@ class _SummaryItem {
   const _SummaryItem({
     required this.label,
     required this.value,
-    required this.tone,
+    this.backgroundColor,
+    this.borderColor,
+    this.textColor,
   });
 
   final String label;
   final String value;
-  final _SummaryTone tone;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final Color? textColor;
 }
-
-enum _SummaryTone { neutral, primary }

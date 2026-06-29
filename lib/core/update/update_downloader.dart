@@ -9,6 +9,42 @@ import 'installer_verifier.dart';
 
 typedef DownloadProgress = void Function(int received, int? total);
 
+class UpdateDownloadException implements Exception {
+  const UpdateDownloadException({
+    required this.message,
+    required this.installerUrl,
+    required this.destinationPath,
+    this.statusCode,
+    this.contentType,
+    this.contentLength,
+    this.partialFileSize,
+    this.cause,
+  });
+
+  final String message;
+  final Uri installerUrl;
+  final String destinationPath;
+  final int? statusCode;
+  final String? contentType;
+  final int? contentLength;
+  final int? partialFileSize;
+  final Object? cause;
+
+  String get supportDetails => [
+    'Installer URL: $installerUrl',
+    if (statusCode != null) 'HTTP status code: $statusCode',
+    if (contentType != null) 'Content-Type: $contentType',
+    if (contentLength != null) 'Content-Length: $contentLength',
+    'Destination path: $destinationPath',
+    if (partialFileSize != null) 'Partial file size: $partialFileSize',
+    'Exception type: ${cause?.runtimeType ?? runtimeType}',
+    'Exception message: ${cause ?? message}',
+  ].join('\n');
+
+  @override
+  String toString() => '$message\n$supportDetails';
+}
+
 class UpdateDownloader {
   UpdateDownloader({InstallerVerifier? verifier})
     : _verifier = verifier ?? InstallerVerifier();
@@ -81,8 +117,10 @@ class UpdateDownloader {
     try {
       var uri = policy.installerUrl;
       HttpClientResponse? response;
+      Uri lastUri = uri;
       for (var redirects = 0; redirects <= 5; redirects++) {
         AppUpdatePolicy.validateInstallerUri(uri);
+        lastUri = uri;
         final request = await client
             .getUrl(uri)
             .timeout(const Duration(seconds: 12));
@@ -103,7 +141,14 @@ class UpdateDownloader {
       if (response == null ||
           response.statusCode < 200 ||
           response.statusCode >= 300) {
-        throw HttpException('Download failed: HTTP ${response?.statusCode}');
+        throw UpdateDownloadException(
+          message: 'Download failed',
+          installerUrl: lastUri,
+          destinationPath: finalFile.path,
+          statusCode: response?.statusCode,
+          contentType: response?.headers.contentType?.toString(),
+          contentLength: response?.contentLength,
+        );
       }
 
       final total = response.contentLength > 0
@@ -120,19 +165,45 @@ class UpdateDownloader {
       await output.close();
       output = null;
 
-      await _verifier.verify(
-        file: partFile,
-        approvedRoot: root,
-        policy: policy,
-        allowPartialFilename: true,
-      );
+      try {
+        await _verifier.verify(
+          file: partFile,
+          approvedRoot: root,
+          policy: policy,
+          allowPartialFilename: true,
+        );
+      } catch (error) {
+        throw UpdateDownloadException(
+          message: 'Downloaded installer verification failed',
+          installerUrl: lastUri,
+          destinationPath: finalFile.path,
+          statusCode: response.statusCode,
+          contentType: response.headers.contentType?.toString(),
+          contentLength: total,
+          partialFileSize: await partFile.exists()
+              ? await partFile.length()
+              : 0,
+          cause: error,
+        );
+      }
       await partFile.rename(finalFile.path);
       await _cleanObsoleteInstallers(root, keep: finalFile);
       return finalFile;
-    } catch (_) {
+    } on UpdateDownloadException {
       await output?.close();
       if (await partFile.exists()) await partFile.delete();
       rethrow;
+    } catch (error) {
+      final partialSize = await partFile.exists() ? await partFile.length() : 0;
+      await output?.close();
+      if (await partFile.exists()) await partFile.delete();
+      throw UpdateDownloadException(
+        message: 'Download failed',
+        installerUrl: policy.installerUrl,
+        destinationPath: finalFile.path,
+        partialFileSize: partialSize,
+        cause: error,
+      );
     } finally {
       client.close(force: true);
       if (identical(_activeClient, client)) _activeClient = null;

@@ -364,6 +364,20 @@ El sistema de actualización automática de FullPOS está completo, seguro y cor
 15. ✅ Manual "Buscar actualización" → Sigue funcionando.
 16. ✅ Success message → Aparece solo una vez después de update exitoso.
 
+### 🛠 Fixes aplicados en esta sesión:
+
+1. **Fix crítico: `ensureStarted()` movido del redirect del router a `AppEntry.initState()`**
+   - **Archivo**: `lib/app/router.dart` y `lib/core/bootstrap/app_entry.dart`
+   - **Problema**: `ensureStarted()` estaba en el `redirect` del `GoRouter`, que se ejecuta en **cada navegación**. Esto causaba que:
+     - Cada vez que el router evaluaba un redirect (múltiples veces durante bootstrap y cada navegación), se iniciaba una verificación de actualización.
+     - Si había una actualización disponible, se descargaba automáticamente y el diálogo "Actualización lista para instalar" aparecía inmediatamente al abrir la app.
+     - El usuario no podía usar la app sin ver el diálogo primero.
+   - **Solución**: `ensureStarted()` ahora se llama una sola vez desde `AppEntry.initState()` mediante `addPostFrameCallback`, después del primer paint de la app. Esto evita verificaciones/descargas repetidas y permite que el usuario entre a la app normalmente.
+   - **Verificación**: `flutter analyze` ✅, `flutter test` ✅ (29/29 tests pasan).
+
+2. **Import no utilizado removido de `router.dart`**
+   - Se eliminó `import '../core/update/app_update_coordinator.dart'` que ya no era necesario.
+
 ### Decisión final:
 
 **READY FOR RELEASE** ✅

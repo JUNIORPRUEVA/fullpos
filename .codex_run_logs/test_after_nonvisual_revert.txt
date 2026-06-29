@@ -1,0 +1,239 @@
+Resolving dependencies...
+Downloading packages...
+  archive 3.6.1 (4.0.9 available)
+  cli_util 0.4.2 (0.5.1 available)
+  code_assets 1.0.0 (1.2.1 available)
+  dbus 0.7.12 (0.7.14 available)
+  file_picker 10.3.10 (11.0.2 available)
+  fl_chart 0.70.2 (1.2.0 available)
+  flutter_native_splash 2.4.4 (2.4.8 available)
+  flutter_plugin_android_lifecycle 2.0.34 (2.0.35 available)
+  flutter_riverpod 2.6.1 (3.3.2 available)
+  go_router 14.8.1 (17.3.0 available)
+  hooks 1.0.3 (2.0.2 available)
+  image 4.3.0 (4.9.1 available)
+  intl 0.20.2 (0.20.3 available)
+  json_annotation 4.11.0 (4.12.0 available)
+  matcher 0.12.19 (0.12.20 available)
+  meta 1.17.0 (1.18.3 available)
+  native_toolchain_c 0.17.6 (0.19.1 available)
+  objective_c 9.3.0 (9.4.1 available)
+  package_config 2.2.0 (3.0.0 available)
+  package_info_plus 9.0.1 (10.2.0 available)
+  package_info_plus_platform_interface 3.2.1 (4.1.0 available)
+  path_provider 2.1.5 (2.1.6 available)
+  path_provider_linux 2.2.1 (2.2.2 available)
+  path_provider_platform_interface 2.1.2 (2.1.3 available)
+  pdf 3.12.0 (3.13.0 available)
+  printing 5.14.3 (5.15.0 available)
+  qr 3.0.2 (4.0.0 available)
+  riverpod 2.6.1 (3.3.2 available)
+  screen_retriever 0.2.0 (0.2.1 available)
+  screen_retriever_linux 0.2.0 (0.2.1 available)
+  screen_retriever_macos 0.2.0 (0.2.1 available)
+  screen_retriever_platform_interface 0.2.0 (0.2.1 available)
+  screen_retriever_windows 0.2.0 (0.2.1 available)
+  share_plus 10.1.4 (13.2.0 available)
+  share_plus_platform_interface 5.0.2 (7.1.0 available)
+  shared_preferences_android 2.4.23 (2.4.26 available)
+  socket_io_client 3.1.4 (3.1.6 available)
+  sqflite 2.4.2+1 (2.4.3 available)
+  sqflite_android 2.4.2+3 (2.4.3 available)
+  sqflite_common 2.5.7 (2.5.11 available)
+  sqflite_common_ffi 2.3.3 (2.4.2 available)
+  sqflite_darwin 2.4.2 (2.4.3+1 available)
+  sqflite_platform_interface 2.4.0 (2.4.1 available)
+! sqlite3 2.4.7 (overridden) (3.3.3 available)
+  sqlite3_flutter_libs 0.5.42 (0.6.0+eol available)
+  synchronized 3.4.0+1 (3.4.1 available)
+  test_api 0.7.10 (0.7.13 available)
+  url_launcher_android 6.3.29 (6.3.32 available)
+  vector_math 2.2.0 (2.4.0 available)
+  win32 5.15.0 (6.3.0 available)
+  window_manager 0.4.3 (0.5.1 available)
+  xml 6.6.1 (7.0.1 available)
+Got dependencies!
+52 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/app_db_recovery_guard_test.dart
+00:00 +0: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/app_db_recovery_guard_test.dart: DB existente nunca crea demo automaticamente
+00:00 +1: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/app_db_recovery_guard_test.dart: _syncDemoCatalog no corre cuando hay evidencia de backup previo
+00:00 +2: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/app_db_recovery_guard_test.dart: business_id en prefs sin DB activa recovery y no crea esquema
+00:00 +3: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/app_db_recovery_guard_test.dart: terminal_id en prefs sin DB activa recovery y no crea demo
+00:00 +4: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/auto_repair_reindex_test.dart
+00:00 +4: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/auto_repair_reindex_test.dart: DB dañada intenta REINDEX antes de requerir recovery
+[AUTO-REPAIR] ensureDbHealthy reason=test_reindex_first
+00:01 +5: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/auto_repair_reindex_test.dart: WAL con transacciones pendientes se preserva con checkpoint
+[AUTO-REPAIR] ensureDbHealthy reason=test_wal_pending
+00:01 +6: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/auto_repair_reindex_test.dart: checkpoint correcto no elimina WAL valido como primer paso
+[AUTO-REPAIR] ensureDbHealthy reason=test_checkpoint
+00:01 +7: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/auto_repair_reindex_test.dart: WAL corrupto solo se resetea si SQLite no puede abrirlo
+[AUTO-REPAIR] ensureDbHealthy reason=test_corrupt_wal
+00:02 +8: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/auto_repair_reindex_test.dart: DB sin WAL ejecuta checkpoint y quick_check sin borrar archivos
+[AUTO-REPAIR] ensureDbHealthy reason=test_no_wal
+00:02 +9: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/db/auto_repair_reindex_test.dart: DB con WAL valido conserva datos y no entra en recovery
+[AUTO-REPAIR] ensureDbHealthy reason=test_valid_wal
+00:02 +10: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_handler_test.dart
+00:03 +10: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_handler_test.dart: (setUpAll)
+00:03 +10: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_handler_test.dart: suppresses Flutter inactive element assertion as transient UI noise
+00:03 +11: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_handler_test.dart: suppresses framework assertion variant without exact private symbol
+00:03 +12: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_handler_test.dart: platform error route accepts transient Flutter assertion
+00:03 +13: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_handler_test.dart: (tearDownAll)
+00:03 +13: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_mapper_cash_test.dart
+00:03 +13: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_mapper_cash_test.dart: maps duplicate open shifts to a clear cash conflict
+00:03 +14: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_mapper_cash_test.dart: maps cash close owner mismatch to a customer safe message
+00:03 +15: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/errors/error_mapper_cash_test.dart: generic unknown message is professional
+00:03 +16: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_health_service_test.dart
+00:04 +16: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_health_service_test.dart: app_identity se crea sin romper DB existente
+00:04 +17: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_health_service_test.dart: prefs restauran desde SQLite cuando falta terminal_id
+00:04 +18: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_health_service_test.dart: SQLite se restaura desde prefs cuando falta terminal_id
+00:05 +19: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_health_service_test.dart: conflicto prefs vs SQLite activa RecoveryState
+00:05 +20: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_health_service_test.dart: IdentityHealthService nunca lanza excepción fatal
+00:05 +21: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_recovery_bundle_test.dart
+00:06 +21: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_recovery_bundle_test.dart: crea bundle desde preferencias sanas y recupera claves criticas
+00:06 +22: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_recovery_bundle_test.dart: bloquea restauracion si business_id local es diferente
+00:06 +23: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_recovery_bundle_test.dart: no regenera terminal_id si hay evidencia de prefs corrupto
+00:06 +24: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_recovery_bundle_test.dart: DB previa sin terminal_id no genera terminal nuevo
+00:06 +25: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_recovery_bundle_test.dart: AuthzService.currentUser captura IdentityRecoveryException
+00:06 +26: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_recovery_bundle_test.dart: instalacion nueva sin bundle no marca recovery_required
+00:06 +27: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/identity/identity_recovery_bundle_test.dart: licenseKey sola no bloquea generacion inicial de terminal_id
+00:06 +28: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_controller_test.dart
+00:07 +28: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_controller_test.dart: shows newest notification first
+00:07 +29: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_controller_test.dart: keeps at most the configured visible count
+00:07 +30: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_controller_test.dart: dismiss promotes the next queued notification
+00:07 +31: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_controller_test.dart: critical queued notification is promoted before normal priority
+00:07 +32: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_controller_test.dart: duplicates merge and increment their counter
+00:07 +33: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_controller_test.dart: same key outside duplicate window creates a new notification
+00:07 +34: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_controller_test.dart: dismiss callback runs once
+00:07 +35: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart
+00:07 +35: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: renders notifications above application content
+00:07 +36: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: renders a stack of visible notifications
+00:07 +37: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: automatically dismisses a timed notification
+00:07 +38: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: persistent notification remains visible
+00:07 +39: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: hover pauses and resumes the countdown
+00:07 +40: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: can dismiss a notification while the mouse is over it
+00:07 +41: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: can show a notification immediately after closing a dialog
+00:08 +42: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: action callback cannot run twice concurrently
+00:08 +43: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: uses the available width on narrow screens
+00:08 +44: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: notification cards contain no Tooltip widgets
+00:08 +45: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: long technical details expand within a bounded height
+00:08 +46: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: copies technical details without creating another notice
+00:08 +47: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: survives root route replacement while visible
+00:08 +48: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/notifications/fullpos_notification_host_test.dart: does not render cards with a zero-sized surface
+00:08 +49: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/printing/invoice_letter_pdf_test.dart
+00:09 +49: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/printing/invoice_letter_pdf_test.dart: generates redesigned invoice PDF bytes
+Helvetica-Bold has no Unicode support see https://github.com/DavBfr/dart_pdf/wiki/Fonts-Management
+Helvetica has no Unicode support see https://github.com/DavBfr/dart_pdf/wiki/Fonts-Management
+00:09 +50: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/recovery/app_recovery_persistence_test.dart
+00:10 +50: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/recovery/app_recovery_persistence_test.dart: recovery_state.json persiste y se carga al reiniciar
+00:10 +51: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/recovery/app_recovery_persistence_test.dart: recovery_state.json se limpia al resolver
+00:10 +52: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/recovery/recovery_lock_test.dart
+00:10 +52: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/recovery/recovery_lock_test.dart: recovery.lock evita doble reparación
+00:10 +53: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/recovery/recovery_screen_test.dart
+00:11 +53: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/recovery/recovery_screen_test.dart: RecoveryScreen renderiza contenido y evita pantalla blanca
+00:11 +54: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart
+00:11 +54: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: denies by default when there is no current user
+00:11 +55: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: admin passes all known actions
+00:12 +56: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: non-admin passes assigned granular permission only
+00:12 +57: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: legacy inventory.adjust_stock permission remains broad
+00:12 +58: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: unknown, empty, and missing permissions deny
+00:12 +59: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: canAny and canAll honor assigned permissions
+00:13 +60: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: requirePermission throws when denied
+00:13 +61: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: temporary authorization does not bypass an invalid session
+00:13 +62: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/permission_service_test.dart: logout clears all temporary authorizations
+[AUTHZ] clearOverrideCache: all temporary authorizations cleared
+[AUTH] logout cleared: before logged_in=true userId=7 -> logged_in=null userId=null
+00:13 +63: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/temporary_authorization_service_test.dart
+00:14 +63: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/temporary_authorization_service_test.dart: authorization lasts at least two minutes
+00:14 +64: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/temporary_authorization_service_test.dart: authorization is scoped and survives repeated checks until expiry
+00:14 +65: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/temporary_authorization_service_test.dart: clearAll removes session authorizations
+00:14 +66: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/temporary_authorization_service_test.dart: clearAuthorization removes only one scope
+00:14 +67: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/security/temporary_authorization_service_test.dart: inventory.adjust_stock scope is specific and not aliased to other scopes
+00:14 +68: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/services/cloud_sync_scope_test.dart
+00:14 +68: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/services/cloud_sync_scope_test.dart: cloud sync exposes only the required business targets
+00:14 +69: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/ui/app_error_dialog_test.dart
+00:15 +69: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/ui/app_error_dialog_test.dart: uses a compact presentation
+00:15 +70: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/ui/app_error_dialog_test.dart: keeps technical details out of the customer view
+00:15 +71: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/ui/app_error_dialog_test.dart: copies support details without requiring a scaffold context
+00:15 +72: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/ui/app_error_page_test.dart
+00:15 +72: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/ui/app_error_page_test.dart: does not expose technical details in fallback page
+00:16 +73: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_coordinator_test.dart
+00:16 +73: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_coordinator_test.dart: backend failure without cached mandatory policy allows use
+00:16 +74: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_coordinator_test.dart: cached mandatory policy remains enforced during outage
+00:16 +75: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_coordinator_test.dart: prevents duplicate update checks
+00:16 +76: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_coordinator_test.dart: available optional update downloads in background and becomes ready
+00:16 +77: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_coordinator_test.dart: manual request during active download presents when ready
+00:16 +78: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_coordinator_test.dart: prevents duplicate downloads and installer launches
+00:16 +79: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart
+00:17 +79: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart: returns optional for a supported older installation
+00:17 +80: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart: mandatory flag forces an available update
+00:17 +81: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart: minimum supported version is authoritative
+00:17 +82: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart: equal or newer installation needs no update
+00:17 +83: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart: accepts legacy version and buildNumber aliases
+00:17 +84: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart: rejects malformed policy and unsafe URLs
+00:17 +85: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart: allows the official GitHub release asset redirect host
+00:17 +86: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_update_policy_test.dart: continues rejecting lookalike GitHub asset hosts
+00:17 +87: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_version_test.dart
+00:17 +87: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_version_test.dart: compares semantic versions numerically
+00:17 +88: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_version_test.dart: uses build number after semantic version
+00:17 +89: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_version_test.dart: handles equality, newer versions and leading v
+00:17 +90: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/app_version_test.dart: rejects malformed versions
+00:17 +91: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/installer_verifier_test.dart
+00:18 +91: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/installer_verifier_test.dart: accepts matching SHA-256, size and MZ header
+00:18 +92: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/installer_verifier_test.dart: rejects SHA-256 mismatch
+00:18 +93: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/installer_verifier_test.dart: rejects incorrect size and invalid PE header
+00:18 +94: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/installer_verifier_test.dart: rejects HTML saved as executable
+00:18 +95: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/update_gate_test.dart
+00:18 +95: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/update_gate_test.dart: app content is always visible regardless of update state
+00:19 +96: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/update_gate_test.dart: snackbar notification appears when new update is available
+00:19 +97: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/update_gate_test.dart: snackbar appears only once per session
+00:19 +98: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/update_gate_test.dart: mandatory update does not block the user
+00:19 +99: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/update_gate_test.dart: optional update does not show modal dialogs automatically
+00:19 +100: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/update_gate_test.dart: back navigation is never blocked
+00:19 +101: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/core/update/update_gate_test.dart: build always returns child widget
+00:19 +102: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/auth/services/password_reset_service_test.dart
+00:19 +102: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/auth/services/password_reset_service_test.dart: PasswordResetService.confirmSupportToken uses the deployed API route and normalizes the payload
+00:19 +103: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/auth/services/password_reset_service_test.dart: PasswordResetService.confirmSupportToken uses the admin route for the 64-character panel token
+00:19 +104: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/auth/services/password_reset_service_test.dart: PasswordResetService.confirmSupportToken surfaces the backend message without retrying another route
+00:19 +105: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/auth/services/password_reset_service_test.dart: PasswordResetService.confirmSupportToken does not contact the backend without a local business id
+00:19 +106: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart
+00:20 +106: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: repara turno abierto sin caja diaria asociada al abrir caja
+00:20 +107: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: abrir caja sin user valido limpia sesion y no inserta cashbox_daily
+[AUTH] invalid session cleared reason=cashbox_user_invalid
+00:20 +108: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: abre turno propio aunque otro usuario tenga turno abierto en la misma caja
+00:20 +109: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: cierra el turno actual sin cerrar la caja si otro turno sigue abierto
+[AUTH] login saved: logged_in=true userId=2 username=cajero role=cashier
+00:21 +110: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: repara esquema legacy con cashbox_daily_id unico y permite turnos por usuario
+00:21 +111: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: consolida turnos duplicados al iniciar caja
+00:21 +112: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: reabre caja cerrada con turno abierto sin lanzar error
+00:21 +113: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: mueve turno reciente de fecha anterior a la caja de hoy
+00:21 +114: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/cash/data/operation_flow_service_test.dart: mueve turno antiguo de fecha anterior para evitar rebote al gate
+00:22 +115: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/fiscal_receipts/data/fiscal_receipt_repository_test.dart
+00:22 +115: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/fiscal_receipts/data/fiscal_receipt_repository_test.dart: nuevo comprobante debe iniciar en el desde del rango
+00:22 +116: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/license/bank_transfer_whatsapp_test.dart
+00:23 +116: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/license/bank_transfer_whatsapp_test.dart: builds the FullPOS bank transfer WhatsApp request
+00:23 +117: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/license/services/license_controller_test.dart
+00:23 +117: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/license/services/license_controller_test.dart: activacion remota guarda businessId entrante como identidad local
+00:24 +118: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/refund_calculator_test.dart
+00:24 +118: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/refund_calculator_test.dart: RefundCalculator keeps full value when there is no global discount
+00:24 +119: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/refund_calculator_test.dart: RefundCalculator prorates a global discount into each refundable unit
+00:24 +120: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/refund_calculator_test.dart: RefundCalculator combines line and global discounts without refunding extra money
+00:24 +121: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/refund_calculator_test.dart: RefundCalculator calculates a partial refund with ITBIS
+00:24 +122: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/refund_calculator_test.dart: RefundCalculator does not add ITBIS when the original sale had it disabled
+00:24 +123: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/refund_calculator_test.dart: RefundCalculator rounds monetary totals to cents
+00:24 +124: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/refund_calculator_test.dart: RefundCalculator clamps inconsistent discount factors to a safe range
+00:24 +125: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/sale_totals_calculator_test.dart
+00:25 +125: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/sale_totals_calculator_test.dart: SaleTotalsCalculator calculates ITBIS from the discounted taxable base
+00:25 +126: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/sale_totals_calculator_test.dart: SaleTotalsCalculator supports percentage discounts after they are resolved to an amount
+00:25 +127: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/sale_totals_calculator_test.dart: SaleTotalsCalculator keeps non-fiscal or tax-disabled totals without ITBIS
+00:25 +128: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/sale_totals_calculator_test.dart: SaleTotalsCalculator converts fixed grand-total discount to taxable discount
+00:25 +129: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/sale_totals_calculator_test.dart: SaleTotalsCalculator keeps fixed fiscal discount equal to the amount entered
+00:25 +130: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/data/sale_totals_calculator_test.dart: SaleTotalsCalculator clamps over-discounted taxable base to zero
+00:25 +131: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/ui/dialogs/quick_item_dialog_test.dart
+00:25 +131: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/ui/dialogs/quick_item_dialog_test.dart: QuickItemDialog calculator amount entry keeps price equal to the calculator amount from keypad taps
+00:26 +132: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/ui/dialogs/quick_item_dialog_test.dart: QuickItemDialog calculator amount entry continues from a manually typed price without changing it
+00:26 +133: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/ui/dialogs/quick_item_dialog_test.dart: QuickItemDialog calculator amount entry deletes the selected price with the Delete key
+00:26 +134: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/sales/ui/dialogs/quick_item_dialog_test.dart: QuickItemDialog calculator amount entry deletes the selected price with the on-screen DEL key
+00:26 +135: loading C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/tools/owner_app_links_test.dart
+00:27 +135: C:/Users/pc/DEV/PROYECTOS/PRODUCTOS/CARPETA FULLPOS/FULLPOS_PROYECTO/FULLPOS/test/features/tools/owner_app_links_test.dart: FullPOS Owner distribution points to the published repository asset
+00:27 +136: All tests passed!

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 
+import '../../features/cash/data/cash_movement_model.dart';
 import '../../features/sales/data/sales_repository.dart';
 import 'topbar_action_bus.dart';
 
@@ -460,7 +461,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                         _openSalesOverlayAfterClose(
                                           () =>
                                               TopbarActionBus.queueSalesCashMovementDialog(
-                                                'income',
+                                                CashMovementType.income,
                                               ),
                                         );
                                       },
@@ -475,7 +476,7 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
                                         _openSalesOverlayAfterClose(
                                           () =>
                                               TopbarActionBus.queueSalesCashMovementDialog(
-                                                'outcome',
+                                                CashMovementType.outcome,
                                               ),
                                         );
                                       },

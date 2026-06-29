@@ -30,6 +30,41 @@ function Get-RequiredPositiveInteger {
   return $parsed
 }
 
+function Get-RequiredTextAny {
+  param(
+    [Parameter(Mandatory = $true)]$Payload,
+    [Parameter(Mandatory = $true)][string[]]$Fields
+  )
+
+  foreach ($field in $Fields) {
+    $value = [string]$Payload.$field
+    if (-not [string]::IsNullOrWhiteSpace($value)) {
+      return $value.Trim()
+    }
+  }
+  throw "Uno de estos campos es obligatorio en update_payload.json: $($Fields -join ', ')."
+}
+
+function Get-RequiredPositiveIntegerAny {
+  param(
+    [Parameter(Mandatory = $true)]$Payload,
+    [Parameter(Mandatory = $true)][string[]]$Fields
+  )
+
+  foreach ($field in $Fields) {
+    $value = $Payload.$field
+    if ($null -eq $value) {
+      continue
+    }
+
+    $parsed = 0L
+    if ([long]::TryParse([string]$value, [ref]$parsed) -and $parsed -gt 0) {
+      return $parsed
+    }
+  }
+  throw "Uno de estos campos debe ser un entero positivo: $($Fields -join ', ')."
+}
+
 $installerDir = $PSScriptRoot
 $projectRoot = Split-Path -Parent $installerDir
 $payloadPath = Join-Path $projectRoot 'installer\output\update_payload.json'
@@ -52,11 +87,11 @@ if ($projectCode -cne 'fullpos' -or $platform -cne 'windows') {
   throw "La política debe pertenecer exactamente a fullpos/windows."
 }
 
-$version = Get-RequiredText -Payload $payload -Field 'version'
+$version = Get-RequiredTextAny -Payload $payload -Fields @('latestVersion', 'version')
 if ($version -notmatch '^\d+\.\d+\.\d+$') {
-  throw "El campo 'version' debe tener el formato X.Y.Z."
+  throw "El campo 'latestVersion/version' debe tener el formato X.Y.Z."
 }
-$buildNumber = Get-RequiredPositiveInteger -Payload $payload -Field 'buildNumber'
+$buildNumber = Get-RequiredPositiveIntegerAny -Payload $payload -Fields @('latestBuild', 'buildNumber')
 $installerUrl = Get-RequiredText -Payload $payload -Field 'installerUrl'
 $installerFilename = Get-RequiredText -Payload $payload -Field 'installerFilename'
 $installerSize = Get-RequiredPositiveInteger -Payload $payload -Field 'installerSizeBytes'

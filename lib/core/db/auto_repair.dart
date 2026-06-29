@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +10,8 @@ import 'package:sqflite/sqflite.dart';
 import '../backup/backup_paths.dart';
 import '../backup/backup_service.dart';
 import '../debug/loader_watchdog.dart';
+import '../recovery/app_recovery.dart';
+import '../recovery/recovery_lock.dart';
 import 'app_db.dart';
 import 'database_manager.dart';
 
@@ -22,10 +26,12 @@ class AutoRepair {
     final existing = _inFlight;
     if (existing != null) return existing;
     final future = _ensureImpl(reason: reason);
-    _inFlight = future.whenComplete(() {
-      if (identical(_inFlight, future)) _inFlight = null;
+    late final Future<void> tracked;
+    tracked = future.whenComplete(() {
+      if (identical(_inFlight, tracked)) _inFlight = null;
     });
-    return _inFlight!;
+    _inFlight = tracked;
+    return tracked;
   }
 
   Future<void> resetWalShmIfNeeded({
@@ -102,53 +108,106 @@ class AutoRepair {
     final dbPath = await AppDb.databasePath();
     watchdog.step('auto_repair:start');
     await _log('ensureDbHealthy start reason=$reason dbPath=$dbPath');
-
-    // 1) Backup inmediato (no zip, solo copia rápida de archivos DB).
-    watchdog.step('auto_repair:safety_backup');
-    await _createImmediateSafetyBackup(dbPath, reason: reason);
-
-    // 2) WAL reset primero (requisito).
-    watchdog.step('auto_repair:wal_reset');
-    await resetWalShmIfNeeded(reason: reason, reopenAfter: false);
-
-    // 3) Verificar integridad.
-    watchdog.step('auto_repair:quick_check');
-    final quickOk = await _pragmaCheckOk(dbPath, 'quick_check');
-    await _log('PRAGMA quick_check ok=$quickOk');
-    if (quickOk) {
-      await _log('ensureDbHealthy done (quick_check ok)');
-      watchdog.dispose();
-      return;
-    }
-
-    watchdog.step('auto_repair:integrity_check');
-    final integrityOk = await _pragmaCheckOk(dbPath, 'integrity_check');
-    await _log('PRAGMA integrity_check ok=$integrityOk');
-    if (integrityOk) {
-      await _log('ensureDbHealthy done (integrity_check ok)');
-      watchdog.dispose();
-      return;
-    }
-
-    // 4) Si sigue mal: renombrar corrupto y restaurar backup válido.
-    watchdog.step('auto_repair:restore_latest');
-    await _log(
-      'integrity failed: renaming corrupted db and attempting restore',
-    );
-    await _renameCorrupted(dbPath);
-    final restored = await restoreLatestBackup(reason: reason);
-    if (!restored) {
-      await _log('ensureDbHealthy: restoreLatestBackup failed (no backups)');
-    }
-
-    // Reabrir handle para callers.
     try {
-      await DatabaseManager.instance.reopen(reason: 'auto_repair_post_restore');
-    } catch (e, st) {
-      await _log('ensureDbHealthy reopen failed error=$e\n$st');
+      await RecoveryLock.acquire(reason);
+    } on AppRecoveryRequiredException catch (e) {
+      await AppRecoveryController.instance.requireDatabaseRecovery(
+        'recovery_lock_active',
+        details: e.message,
+        dbPath: dbPath,
+      );
+      watchdog.dispose();
+      rethrow;
     }
-    await _log('ensureDbHealthy done restored=$restored');
-    watchdog.dispose();
+
+    try {
+      // 1) Backup inmediato (no zip, solo copia rápida de archivos DB).
+      watchdog.step('auto_repair:safety_backup');
+      await _createImmediateSafetyBackup(dbPath, reason: reason);
+
+      // 2) Primero intentar checkpoint seguro. No borrar WAL/SHM si SQLite
+      // puede abrir la DB y procesar su journal.
+      watchdog.step('auto_repair:wal_checkpoint');
+      await DatabaseManager.instance.close(reason: 'auto_repair_checkpoint');
+      final checkpointOk = await _checkpointWal(dbPath);
+      await _log('PRAGMA wal_checkpoint(TRUNCATE) ok=$checkpointOk');
+      if (!checkpointOk) {
+        await _log(
+          'wal_checkpoint failed; attempting WAL/SHM reset only after open failure',
+        );
+        await resetWalShmIfNeeded(reason: reason, reopenAfter: false);
+      }
+
+      // 3) Verificar integridad.
+      watchdog.step('auto_repair:quick_check');
+      final quickOk = await _pragmaCheckOk(dbPath, 'quick_check');
+      await _log('PRAGMA quick_check ok=$quickOk');
+      if (quickOk) {
+        await _log('ensureDbHealthy done (quick_check ok)');
+        return;
+      }
+
+      watchdog.step('auto_repair:integrity_check');
+      final integrityOk = await _pragmaCheckOk(dbPath, 'integrity_check');
+      await _log('PRAGMA integrity_check ok=$integrityOk');
+      if (integrityOk) {
+        await _log('ensureDbHealthy done (integrity_check ok)');
+        return;
+      }
+
+      watchdog.step('auto_repair:reindex');
+      final reindexOk = await _tryReindex(dbPath);
+      await _log('REINDEX attempted ok=$reindexOk');
+      if (reindexOk) {
+        final afterReindexOk = await _pragmaCheckOk(dbPath, 'integrity_check');
+        await _log('PRAGMA integrity_check after REINDEX ok=$afterReindexOk');
+        if (afterReindexOk) {
+          await _log('ensureDbHealthy done (reindex repaired)');
+          return;
+        }
+      }
+
+      final priorInstallation = await AppDb.hasPriorInstallationEvidence(
+        resolvedPath: dbPath,
+      );
+      if (priorInstallation) {
+        await AppRecoveryController.instance.requireDatabaseRecovery(
+          'auto_repair_integrity_unrepaired',
+          details: 'reason=$reason dbPath=$dbPath',
+          dbPath: dbPath,
+        );
+        await _log(
+          'integrity failed after REINDEX; prior installation detected, recovery required',
+        );
+        throw const AppRecoveryRequiredException(
+          'DB previa requiere recuperacion controlada',
+        );
+      }
+
+      // 4) Si sigue mal: renombrar corrupto y restaurar backup válido.
+      watchdog.step('auto_repair:restore_latest');
+      await _log(
+        'integrity failed: renaming corrupted db and attempting restore',
+      );
+      await _renameCorrupted(dbPath);
+      final restored = await restoreLatestBackup(reason: reason);
+      if (!restored) {
+        await _log('ensureDbHealthy: restoreLatestBackup failed (no backups)');
+      }
+
+      // Reabrir handle para callers.
+      try {
+        await DatabaseManager.instance.reopen(
+          reason: 'auto_repair_post_restore',
+        );
+      } catch (e, st) {
+        await _log('ensureDbHealthy reopen failed error=$e\n$st');
+      }
+      await _log('ensureDbHealthy done restored=$restored');
+    } finally {
+      await RecoveryLock.release();
+      watchdog.dispose();
+    }
   }
 
   Future<void> _createImmediateSafetyBackup(
@@ -170,7 +229,19 @@ class AutoRepair {
         'auto_repair_before_${stamp}_$safeBaseName',
       );
 
-      await dbFile.copy('$outBase.db');
+      final beforeHash = await _sha256File(dbFile);
+      final copied = await dbFile.copy('$outBase.db');
+      final copiedHash = await _sha256File(copied);
+      await File('$outBase.sha256.json').writeAsString(
+        jsonEncode({
+          'dbPath': dbPath,
+          'reason': reason,
+          'beforeSha256': beforeHash,
+          'backupSha256': copiedHash,
+          'createdAt': DateTime.now().toUtc().toIso8601String(),
+        }),
+        flush: true,
+      );
 
       final wal = File('$dbPath-wal');
       if (await wal.exists()) {
@@ -187,6 +258,34 @@ class AutoRepair {
     }
   }
 
+  Future<String> _sha256File(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
+  }
+
+  Future<bool> _checkpointWal(String dbPath) async {
+    Database? db;
+    try {
+      db = await openDatabase(
+        dbPath,
+        readOnly: false,
+        singleInstance: false,
+      ).timeout(const Duration(seconds: 8));
+      await db.execute('PRAGMA busy_timeout = 5000;');
+      await db
+          .rawQuery('PRAGMA wal_checkpoint(TRUNCATE);')
+          .timeout(const Duration(seconds: 20));
+      return true;
+    } catch (e) {
+      await _log('PRAGMA wal_checkpoint(TRUNCATE) error=$e');
+      return false;
+    } finally {
+      try {
+        await db?.close();
+      } catch (_) {}
+    }
+  }
+
   Future<bool> _pragmaCheckOk(String dbPath, String pragma) async {
     Database? db;
     try {
@@ -198,9 +297,28 @@ class AutoRepair {
       final firstValue = rows.first.values.isNotEmpty
           ? rows.first.values.first.toString().trim().toLowerCase()
           : '';
+      if (firstValue != 'ok') {
+        await _log('PRAGMA $pragma value=$firstValue');
+      }
       return firstValue == 'ok';
     } catch (e) {
       await _log('PRAGMA $pragma error=$e');
+      return false;
+    } finally {
+      try {
+        await db?.close();
+      } catch (_) {}
+    }
+  }
+
+  Future<bool> _tryReindex(String dbPath) async {
+    Database? db;
+    try {
+      db = await openDatabase(dbPath, readOnly: false, singleInstance: false);
+      await db.execute('REINDEX;').timeout(const Duration(seconds: 20));
+      return true;
+    } catch (e) {
+      await _log('REINDEX error=$e');
       return false;
     } finally {
       try {

@@ -9,6 +9,7 @@ import '../../../core/utils/accounting_amount_formatter.dart';
 import '../data/cash_movement_model.dart';
 import '../data/cash_repository.dart';
 import '../providers/cash_providers.dart';
+import '../../settings/data/users_repository.dart';
 
 /// Diálogo para registrar entrada/salida de efectivo
 class CashMovementDialog extends ConsumerStatefulWidget {
@@ -106,7 +107,7 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
     try {
       final amount = AccountingAmountFormatter.parse(_amountController.text);
       final reason = _reasonController.text.trim();
-      final userId = await SessionManager.userId() ?? 1;
+      final userId = await _requireValidCurrentUserForCashMovement();
 
       final confirmed = await _confirmWithdrawal(
         amount: amount,
@@ -207,6 +208,33 @@ class _CashMovementDialogState extends ConsumerState<CashMovementDialog> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<int> _requireValidCurrentUserForCashMovement() async {
+    final userId = await SessionManager.userId();
+    if (userId == null) {
+      await SessionManager.clearInvalidSession(
+        reason: 'cash_movement_user_missing',
+      );
+      throw Exception(
+        'Tu sesión anterior no coincide con los usuarios actuales. Inicia sesión nuevamente.',
+      );
+    }
+
+    final user = await UsersRepository.getById(
+      userId,
+      companyId: await SessionManager.companyId(),
+    );
+    if (user == null || !user.isActiveUser || user.deletedAtMs != null) {
+      await SessionManager.clearInvalidSession(
+        reason: 'cash_movement_user_invalid',
+      );
+      throw Exception(
+        'Tu sesión anterior no coincide con los usuarios actuales. Inicia sesión nuevamente.',
+      );
+    }
+
+    return userId;
   }
 
   @override

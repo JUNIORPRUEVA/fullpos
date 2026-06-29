@@ -176,9 +176,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
     with WidgetsBindingObserver {
   static const Color _allegraBackgroundColor = Color(0xFFF2F6F9);
   static const Color _allegraSurfaceColor = Colors.white;
-  static const Color _allegraBorderColor = Color(0xFFDDE5EA);
+  static const Color _allegraBorderColor = Color(0xFFD7E1EC);
   static const Color _allegraTextPrimaryColor = Color(0xFF172033);
-  static const Color _allegraTextSecondaryColor = Color(0xFF6B7A8C);
+  static const Color _allegraTextSecondaryColor = Color(0xFF64748B);
   static const Color _allegraAccentColor = Color(0xFF1A56DB);
   static const double _customerRowControlHeight = 36.0;
   static const double _customerRowControlRadius = 10.0;
@@ -396,14 +396,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
     _allegraSurfaceColor,
   );
 
-  Color get salesDetailSurfaceColor => _salesDetailBlend(0.06);
+  Color get salesDetailSurfaceColor => _salesDetailBlend(0.045);
 
-  Color get salesDetailSurfaceStrongColor => _salesDetailBlend(0.12);
+  Color get salesDetailSurfaceStrongColor => _salesDetailBlend(0.08);
 
   Color get salesDetailSelectedColor => _salesDetailBlend(0.1);
 
   Color get salesDetailSelectedBorderColor =>
-      salesDetailTextColor.withOpacity(0.22);
+      _allegraAccentColor.withOpacity(0.30);
 
   Color _gridCanvasColor(BuildContext context) {
     final theme = Theme.of(context);
@@ -5796,12 +5796,14 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final displayPrice = 'RD\$$formattedPrice';
 
     final cardBorderColor = isSelected
-        ? tealAccent.withOpacity(0.55)
+        ? tealAccent.withOpacity(0.48)
         : isHovered
-        ? tealAccent.withOpacity(0.45)
-        : const Color(0xFFE2E8F0);
+        ? tealAccent.withOpacity(0.32)
+        : const Color(0xFFDDE6F0);
 
-    final cardShadowColor = tealAccent.withOpacity(isHovered ? 0.15 : 0.055);
+    final cardShadowColor = const Color(
+      0xFF0F172A,
+    ).withOpacity(isHovered ? 0.075 : 0.04);
 
     const cardRadius = BorderRadius.only(
       topLeft: Radius.circular(28),
@@ -5820,9 +5822,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final cardPadding = isCompact
         ? const EdgeInsets.fromLTRB(14, 9, 14, 7)
         : const EdgeInsets.fromLTRB(18, 12, 18, 9);
-    final imageContainerHoverSize = isHovered
-        ? (isCompact ? imageBoxSize + 4 : imageBoxSize + 4)
-        : imageBoxSize;
+    final imageContainerHoverSize = imageBoxSize;
 
     return MouseRegion(
       cursor: isOutOfStock
@@ -5844,9 +5844,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
           AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            transform: Matrix4.translationValues(0, isHovered ? -3 : 0, 0),
             decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFFF8FBFF) : Colors.white,
+              color: isSelected
+                  ? const Color(0xFFF8FBFF)
+                  : (isHovered ? const Color(0xFFFCFDFF) : Colors.white),
               borderRadius: cardRadius,
               border: Border.all(
                 color: cardBorderColor,
@@ -5855,9 +5856,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
               boxShadow: [
                 BoxShadow(
                   color: cardShadowColor,
-                  blurRadius: isHovered ? 16 : 8,
-                  spreadRadius: isHovered ? 0.5 : 0,
-                  offset: Offset(0, isHovered ? 7 : 3),
+                  blurRadius: isHovered ? 12 : 7,
+                  spreadRadius: -3,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
@@ -5870,7 +5871,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   onTap: isOutOfStock ? null : () => _addProductToCart(product),
                   hoverColor: tealAccent.withOpacity(0.035),
                   highlightColor: tealAccent.withOpacity(0.025),
-                  splashColor: tealAccent.withOpacity(0.10),
+                  splashColor: tealAccent.withOpacity(0.08),
                   child: SizedBox(
                     height: cardSize,
                     child: Padding(
@@ -5924,8 +5925,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 style: TextStyle(
                                   color: isOutOfStock ? stockColor : tealAccent,
                                   fontSize: isCompact ? 10.5 : 11,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                   height: 1.0,
+                                  letterSpacing: 0,
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -5946,7 +5948,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                       fontSize: nameFontSize,
                                       fontWeight: FontWeight.w600,
                                       fontFamily: 'Inter',
-                                      height: 1.02,
+                                      height: 1.04,
+                                      letterSpacing: 0,
                                     ),
                                   ),
                                 ),
@@ -5966,9 +5969,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                         isOutOfStock ? 0.72 : 1,
                                       ),
                                       fontSize: priceFontSize + 0.25,
-                                      fontWeight: FontWeight.w500,
+                                      fontWeight: FontWeight.w600,
                                       fontFamily: 'Inter',
                                       height: 1.0,
+                                      letterSpacing: -0.05,
                                     ),
                                   ),
                                 ),
@@ -6408,22 +6412,24 @@ class _SalesPageState extends ConsumerState<SalesPage>
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(isSelected ? 0.5 : 0.42),
-                  blurRadius: isSelected ? 24 : 20,
-                  spreadRadius: 2,
-                  offset: const Offset(0, 10),
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(isSelected ? 0.22 : 0.18),
-                  blurRadius: isSelected ? 40 : 32,
-                  spreadRadius: 0,
-                  offset: const Offset(0, 16),
+                  color: const Color(
+                    0xFF0F172A,
+                  ).withOpacity(isSelected ? 0.08 : 0.045),
+                  blurRadius: isSelected ? 10 : 7,
+                  spreadRadius: -3,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
             clipBehavior: Clip.antiAlias,
             child: hasImage
-                ? Image.file(File(normalizedPath), fit: BoxFit.cover)
+                ? Image.file(
+                    File(normalizedPath),
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
+                    filterQuality: FilterQuality.high,
+                    isAntiAlias: true,
+                  )
                 : Icon(
                     fallbackIcon ?? Icons.category_outlined,
                     size: 16,
@@ -6703,7 +6709,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         File(imagePath),
                         width: circleSize,
                         height: circleSize,
-                        fit: BoxFit.cover,
+                        fit: BoxFit.contain,
+                        alignment: Alignment.center,
+                        filterQuality: FilterQuality.high,
+                        isAntiAlias: true,
                         errorBuilder: (context, error, stackTrace) =>
                             _buildCategoryFallbackIcon(primaryBlue, iconSize),
                       ),
@@ -6857,7 +6866,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
         const fullposBlue = Color(0xFF1A56DB);
         const darkScanner = Color(0xFF111827);
-        const borderColor = Color(0xFFAEBBC9);
+        const borderColor = Color(0xFFD2DDE9);
         const textColor = Color(0xFF172033);
         const hintColor = Color(0xFF64748B);
 
@@ -6903,8 +6912,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
               child: InkWell(
                 onTap: onTap,
                 borderRadius: radius,
-                hoverColor: Colors.white.withOpacity(0.08),
-                splashColor: Colors.white.withOpacity(0.14),
+                hoverColor: Colors.white.withOpacity(0.075),
+                splashColor: Colors.white.withOpacity(0.12),
+                highlightColor: Colors.white.withOpacity(0.055),
                 child: Ink(
                   width: iconButtonWidth,
                   height: barHeight,
@@ -6967,6 +6977,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           width: 20,
                           height: 20,
                           color: Colors.white,
+                          filterQuality: FilterQuality.high,
                           errorBuilder: (_, _, _) {
                             return const Icon(
                               Icons.search_rounded,
@@ -6995,6 +7006,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           width: 21,
                           height: 21,
                           color: Colors.white,
+                          filterQuality: FilterQuality.high,
                           errorBuilder: (_, _, _) {
                             return const Icon(
                               Icons.qr_code_scanner_rounded,
@@ -7023,6 +7035,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 color: hintColor,
                                 fontSize: 14.4,
                                 fontWeight: FontWeight.w400,
+                                height: 1,
                               ),
                               isDense: true,
                               filled: true,
@@ -7036,7 +7049,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               focusedBorder: searchBorder.copyWith(
                                 borderSide: const BorderSide(
                                   color: fullposBlue,
-                                  width: 0.95,
+                                  width: 1,
                                 ),
                               ),
                               suffixIcon: _searchController.text.trim().isEmpty
@@ -7064,6 +7077,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               color: textColor,
                               fontSize: 14.5,
                               fontWeight: FontWeight.w500,
+                              height: 1,
                             ),
                             onChanged: (value) {
                               _searchProducts(value);
@@ -7104,6 +7118,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                     borderRadius: productRadius,
                     hoverColor: fullposBlue.withOpacity(0.06),
                     splashColor: fullposBlue.withOpacity(0.10),
+                    highlightColor: fullposBlue.withOpacity(0.04),
                     child: Container(
                       height: barHeight,
                       constraints: BoxConstraints(
@@ -7115,7 +7130,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: productRadius,
-                        border: Border.all(color: fullposBlue, width: 0.95),
+                        border: Border.all(
+                          color: fullposBlue.withOpacity(0.88),
+                          width: 1,
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -9928,17 +9946,17 @@ class _SalesPageState extends ConsumerState<SalesPage>
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(_customerRowControlRadius),
-              borderSide: const BorderSide(color: Color(0xFFD6E0EA), width: 1),
+              borderSide: const BorderSide(color: Color(0xFFD7E1EC), width: 1),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(_customerRowControlRadius),
-              borderSide: const BorderSide(color: Color(0xFFD6E0EA), width: 1),
+              borderSide: const BorderSide(color: Color(0xFFD7E1EC), width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(_customerRowControlRadius),
               borderSide: const BorderSide(
                 color: Color(0xFF1A56DB),
-                width: 1.2,
+                width: 1.1,
               ),
             ),
             suffixIconConstraints: const BoxConstraints(
@@ -9983,6 +10001,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
             fontSize: 14.1,
             fontWeight: FontWeight.w500,
             height: 1.0,
+            letterSpacing: 0,
           ),
         ),
       ),
@@ -10221,12 +10240,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFD6E0EA), width: 1),
+            border: Border.all(color: const Color(0xFFD7E1EC), width: 1),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0F172A).withOpacity(0.025),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: const Color(0xFF0F172A).withOpacity(0.018),
+                blurRadius: 7,
+                spreadRadius: -3,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
@@ -10272,6 +10292,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
               Icon(
                 Icons.keyboard_arrow_down_rounded,
                 color: salesDetailMutedTextColor,
+                size: 20,
               ),
             ],
           ),
@@ -10287,12 +10308,13 @@ class _SalesPageState extends ConsumerState<SalesPage>
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFD9E3EF)),
+          border: Border.all(color: const Color(0xFFD7E1EC)),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF0F172A).withOpacity(0.07),
-              blurRadius: 18,
-              offset: const Offset(0, 10),
+              color: const Color(0xFF0F172A).withOpacity(0.075),
+              blurRadius: 16,
+              spreadRadius: -5,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -11266,9 +11288,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
     const fullposBlue = Color(0xFF1A56DB);
     const fullposBlueDark = Color(0xFF1443B0);
-    const borderColor = Color(0xFFB8C4D1);
+    const borderColor = Color(0xFFD2DDE9);
     const softBlue = Color(0xFFEAF1FF);
-    const disabledBackground = Color(0xFFD9E1E8);
+    const disabledBackground = Color(0xFFE1E8F0);
 
     const primaryRadius = BorderRadius.only(
       topLeft: Radius.circular(18),
@@ -11412,6 +11434,18 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         return fullposBlue;
                       }),
                       foregroundColor: WidgetStateProperty.all(Colors.white),
+                      overlayColor: WidgetStateProperty.resolveWith<Color?>((
+                        states,
+                      ) {
+                        if (states.contains(WidgetState.disabled)) return null;
+                        if (states.contains(WidgetState.pressed)) {
+                          return Colors.white.withOpacity(0.08);
+                        }
+                        if (states.contains(WidgetState.hovered)) {
+                          return Colors.white.withOpacity(0.055);
+                        }
+                        return null;
+                      }),
                     ),
                     child: Row(
                       children: [
@@ -11421,9 +11455,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: isCompact ? 17 : 18.5,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w800,
                             height: 1,
-                            letterSpacing: -0.25,
+                            letterSpacing: -0.08,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -11440,9 +11474,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                 textAlign: TextAlign.right,
                                 style: TextStyle(
                                   fontSize: isCompact ? 24 : 26,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w800,
                                   height: 1,
-                                  letterSpacing: -0.45,
+                                  letterSpacing: -0.18,
                                 ),
                               ),
                             ),
@@ -12720,7 +12754,9 @@ class _CategorySidebarItemState extends State<_CategorySidebarItem> {
         width: double.infinity,
         height: widget.categoryItemHeight,
         decoration: BoxDecoration(
-          color: isHovered ? const Color(0xFFEFF6FF) : Colors.transparent,
+          color: isSelected
+              ? const Color(0xFFF2F7FF)
+              : (isHovered ? const Color(0xFFF7FAFD) : Colors.transparent),
           border: Border(
             left: BorderSide(
               color: isSelected

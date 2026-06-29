@@ -8,6 +8,8 @@ import '../../features/auth/ui/splash_page.dart';
 import '../session/session_manager.dart';
 import '../services/cloud_sync_service.dart';
 import '../sync/product_sync_service.dart';
+import '../recovery/app_recovery.dart';
+import '../recovery/recovery_screen.dart';
 import '../window/window_startup_controller.dart';
 import '../update/app_update_coordinator.dart';
 import '../update/update_gate.dart';
@@ -31,15 +33,19 @@ class AppEntry extends ConsumerStatefulWidget {
 }
 
 class _AppEntryState extends ConsumerState<AppEntry>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  static const _resumeUpdateCheckCooldown = Duration(minutes: 1);
+
   bool _windowShowScheduled = false;
   bool _startupSyncScheduled = false;
+  DateTime? _lastResumeUpdateCheck;
   late AnimationController _splashAnimController;
   late Animation<double> _splashOpacity;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _splashAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -65,8 +71,22 @@ class _AppEntryState extends ConsumerState<AppEntry>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _splashAnimController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!Platform.isWindows || state != AppLifecycleState.resumed) return;
+
+    final now = DateTime.now();
+    final last = _lastResumeUpdateCheck;
+    if (last != null && now.difference(last) < _resumeUpdateCheckCooldown) {
+      return;
+    }
+    _lastResumeUpdateCheck = now;
+    unawaited(AppUpdateCoordinator.instance.check());
   }
 
   Future<void> _startDeferredSync() async {
@@ -115,6 +135,22 @@ class _AppEntryState extends ConsumerState<AppEntry>
     final boot = ref.watch(appBootstrapProvider).snapshot;
     final delay = ref.watch(_minSplashDelayProvider);
 
+    return ValueListenableBuilder<AppRecoveryState>(
+      valueListenable: AppRecoveryController.instance,
+      builder: (context, recovery, _) {
+        if (recovery.active) {
+          return UpdateGate(child: RecoveryScreen(state: recovery));
+        }
+        return _buildNormalEntry(context, boot, delay);
+      },
+    );
+  }
+
+  Widget _buildNormalEntry(
+    BuildContext context,
+    BootSnapshot boot,
+    AsyncValue<void> delay,
+  ) {
     final showSplash = boot.status != BootStatus.ready || delay.isLoading;
 
     // Cuando ambas condiciones se cumplen, iniciar el fade-out del splash
@@ -135,9 +171,7 @@ class _AppEntryState extends ConsumerState<AppEntry>
           // Capa superior: splash que se desvanece, siempre en el árbol
           FadeTransition(
             opacity: _splashOpacity,
-            child: const IgnorePointer(
-              child: SplashPage(),
-            ),
+            child: const IgnorePointer(child: SplashPage()),
           ),
         ],
       ),

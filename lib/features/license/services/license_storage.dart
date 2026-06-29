@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/identity/identity_recovery_bundle.dart';
+import '../../../core/identity/license_reactivation_marker.dart';
 import '../../../core/storage/prefs_safe.dart';
 import '../../registration/services/business_identity_storage.dart';
 import '../data/license_models.dart';
@@ -152,6 +153,11 @@ class LicenseStorage {
     await _validateBusinessIdCompatibility(info);
     final sp = await _prefs();
     await sp.setString(_kLastInfo, jsonEncode(info.toJson()));
+    if (info.isActive && !info.isExpired) {
+      await const LicenseReactivationMarker().clear(
+        reason: 'license_last_info_active',
+      );
+    }
     await IdentityRecoveryBundle.instance.saveFromCurrentState(
       'license_set_last_info',
     );
@@ -222,11 +228,34 @@ class LicenseStorage {
   /// Nota: esto evita llamadas de red en el router. La pantalla de Licencia
   /// puede usar "Verificar" para refrescar el estado desde el backend.
   Future<bool> hasActiveLicenseCached() async {
+    if (await isReactivationRequired()) return false;
     final info = await getLastInfo();
     if (info == null) return false;
     if (!info.isActive) return false;
     if (info.isExpired) return false;
     return true;
+  }
+
+  Future<bool> isReactivationRequired() {
+    return const LicenseReactivationMarker().isRequired();
+  }
+
+  Future<String?> reactivationReason() {
+    return const LicenseReactivationMarker().reason();
+  }
+
+  Future<void> markReactivationRequired({
+    required String reason,
+    String? temporaryTerminalId,
+  }) {
+    return const LicenseReactivationMarker().require(
+      reason: reason,
+      temporaryTerminalId: temporaryTerminalId,
+    );
+  }
+
+  Future<void> clearReactivationRequired({required String reason}) {
+    return const LicenseReactivationMarker().clear(reason: reason);
   }
 
   Future<SharedPreferences> _prefs() async {
