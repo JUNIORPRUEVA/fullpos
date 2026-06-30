@@ -46,7 +46,7 @@ const String _kClientLayawaysRoute = '/layaways';
 
 const String _kMoneyIncomeRoute = '/sales';
 const String _kMoneyOutcomeRoute = '/sales';
-const String _kMoneyHistoryRoute = '/cash/history';
+const String _kMoneyHistoryRoute = '/cash/history?view=movements';
 
 const String _kPurchaseCreateRoute = '/purchases/new';
 const String _kPurchaseHistoryRoute = '/purchases';
@@ -134,7 +134,8 @@ class _FullPosDrawerState extends ConsumerState<FullPosDrawer>
   bool _isActive(String route) {
     if (route.isEmpty) return false;
     final current = _currentPath();
-    return current == route || current.startsWith('$route/');
+    final routePath = Uri.tryParse(route)?.path ?? route;
+    return current == routePath || current.startsWith('$routePath/');
   }
 
   bool _isAnyActive(List<String> routes) {

@@ -569,7 +569,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/cash/history',
-            builder: (context, state) => const CashHistoryPage(),
+            builder: (context, state) {
+              final view = state.uri.queryParameters['view'];
+              final initialView = view == 'movements'
+                  ? CashHistoryInitialView.movements
+                  : CashHistoryInitialView.sessions;
+
+              return CashHistoryPage(initialView: initialView);
+            },
           ),
           GoRoute(
             path: '/cash/expenses',

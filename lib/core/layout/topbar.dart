@@ -245,7 +245,7 @@ class _TopbarState extends ConsumerState<Topbar> {
         unawaited(_loadOpenCashSessionId());
         return;
       case _TopbarMenuAction.shiftHistory:
-        context.go('/cash/history');
+        context.go('/cash/history?view=sessions');
         return;
     }
   }

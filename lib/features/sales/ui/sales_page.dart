@@ -7327,7 +7327,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
             accent: const Color(0xFF2563EB),
             onTap: () {
               setState(() => _showMovementPanel = false);
-              context.push('/cash/history');
+              context.push('/cash/history?view=movements');
             },
           ),
           const Spacer(),

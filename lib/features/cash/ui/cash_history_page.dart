@@ -3,12 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/theme/app_status_theme.dart';
-import '../../../core/printing/models/ticket_layout_config.dart';
-import '../../../core/printing/unified_ticket_printer.dart';
-import '../../../core/utils/currency_display.dart';
 import '../../../core/printing/models/company_info.dart'
     show CompanyInfo, CompanyInfoRepository;
+import '../../../core/printing/models/ticket_layout_config.dart';
+import '../../../core/printing/unified_ticket_printer.dart';
+import '../../../core/theme/app_status_theme.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../core/db_hardening/db_hardening.dart';
 import '../../settings/data/printer_settings_repository.dart';
 import '../../sales/data/sales_repository.dart';
@@ -19,8 +19,15 @@ import '../data/cash_session_model.dart';
 import '../data/cash_summary_model.dart';
 import '../data/session_close_ticket_composer.dart';
 
+enum CashHistoryInitialView { sessions, movements }
+
 class CashHistoryPage extends StatefulWidget {
-  const CashHistoryPage({super.key});
+  final CashHistoryInitialView initialView;
+
+  const CashHistoryPage({
+    super.key,
+    this.initialView = CashHistoryInitialView.sessions,
+  });
 
   @override
   State<CashHistoryPage> createState() => _CashHistoryPageState();
@@ -62,7 +69,6 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   int _loadSeq = 0;
 
   late final DateFormat _dateTimeFormat = DateFormat('dd/MM/yyyy hh:mm a');
-  late final DateFormat _timeOnlyFormat = DateFormat('hh:mm a');
   late final DateFormat _dateTimeShortFormat = DateFormat('dd/MM hh:mm a');
 
   @override
@@ -83,21 +89,6 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   void _safeSetState(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
-  }
-
-  Widget _pill(String text, ColorScheme scheme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: scheme.surfaceVariant.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(text, style: const TextStyle(fontSize: 12)),
-    );
-  }
-
-  String _paymentMethodShortLabel(SaleModel sale) {
-    return sale.paymentMethodCompactLabel;
   }
 
   EdgeInsets _contentPadding(
@@ -268,10 +259,10 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       ),
     );
 
-    final filterButton = SizedBox(
+    final viewButton = SizedBox(
       height: 48,
       child: PopupMenuButton<_CortesHeaderAction>(
-        tooltip: 'Filtros',
+        tooltip: 'Vista',
         onSelected: (value) async {
           switch (value) {
             case _CortesHeaderAction.pickRange:
@@ -323,10 +314,14 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.filter_list_rounded, size: 18, color: scheme.onSurface),
+              Icon(
+                Icons.view_sidebar_rounded,
+                size: 18,
+                color: scheme.onSurface,
+              ),
               const SizedBox(width: 8),
               Text(
-                'Filtros',
+                'Vista',
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: scheme.onSurface,
                   fontWeight: FontWeight.w800,
@@ -425,7 +420,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       children: [
         Expanded(child: searchField),
         const SizedBox(width: 10),
-        filterButton,
+        viewButton,
         const SizedBox(width: 8),
         actionsButton,
       ],
@@ -494,11 +489,7 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
             }
 
             return Column(
-              children: [
-                searchRow,
-                const SizedBox(height: 10),
-                summaryRow,
-              ],
+              children: [searchRow, const SizedBox(height: 10), summaryRow],
             );
           },
         ),
@@ -532,291 +523,64 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   Future<void> _showSessionDetails(CashSessionModel session) async {
     if (session.id == null) return;
 
-    final detailFuture = _loadSessionDetail(session);
+    _safeSetState(() {
+      _selectedSession = session;
+      _selectedMovement = null;
+    });
 
-    await showModalBottomSheet(
+    await showGeneralDialog<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        final viewInsets = MediaQuery.of(context).viewInsets;
-        return Padding(
-          padding: EdgeInsets.only(bottom: viewInsets.bottom),
-          child: FutureBuilder<_SessionDetailData>(
-            future: detailFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) {
-                return const SizedBox(
-                  height: 320,
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar detalle del turno',
+      barrierColor: Colors.black.withOpacity(0.18),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        final availableWidth = MediaQuery.of(context).size.width;
+        final panelWidth = math.min(392.0, availableWidth);
 
-              if (snapshot.hasError || snapshot.data == null) {
-                return Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    'No se pudieron cargar los detalles del corte.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                );
-              }
-
-              final data = snapshot.data!;
-              final theme = Theme.of(context);
-              final scheme = theme.colorScheme;
-              final dateTime = _dateTimeFormat;
-              final money = CurrencyDisplay.currency();
-
-              return SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Sesión #${session.id ?? '-'}',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Spacer(),
-                          TextButton.icon(
-                            onPressed: () => _reprintSession(data),
-                            icon: const Icon(Icons.print),
-                            label: const Text('Reimprimir'),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 8,
-                        children: [
-                          _pill('Cajero: ${session.userName}', scheme),
-                          _pill(
-                            'Apertura: ${dateTime.format(session.openedAt)}',
-                            scheme,
-                          ),
-                          if (session.closedAt != null)
-                            _pill(
-                              'Cierre: ${dateTime.format(session.closedAt!)}',
-                              scheme,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      _detailGrid(theme, money, data),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Ventas de la sesión',
-                        style: theme.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      _buildSalesListSection(
-                        data: data,
-                        theme: theme,
-                        scheme: scheme,
-                        timeFormat: _timeOnlyFormat,
-                        moneyFormat: money,
-                      ),
-                      const SizedBox(height: 12),
-                      Text('Movimientos', style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 120,
-                        child: data.movements.isEmpty
-                            ? Center(
-                                child: Text(
-                                  'Sin movimientos',
-                                  style: theme.textTheme.bodyMedium,
-                                ),
-                              )
-                            : ListView.builder(
-                                itemCount: data.movements.length,
-                                itemBuilder: (context, i) {
-                                  final m = data.movements[i];
-                                  final isIn = m.isIn;
-                                  final color = isIn
-                                      ? scheme.primary
-                                      : scheme.error;
-                                  return ListTile(
-                                    dense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                    leading: Icon(
-                                      isIn
-                                          ? Icons.add_circle_outline
-                                          : Icons.remove_circle_outline,
-                                      color: color,
-                                    ),
-                                    title: Text(m.reason),
-                                    subtitle: Text(
-                                      DateFormat(
-                                        'HH:mm dd/MM',
-                                      ).format(m.createdAt),
-                                    ),
-                                    trailing: Text(
-                                      '${isIn ? '+' : '-'}${money.format(m.amount)}',
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            color: color,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                    ),
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
-                  ),
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: panelWidth,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(18),
+                  bottomLeft: Radius.circular(18),
                 ),
-              );
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSalesListSection({
-    required _SessionDetailData data,
-    required ThemeData theme,
-    required ColorScheme scheme,
-    required DateFormat timeFormat,
-    required NumberFormat moneyFormat,
-  }) {
-    if (data.sales.isEmpty) {
-      return SizedBox(
-        height: 80,
-        child: Center(
-          child: Text(
-            'Sin ventas registradas',
-            style: theme.textTheme.bodyMedium,
-          ),
-        ),
-      );
-    }
-
-    final listHeight = math.min(320.0, data.sales.length * 44.0 + 12);
-    return SizedBox(
-      height: listHeight,
-      child: ListView.separated(
-        physics: const ClampingScrollPhysics(),
-        padding: EdgeInsets.zero,
-        itemCount: data.sales.length,
-        separatorBuilder: (_, _) => Divider(
-          height: 1,
-          color: theme.colorScheme.onSurface.withOpacity(0.08),
-        ),
-        itemBuilder: (context, index) {
-          final sale = data.sales[index];
-          final items =
-              data.saleItemsBySaleId[sale.id] ?? const <SaleItemModel>[];
-          return _buildSalesItemRow(
-            sale: sale,
-            items: items,
-            timeFormat: timeFormat,
-            moneyFormat: moneyFormat,
-            theme: theme,
-            scheme: scheme,
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSalesItemRow({
-    required SaleModel sale,
-    required List<SaleItemModel> items,
-    required DateFormat timeFormat,
-    required NumberFormat moneyFormat,
-    required ThemeData theme,
-    required ColorScheme scheme,
-  }) {
-    final when = DateTime.fromMillisecondsSinceEpoch(sale.createdAtMs);
-    final firstItemName = items.isNotEmpty
-        ? items.first.productNameSnapshot
-        : 'Venta';
-    final displayName = firstItemName.isNotEmpty
-        ? firstItemName
-        : (sale.customerNameSnapshot?.trim() ?? 'Venta');
-    final methodLabel = _paymentMethodShortLabel(sale);
-    final breakdown = sale.isMixedPayment ? sale.paymentBreakdownLabel : '';
-    return SizedBox(
-      height: breakdown.isEmpty ? 40 : 54,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Text(
-            timeFormat.format(when),
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 11,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    height: 1.2,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 28,
+                    offset: const Offset(-8, 0),
                   ),
-                ),
-                if (breakdown.isNotEmpty)
-                  Text(
-                    breakdown,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 10,
-                      color: scheme.onSurface.withOpacity(0.72),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: scheme.surfaceVariant.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              methodLabel,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                fontSize: 10,
-                height: 1.1,
+                ],
+              ),
+              child: _buildSessionDetailsPanel(
+                session,
+                onClose: () => Navigator.of(context).pop(),
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            moneyFormat.format(sale.total),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(curved),
+          child: FadeTransition(opacity: curved, child: child),
+        );
+      },
     );
   }
 
@@ -991,79 +755,6 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     }, stage: 'cash_history/session_detail');
   }
 
-  Future<void> _reprintSession(_SessionDetailData data) async {
-    final sessionId = data.session.id;
-    final results = await Future.wait([
-      PrinterSettingsRepository.getOrCreate(),
-      CompanyInfoRepository.getCurrentCompanyInfo(),
-      sessionId == null
-          ? Future.value(const <CategoryCashSummary>[])
-          : CashRepository.listCategorySummaryForSession(sessionId),
-      sessionId == null
-          ? Future.value(const <SoldProductCashSummary>[])
-          : CashRepository.listSoldProductsForSession(sessionId),
-      sessionId == null
-          ? Future.value(const <RefundItemByCategory>[])
-          : CashRepository.listRefundItemsByCategoryForSession(sessionId),
-    ]);
-    final settings = results[0] as dynamic;
-    final layout = TicketLayoutConfig.fromPrinterSettings(settings);
-    final company = results[1] as CompanyInfo;
-    final categorySummary = results[2] as List<CategoryCashSummary>;
-    final soldProducts = results[3] as List<SoldProductCashSummary>;
-    final refundItems = results[4] as List<RefundItemByCategory>;
-
-    final lines = _buildClosingTicketLinesForPrint(
-      layout: layout,
-      company: company,
-      session: data.session,
-      summary: data.summary,
-      closingAmount: data.closingAmount,
-      note: data.note,
-      movements: data.movements,
-      categorySummary: categorySummary,
-      soldProducts: soldProducts,
-      refundItems: refundItems,
-    );
-
-    await UnifiedTicketPrinter.printCustomLines(
-      lines: lines,
-      ticketNumber: 'CASH-${data.session.id ?? ''}',
-      includeLogo: true,
-      overrideCopies: 1,
-      layoutOverride: layout,
-    );
-  }
-
-  List<String> _buildClosingTicketLinesForPrint({
-    required TicketLayoutConfig layout,
-    required CompanyInfo company,
-    required CashSessionModel session,
-    required CashSummaryModel summary,
-    required double closingAmount,
-    required String note,
-    required List<CashMovementModel> movements,
-    List<CategoryCashSummary> categorySummary = const <CategoryCashSummary>[],
-    List<SoldProductCashSummary> soldProducts =
-        const <SoldProductCashSummary>[],
-    List<RefundItemByCategory> refundItems = const <RefundItemByCategory>[],
-  }) {
-    return SessionCloseTicketComposer.buildLines(
-      layout: layout,
-      companyName: company.name,
-      companyRnc: company.rnc,
-      companyPhone: company.primaryPhone,
-      session: session,
-      summary: summary,
-      closingAmount: closingAmount,
-      note: note,
-      movements: movements,
-      categorySummary: categorySummary,
-      soldProducts: soldProducts,
-      refundItems: refundItems,
-    );
-  }
-
   Future<void> _load() async {
     final seq = ++_loadSeq;
     if (mounted) {
@@ -1137,7 +828,9 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
 
         return DefaultTabController(
           length: 2,
-          initialIndex: 1,
+          initialIndex: widget.initialView == CashHistoryInitialView.sessions
+              ? 0
+              : 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1185,33 +878,79 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
   // SESIONES
   // ─────────────────────────────────────────────────────────────
 
-  Widget _buildSessionsList(
-    BuildContext context,
-    bool isWide,
-  ) {
+  Widget _buildSessionsList(BuildContext context, bool isWide) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dateTime = _dateTimeShortFormat;
     final money = CurrencyDisplay.currency();
     final status = theme.extension<AppStatusTheme>();
     final sessions = _filteredSessions;
+    final mutedText = scheme.onSurface.withOpacity(0.6);
 
-    Widget statusChip({required String text, required Color color}) {
-      return Chip(
-        label: Text(text),
-        padding: EdgeInsets.zero,
-        backgroundColor: color.withOpacity(0.12),
-        side: BorderSide(color: color.withOpacity(0.35)),
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    Widget listHeader() {
+      final muted = scheme.onSurface.withOpacity(0.70);
+
+      Text label(String text, {TextAlign? align}) {
+        return Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: align,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: muted,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.15,
+          ),
+        );
+      }
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: 34,
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(width: 32, child: label('')),
+            const SizedBox(width: 12),
+            Expanded(flex: 2, child: label('Turno')),
+            const SizedBox(width: 12),
+            Expanded(flex: 1, child: label('Cajero')),
+            const SizedBox(width: 8),
+            Expanded(flex: 1, child: label('Estado')),
+            const SizedBox(width: 8),
+            Expanded(flex: 1, child: label('Fecha')),
+            const SizedBox(width: 8),
+            SizedBox(width: 128, child: label('Monto', align: TextAlign.right)),
+            const SizedBox(width: 8),
+            SizedBox(width: 28, child: label('', align: TextAlign.center)),
+          ],
+        ),
       );
     }
 
-    if (sessions.isEmpty) {
+    Widget emptyState() {
       return Center(
-        child: Text(
-          'Sin sesiones en el rango seleccionado.',
-          style: theme.textTheme.bodyMedium,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.lock_clock_outlined, size: 64, color: mutedText),
+            const SizedBox(height: 14),
+            Text(
+              'Sin turnos',
+              style: theme.textTheme.titleMedium?.copyWith(color: mutedText),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _searchQuery.trim().isNotEmpty
+                  ? 'Intenta cambiar la búsqueda o el rango de fechas.'
+                  : 'No hay turnos cerrados en el rango seleccionado.',
+              style: theme.textTheme.bodySmall?.copyWith(color: mutedText),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     }
@@ -1220,164 +959,273 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     final warning = status?.warning ?? scheme.secondary;
     final danger = status?.error ?? scheme.error;
 
-    final list = ListView.separated(
-      padding: EdgeInsets.zero,
-      itemCount: sessions.length,
-      separatorBuilder: (context, index) => Divider(
-        height: 1,
-        thickness: 1,
-        color: scheme.outlineVariant.withOpacity(0.35),
-      ),
-      itemBuilder: (context, index) {
-        final session = sessions[index];
-        final isSelected = _selectedSession?.id == session.id;
-        final diff = session.difference ?? 0.0;
-        final opened = dateTime.format(session.openedAt);
-        final closed = session.closedAt != null
-            ? dateTime.format(session.closedAt!)
-            : null;
-        final dateLabel = closed == null
-            ? '$opened -> -'
-            : '$opened -> $closed';
-        final idLabel = session.id?.toString() ?? '-';
-        final userName = session.userName.trim();
-        final headline = userName.isEmpty
-            ? 'Turno #$idLabel'
-            : 'Turno #$idLabel · $userName';
-        final totalLabel = money.format(session.closingAmount ?? 0);
-        final bool isOpen = session.closedAt == null;
-        final bool hasDiff = diff != 0;
-        final (statusText, statusColor) = hasDiff
-            ? ('Diferencia', danger)
-            : (isOpen ? ('Abierto', warning) : ('Cerrado', success));
+    Widget sessionRow(CashSessionModel session) {
+      final isSelected = _selectedSession?.id == session.id;
+      final diff = session.difference ?? 0.0;
+      final opened = dateTime.format(session.openedAt);
+      final closed = session.closedAt != null
+          ? dateTime.format(session.closedAt!)
+          : null;
+      final dateLabel = closed == null ? '$opened -> -' : '$opened -> $closed';
+      final idLabel = session.id?.toString() ?? '-';
+      final userName = session.userName.trim();
+      final cashierLabel = userName.isEmpty ? 'Usuario sin nombre' : userName;
+      final totalLabel = money.format(session.closingAmount ?? 0);
+      final bool isOpen = session.closedAt == null;
+      final bool hasDiff = diff != 0;
+      final (statusText, statusColor) = hasDiff
+          ? ('Diferencia', danger)
+          : (isOpen ? ('Abierto', warning) : ('Cerrado', success));
 
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Material(
-            color: isSelected
-                ? scheme.primary.withOpacity(0.06)
-                : Colors.transparent,
-            child: InkWell(
-              onTap: () => _selectSession(session, showDetails: !isWide),
-              hoverColor: scheme.surfaceVariant.withOpacity(0.35),
-              child: SizedBox(
-                height: 54,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Row(
-                    children: [
-                      Icon(Icons.lock_clock, size: 18, color: scheme.primary),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 4,
-                        child: Text(
-                          headline,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        flex: 4,
-                        child: Text(
-                          dateLabel,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurface.withOpacity(0.68),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      statusChip(text: statusText, color: statusColor),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: 130,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Text(
-                            totalLabel,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 44,
-                        child: IconButton(
-                          tooltip: 'Detalle',
-                          icon: const Icon(Icons.chevron_right, size: 20),
-                          onPressed: () => _showSessionDetails(session),
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
+      return Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => _selectSession(session, showDetails: true),
+          borderRadius: BorderRadius.circular(12),
+          hoverColor: scheme.primary.withOpacity(0.04),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFFEAF2FF).withOpacity(0.82)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected
+                    ? const Color(0xFF8FB3FF)
+                    : Colors.transparent,
+                width: isSelected ? 1 : 0,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFF1A56DB)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Tooltip(
+                  message: statusText,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: statusColor.withOpacity(0.18)),
+                    ),
+                    child: Icon(
+                      Icons.lock_clock_rounded,
+                      color: statusColor,
+                      size: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Turno #$idLabel',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    cashierLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.66),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    statusText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.66),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 1,
+                  child: Text(
+                    dateLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurface.withOpacity(0.66),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 128,
+                  child: Text(
+                    totalLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 28,
+                  child: PopupMenuButton<String>(
+                    tooltip: 'Acciones',
+                    icon: Icon(
+                      Icons.more_vert_rounded,
+                      color: scheme.onSurface.withOpacity(0.58),
+                      size: 18,
+                    ),
+                    padding: EdgeInsets.zero,
+                    onSelected: (value) {
+                      if (value == 'details') {
+                        _showSessionDetails(session);
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'details',
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(Icons.visibility_outlined, size: 18),
+                          title: Text('Ver detalle'),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
+              ],
             ),
           ),
-        );
-      },
-    );
-
-    if (!isWide) return list;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: list),
-        const SizedBox(width: 12),
-        Container(width: 1, color: scheme.outlineVariant.withOpacity(0.35)),
-        const SizedBox(width: 12),
-        SizedBox(
-          width: 340,
-          child: _buildSessionDetailsPanel(_selectedSession),
         ),
-      ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.85)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Column(
+          children: [
+            if (sessions.isNotEmpty) ...[
+              listHeader(),
+              const SizedBox(height: 8),
+            ],
+            Expanded(
+              child: sessions.isEmpty
+                  ? emptyState()
+                  : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                      itemCount: sessions.length,
+                      separatorBuilder: (context, index) =>
+                          Divider(height: 1, color: scheme.outlineVariant),
+                      itemBuilder: (context, index) {
+                        return sessionRow(sessions[index]);
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildSessionDetailsPanel(CashSessionModel? session) {
+  Widget _buildSessionDetailsPanel(
+    CashSessionModel? session, {
+    VoidCallback? onClose,
+  }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final money = CurrencyDisplay.currency();
     final dateTime = _dateTimeFormat;
     final status = theme.extension<AppStatusTheme>();
+    final muted = scheme.onSurface.withOpacity(0.62);
+    final border = scheme.outlineVariant.withOpacity(0.85);
 
     Widget kvRow({required String label, required String value}) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 110,
-              child: Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurface.withOpacity(0.65),
-                  fontWeight: FontWeight.w700,
-                ),
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF2FF),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(
+                Icons.info_outline_rounded,
+                size: 16,
+                color: Color(0xFF1A56DB),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                value,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: muted,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                      height: 1.18,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1386,144 +1234,252 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
     }
 
     if (session == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            'Selecciona un turno para ver el detalle.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurface.withOpacity(0.66),
-              fontWeight: FontWeight.w600,
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(left: BorderSide(color: border, width: 1)),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Selecciona un turno para ver el detalle.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
           ),
         ),
       );
     }
 
-    return FutureBuilder<_SessionDetailData>(
-      future: _loadSessionDetail(session),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(left: BorderSide(color: border, width: 1)),
+      ),
+      child: FutureBuilder<_SessionDetailData>(
+        future: _loadSessionDetail(session),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-        if (snapshot.hasError || snapshot.data == null) {
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              'No se pudieron cargar los detalles del turno.',
-              style: theme.textTheme.bodyMedium,
-            ),
-          );
-        }
+          if (snapshot.hasError || snapshot.data == null) {
+            return Padding(
+              padding: const EdgeInsets.all(18),
+              child: Text(
+                'No se pudieron cargar los detalles del turno.',
+                style: theme.textTheme.bodyMedium,
+              ),
+            );
+          }
 
-        final data = snapshot.data!;
-        final diff = data.closingAmount - data.summary.expectedCash;
-        final bool isOpen = data.session.closedAt == null;
-        final bool hasDiff = diff != 0;
-        final success = status?.success ?? scheme.tertiary;
-        final warning = status?.warning ?? scheme.secondary;
-        final danger = status?.error ?? scheme.error;
-        final (statusText, statusColor) = hasDiff
-            ? ('Diferencia', danger)
-            : (isOpen ? ('Abierto', warning) : ('Cerrado', success));
+          final data = snapshot.data!;
+          final diff = data.closingAmount - data.summary.expectedCash;
+          final bool isOpen = data.session.closedAt == null;
+          final bool hasDiff = diff != 0;
+          final success = status?.success ?? scheme.tertiary;
+          final warning = status?.warning ?? scheme.secondary;
+          final danger = status?.error ?? scheme.error;
+          final (statusText, statusColor) = hasDiff
+              ? ('Diferencia', danger)
+              : (isOpen ? ('Abierto', warning) : ('Cerrado', success));
 
-        return SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          return Column(
+            children: [
+              Container(
+                height: 64,
+                padding: const EdgeInsets.fromLTRB(18, 10, 12, 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(bottom: BorderSide(color: border)),
+                ),
+                child: Row(
                   children: [
                     Expanded(
                       child: Text(
-                        'Turno #${session.id ?? '-'}',
+                        'Detalle del turno',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w800,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.15,
                         ),
                       ),
                     ),
                     IconButton(
+                      tooltip: 'Imprimir ticket de cierre',
                       onPressed: () => _reprintSession(data),
-                      icon: const Icon(Icons.print, size: 18),
-                      tooltip: 'Reimprimir',
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.print_rounded, size: 19),
                     ),
                     IconButton(
-                      onPressed: () => _showSessionDetails(session),
-                      icon: const Icon(Icons.open_in_new, size: 18),
-                      tooltip: 'Abrir detalle',
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Cerrar detalle',
+                      onPressed:
+                          onClose ??
+                          () => _safeSetState(() => _selectedSession = null),
+                      icon: const Icon(Icons.close_rounded, size: 19),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Chip(
-                    label: Text(statusText),
-                    labelStyle: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: statusColor,
-                    ),
-                    labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-                    padding: EdgeInsets.zero,
-                    backgroundColor: statusColor.withOpacity(0.12),
-                    side: BorderSide(color: statusColor.withOpacity(0.35)),
-                    visualDensity: VisualDensity.compact,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 26),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Turno #${session.id ?? '-'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Chip(
+                          label: Text(statusText),
+                          labelStyle: theme.textTheme.labelSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: statusColor,
+                          ),
+                          labelPadding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                          ),
+                          padding: EdgeInsets.zero,
+                          backgroundColor: statusColor.withOpacity(0.12),
+                          side: BorderSide(
+                            color: statusColor.withOpacity(0.35),
+                          ),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Divider(height: 24, color: border),
+                      kvRow(label: 'Cajero', value: session.userName),
+                      Divider(height: 1, color: border),
+                      kvRow(
+                        label: 'Apertura',
+                        value: dateTime.format(session.openedAt),
+                      ),
+                      Divider(height: 1, color: border),
+                      kvRow(
+                        label: 'Cierre',
+                        value: session.closedAt == null
+                            ? '-'
+                            : dateTime.format(session.closedAt!),
+                      ),
+                      Divider(height: 1, color: border),
+                      kvRow(
+                        label: 'Contado',
+                        value: money.format(data.closingAmount),
+                      ),
+                      Divider(height: 1, color: border),
+                      kvRow(
+                        label: 'Esperado',
+                        value: money.format(data.summary.expectedCash),
+                      ),
+                      Divider(height: 1, color: border),
+                      kvRow(label: 'Diferencia', value: money.format(diff)),
+                      const SizedBox(height: 12),
+                      _detailGrid(theme, money, data),
+                      if (data.note.trim().isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        kvRow(label: 'Nota', value: data.note.trim()),
+                      ],
+                    ],
                   ),
                 ),
-                const SizedBox(height: 8),
-                const Divider(height: 24),
-                kvRow(label: 'Cajero', value: session.userName),
-                kvRow(
-                  label: 'Apertura',
-                  value: dateTime.format(session.openedAt),
-                ),
-                kvRow(
-                  label: 'Cierre',
-                  value: session.closedAt == null
-                      ? '-'
-                      : dateTime.format(session.closedAt!),
-                ),
-                kvRow(
-                  label: 'Contado',
-                  value: money.format(data.closingAmount),
-                ),
-                kvRow(
-                  label: 'Esperado',
-                  value: money.format(data.summary.expectedCash),
-                ),
-                kvRow(label: 'Diferencia', value: money.format(diff)),
-                const SizedBox(height: 12),
-                _detailGrid(theme, money, data),
-                if (data.note.trim().isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  kvRow(label: 'Nota', value: data.note.trim()),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
+              ),
+            ],
+          );
+        },
+      ),
     );
+  }
+
+  Future<void> _reprintSession(_SessionDetailData data) async {
+    final sessionId = data.session.id;
+    if (sessionId == null) return;
+
+    try {
+      final results = await Future.wait([
+        CashRepository.listCategorySummaryForSession(sessionId),
+        CashRepository.listSoldProductsForSession(sessionId),
+        CashRepository.listRefundItemsByCategoryForSession(sessionId),
+        PrinterSettingsRepository.getOrCreate(),
+        CompanyInfoRepository.getCurrentCompanyInfo(),
+      ]);
+      final categorySummary = results[0] as List<CategoryCashSummary>;
+      final soldProducts = results[1] as List<SoldProductCashSummary>;
+      final refundItems = results[2] as List<RefundItemByCategory>;
+      final settings = results[3] as dynamic;
+      final layout = TicketLayoutConfig.fromPrinterSettings(settings);
+      final company = results[4] as CompanyInfo;
+
+      final lines = SessionCloseTicketComposer.buildLines(
+        layout: layout,
+        companyName: company.name,
+        companyRnc: company.rnc,
+        companyPhone: company.primaryPhone,
+        session: data.session,
+        summary: data.summary,
+        closingAmount: data.closingAmount,
+        note: data.note,
+        movements: data.movements,
+        categorySummary: categorySummary,
+        soldProducts: soldProducts,
+        refundItems: refundItems,
+      );
+
+      final result = await UnifiedTicketPrinter.printCustomLines(
+        lines: lines,
+        ticketNumber: 'CASH-$sessionId',
+        includeLogo: true,
+        overrideCopies: 1,
+        layoutOverride: layout,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(
+          content: Text(
+            result.success
+                ? 'Ticket de cierre enviado a imprimir.'
+                : result.message,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('No se pudo imprimir el ticket: $e')),
+      );
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
   // MOVIMIENTOS
   // ─────────────────────────────────────────────────────────────
 
-  Widget _buildMovementsList(
-    BuildContext context,
-    bool isWide,
-  ) {
+  Widget _buildMovementsList(BuildContext context, bool isWide) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dateTime = _dateTimeShortFormat;
@@ -1786,10 +1742,8 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
                       itemCount: movements.length,
-                      separatorBuilder: (context, index) => Divider(
-                        height: 1,
-                        color: scheme.outlineVariant,
-                      ),
+                      separatorBuilder: (context, index) =>
+                          Divider(height: 1, color: scheme.outlineVariant),
                       itemBuilder: (context, index) {
                         return movementRow(movements[index]);
                       },
@@ -1991,7 +1945,8 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
                 ),
                 IconButton(
                   tooltip: 'Cerrar detalle',
-                  onPressed: onClose ??
+                  onPressed:
+                      onClose ??
                       () => _safeSetState(() => _selectedMovement = null),
                   icon: const Icon(Icons.close_rounded, size: 19),
                 ),
@@ -2167,5 +2122,4 @@ class _CashHistoryPageState extends State<CashHistoryPage> {
       ),
     );
   }
-
 }
