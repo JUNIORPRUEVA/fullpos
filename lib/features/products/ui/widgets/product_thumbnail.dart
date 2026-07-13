@@ -99,7 +99,7 @@ class ProductThumbnail extends StatelessWidget {
       effectiveHex,
       fallback: const Color(0xFF546E7A),
     );
-    final placeholderSurface = placeholderBackgroundColor ?? Colors.transparent;
+    final placeholderSurface = placeholderBackgroundColor ?? Colors.white;
 
     return Container(
       width: w,
@@ -109,7 +109,7 @@ class ProductThumbnail extends StatelessWidget {
         border: showBorder
             ? Border.all(color: const Color(0xFFDDE6F0), width: 1)
             : null,
-        color: shouldShowImage ? const Color(0xFFF8FAFC) : placeholderSurface,
+        color: shouldShowImage ? const Color(0xFFF8FAFC) : Colors.white,
         boxShadow: showShadow
             ? [
                 BoxShadow(
@@ -193,7 +193,7 @@ class ProductThumbnail extends StatelessWidget {
     final effectiveSize = width ?? size;
     final iconSize = (effectiveSize * 0.48).clamp(18.0, 64.0);
     return ColoredBox(
-      color: surface,
+      color: Colors.white,
       child: Center(
         child: Icon(
           Icons.sell_outlined,

@@ -2,15 +2,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
-import '../backup/backup_paths.dart';
 import '../backup/backup_zip.dart';
 import '../config/app_config.dart';
 import '../network/api_client.dart';
 import '../logging/app_logger.dart';
+import '../storage/fullpos_paths.dart';
 import '../../features/settings/data/business_settings_model.dart';
 import '../../features/settings/data/business_settings_repository.dart';
 
@@ -38,7 +37,7 @@ class SupportLogsService {
 
   /// Crea un ZIP local con logs/diagnóstico para soporte.
   ///
-  /// No sube nada a ningún backend. El ZIP se guarda en `FULLPOS_LOGS/`.
+  /// No sube nada a ningún backend. El ZIP se guarda en la carpeta de soporte.
   Future<String> createZipOnly({String? errorMessage}) {
     return _createSupportZip(errorMessage: errorMessage);
   }
@@ -139,8 +138,7 @@ class SupportLogsService {
   }
 
   Future<String> _createSupportZip({String? errorMessage}) async {
-    final docs = await BackupPaths.documentsDir();
-    final outDir = Directory(p.join(docs.path, 'FULLPOS_LOGS'));
+    final outDir = await FullPosPaths.supportLogsDir();
     if (!await outDir.exists()) await outDir.create(recursive: true);
 
     final now = DateTime.now();
@@ -208,11 +206,9 @@ class SupportLogsService {
   }) async {
     final results = <_SupportLogFile>[];
 
-    final supportDir = await getApplicationSupportDirectory();
-    final appLogsDir = Directory(p.join(supportDir.path, 'logs'));
+    final appLogsDir = await FullPosPaths.appLogsDir();
 
-    final docs = await BackupPaths.documentsDir();
-    final docsLogsDir = Directory(p.join(docs.path, 'FULLPOS_LOGS'));
+    final docsLogsDir = await FullPosPaths.supportLogsDir();
 
     Future<void> scanDir(Directory dir, String zipRoot) async {
       if (!await dir.exists()) return;
@@ -244,8 +240,8 @@ class SupportLogsService {
       }
     }
 
-    await scanDir(appLogsDir, 'app_support/logs');
-    await scanDir(docsLogsDir, 'documents/FULLPOS_LOGS');
+    await scanDir(appLogsDir, 'logs/app');
+    await scanDir(docsLogsDir, 'logs/support');
 
     // De-duplicar por path.
     final unique = <String, _SupportLogFile>{};

@@ -7,6 +7,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../storage/fullpos_paths.dart';
+
 const String _kAppVersion = String.fromEnvironment(
   'FULLPOS_APP_VERSION',
   defaultValue: '1.0.0+1',
@@ -349,13 +351,18 @@ class IdentityRecoveryBundle {
     }
     if (await hasCorruptPreferencesQuarantine()) return true;
     final docs = await getApplicationDocumentsDirectory();
+    final dataDir = await FullPosPaths.dataDir();
     for (final name in const ['fullpos.db', 'fullpos_test.db']) {
+      final newDb = File(p.join(dataDir.path, name));
+      if (await newDb.exists()) return true;
+      if (await File('${newDb.path}-wal').exists()) return true;
+      if (await File('${newDb.path}-shm').exists()) return true;
       final db = File(p.join(docs.path, name));
       if (await db.exists()) return true;
       if (await File('${db.path}-wal').exists()) return true;
       if (await File('${db.path}-shm').exists()) return true;
     }
-    final backupsDir = Directory(p.join(docs.path, 'FULLPOS_BACKUPS'));
+    final backupsDir = await FullPosPaths.backupsDir();
     if (await _hasSignificantBackupEvidence(backupsDir)) return true;
     final support = await getApplicationSupportDirectory();
     for (final name in const ['fullpos.db', 'fullpos_test.db']) {
@@ -364,9 +371,7 @@ class IdentityRecoveryBundle {
       if (await File('${db.path}-wal').exists()) return true;
       if (await File('${db.path}-shm').exists()) return true;
     }
-    final licenseFallback = File(
-      p.join(support.path, 'FullPOS', 'license.dat'),
-    );
+    final licenseFallback = await FullPosPaths.licenseFile();
     if (await licenseFallback.exists()) return true;
     final appData = Platform.isWindows ? Platform.environment['APPDATA'] : null;
     if (appData != null && appData.trim().isNotEmpty) {
@@ -455,8 +460,7 @@ class IdentityRecoveryBundle {
 
   Future<void> log(String message) async {
     try {
-      final supportDir = await getApplicationSupportDirectory();
-      final logDir = Directory(p.join(supportDir.path, 'logs'));
+      final logDir = await FullPosPaths.appLogsDir();
       if (!await logDir.exists()) await logDir.create(recursive: true);
       final file = File(p.join(logDir.path, 'identity_recovery.log'));
       await file.writeAsString(
@@ -562,15 +566,14 @@ class IdentityRecoveryBundle {
   }
 
   Future<Directory> _identityDir() async {
-    final support = await getApplicationSupportDirectory();
-    final dir = Directory(p.join(support.path, 'identity'));
+    final dir = await FullPosPaths.identityDir();
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
 
   Future<Directory> _documentsIdentityDir() async {
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docs.path, 'FULLPOS_BACKUPS', 'identity'));
+    final backups = await FullPosPaths.backupsDir();
+    final dir = Directory(p.join(backups.path, 'identity'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }

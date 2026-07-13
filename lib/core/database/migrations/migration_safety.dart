@@ -1,16 +1,15 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import '../../storage/fullpos_paths.dart';
 
 class MigrationSafety {
   MigrationSafety._();
 
-  static const String _backupsDirName = 'FULLPOS_BACKUPS';
-
   static Future<Directory> _baseDir() async {
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docs.path, _backupsDirName, 'pre_migration'));
+    final backups = await FullPosPaths.backupsDir();
+    final dir = Directory(p.join(backups.path, 'pre_migration'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
@@ -37,7 +36,10 @@ class MigrationSafety {
     final dir = Directory(p.join(base.path, name));
     if (!await dir.exists()) await dir.create(recursive: true);
 
-    await _copyIfExists(File(dbPath), File(p.join(dir.path, p.basename(dbPath))));
+    await _copyIfExists(
+      File(dbPath),
+      File(p.join(dir.path, p.basename(dbPath))),
+    );
     await _copyIfExists(
       File('$dbPath-wal'),
       File(p.join(dir.path, '${p.basename(dbPath)}-wal')),
@@ -93,4 +95,3 @@ class MigrationSafety {
     await from.copy(to.path);
   }
 }
-

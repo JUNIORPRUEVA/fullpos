@@ -14,6 +14,8 @@ import '../config/app_config.dart';
 import '../database/migrations/migration_safety.dart';
 import '../identity/identity_recovery_bundle.dart';
 import '../recovery/app_recovery.dart';
+import '../storage/fullpos_data_migrator.dart';
+import '../storage/fullpos_paths.dart';
 import '../utils/color_utils.dart';
 import '../../features/fiscal_receipts/data/fiscal_receipt_repository.dart';
 import 'db_init.dart';
@@ -113,12 +115,12 @@ class AppDb {
 
   /// Inicializa la base de datos
   static Future<Database> _initDatabase() async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final primaryPath = join(docsDir.path, dbFileName);
+    await FullPosDataMigrator.instance.migrateIfNeeded(
+      dbFileName: _productionDbName,
+      testDbFileName: _testDbName,
+    );
     final path = await _resolveDbPath();
-    if (path != primaryPath) {
-      await _copyDbIfMissing(sourcePath: primaryPath, targetPath: path);
-    }
+    final primaryPath = path;
 
     final dbFile = File(path);
     final hadExistingDb = await dbFile.exists();
@@ -320,9 +322,11 @@ class AppDb {
   }) async {
     final docsDir = await getApplicationDocumentsDirectory();
     final supportDir = await getApplicationSupportDirectory();
+    final dataDir = await FullPosPaths.dataDir();
     final paths = <String>{
-      primaryPath ?? join(docsDir.path, dbFileName),
-      resolvedPath ?? join(docsDir.path, dbFileName),
+      primaryPath ?? join(dataDir.path, dbFileName),
+      resolvedPath ?? join(dataDir.path, dbFileName),
+      join(docsDir.path, dbFileName),
       join(supportDir.path, dbFileName),
     };
 
@@ -332,8 +336,16 @@ class AppDb {
       if (await File('$path-shm').exists()) return true;
     }
 
-    final backupsDir = Directory(join(docsDir.path, 'FULLPOS_BACKUPS'));
-    if (await backupsDir.exists()) return true;
+    final newBackupsDir = await FullPosPaths.backupsDir();
+    if (await _directoryHasFiles(newBackupsDir)) return true;
+
+    final legacyBackupDirs = <Directory>[
+      Directory(join(docsDir.path, 'FULLPOS_BACKUPS')),
+      Directory(join(supportDir.path, 'FULLPOS_BACKUPS')),
+    ];
+    for (final backupsDir in legacyBackupDirs) {
+      if (await backupsDir.exists()) return true;
+    }
 
     if (await IdentityRecoveryBundle.instance.hasPriorInstallationEvidence()) {
       return true;
@@ -359,6 +371,19 @@ class AppDb {
       if (await file.exists()) return true;
     }
 
+    return false;
+  }
+
+  static Future<bool> _directoryHasFiles(Directory directory) async {
+    if (!await directory.exists()) return false;
+    try {
+      await for (final entity in directory.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is File) return true;
+      }
+    } catch (_) {}
     return false;
   }
 
@@ -389,10 +414,8 @@ class AppDb {
     final source = File(dbPath);
     if (!await source.exists()) return;
     try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final dir = Directory(
-        join(docsDir.path, 'FULLPOS_BACKUPS', 'pre_repair'),
-      );
+      final backupsDir = await FullPosPaths.backupsDir();
+      final dir = Directory(join(backupsDir.path, 'pre_repair'));
       if (!await dir.exists()) await dir.create(recursive: true);
       final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
       final backupPath = join(dir.path, '${dbFileName}_${reason}_$stamp');
@@ -483,8 +506,7 @@ class AppDb {
     required String dbPath,
   }) async {
     try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final baseDir = Directory(join(docsDir.path, 'FULLPOS_BACKUPS'));
+      final baseDir = await FullPosPaths.backupsDir();
       if (!await baseDir.exists()) return false;
 
       final zips = baseDir
@@ -497,7 +519,7 @@ class AppDb {
       zips.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
       final zip = zips.first;
 
-      final tempDir = await getTemporaryDirectory();
+      final tempDir = await FullPosPaths.tempDir();
       final stamp = DateTime.now().microsecondsSinceEpoch;
       final extractDir = Directory(
         join(tempDir.path, 'fullpos_db_repair_$stamp'),
@@ -562,11 +584,9 @@ class AppDb {
 
   static Future<bool> _quarantineDbFiles({required String dbPath}) async {
     try {
-      final docsDir = await getApplicationDocumentsDirectory();
       final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final qDir = Directory(
-        join(docsDir.path, 'FULLPOS_BACKUPS', 'quarantine', 'db_$stamp'),
-      );
+      final backupsDir = await FullPosPaths.backupsDir();
+      final qDir = Directory(join(backupsDir.path, 'quarantine', 'db_$stamp'));
       if (!await qDir.exists()) await qDir.create(recursive: true);
 
       Future<void> moveIfExists(String fromPath, String toName) async {
@@ -629,14 +649,18 @@ class AppDb {
 
   static Future<String> _resolveDbPath() async {
     if (_dbPathOverride != null) return _dbPathOverride!;
-    final docsDir = await getApplicationDocumentsDirectory();
-    final primaryPath = join(docsDir.path, dbFileName);
+    final primaryPath = await FullPosPaths.databasePath(dbFileName);
     if (await _canWriteToPath(primaryPath)) {
       _dbPathOverride = primaryPath;
       return primaryPath;
     }
     final supportDir = await getApplicationSupportDirectory();
-    final fallbackPath = join(supportDir.path, dbFileName);
+    final fallbackPath = join(
+      supportDir.path,
+      FullPosPaths.rootDirName,
+      'data',
+      dbFileName,
+    );
     _dbPathOverride = fallbackPath;
     return fallbackPath;
   }
@@ -726,19 +750,23 @@ class AppDb {
   static Future<void> resetForTests() async {
     await close();
     _dbPathOverride = null;
+    FullPosDataMigrator.instance.resetForTests();
     final docsDir = await getApplicationDocumentsDirectory();
-    final path = join(docsDir.path, dbFileName);
     final supportDir = await getApplicationSupportDirectory();
-    final fallbackPath = join(supportDir.path, dbFileName);
-    try {
-      await deleteDatabase(path);
-    } catch (_) {
-      // Ignorar fallos al borrar en entorno de prueba
-    }
-    try {
-      await deleteDatabase(fallbackPath);
-    } catch (_) {
-      // Ignorar
+    for (final name in const [_productionDbName, _testDbName]) {
+      final paths = <String>[
+        join(docsDir.path, name),
+        await FullPosPaths.databasePath(name),
+        join(supportDir.path, name),
+        join(supportDir.path, FullPosPaths.rootDirName, 'data', name),
+      ];
+      for (final path in paths) {
+        try {
+          await deleteDatabase(path);
+        } catch (_) {
+          // Ignorar fallos al borrar en entorno de prueba.
+        }
+      }
     }
   }
 

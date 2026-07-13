@@ -104,7 +104,7 @@ void main() {
       expect(find.text('Actualización lista para instalar'), findsNothing);
       expect(find.text('No se puede actualizar todavía'), findsNothing);
       expect(find.text('Revisar proceso'), findsNothing);
-      expect(find.text('Más tarde'), findsNothing);
+      expect(find.text('Más tarde'), findsOneWidget);
     },
   );
 
@@ -127,11 +127,11 @@ void main() {
 
       expect(find.text('Actualización disponible'), findsOneWidget);
       expect(
-        find.text('Hay una nueva actualización de FullPOS disponible.'),
+        find.text('Hay una nueva versión de FullPOS lista para revisar.'),
         findsOneWidget,
       );
-      expect(find.text('Ver'), findsOneWidget);
-      expect(find.text('Cerrar'), findsOneWidget);
+      expect(find.text('Ver actualización'), findsOneWidget);
+      expect(find.byTooltip('Cerrar'), findsOneWidget);
       expect(find.byType(SnackBar), findsNothing);
     },
   );
@@ -156,7 +156,7 @@ void main() {
 
       expect(find.text('Actualización disponible'), findsOneWidget);
 
-      await tester.tap(find.text('Cerrar'));
+      await tester.tap(find.byTooltip('Cerrar'));
       await tester.pumpAndSettle();
       expect(find.text('Actualización disponible'), findsNothing);
 
@@ -224,7 +224,7 @@ void main() {
       expect(find.text('Actualización disponible'), findsOneWidget);
       expect(find.text('Actualización lista para instalar'), findsNothing);
       expect(find.text('Instalar ahora'), findsNothing);
-      expect(find.text('Más tarde'), findsNothing);
+      expect(find.text('Más tarde'), findsOneWidget);
     },
   );
 

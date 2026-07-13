@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/errors/error_handler.dart';
 import '../../../core/services/cloud_sync_service.dart';
+import '../../../core/storage/fullpos_paths.dart';
 import '../../../core/window/window_service.dart';
 import '../data/business_settings_model.dart';
 import '../providers/business_settings_provider.dart';
@@ -100,8 +100,8 @@ class _CompanyProfileSettingsPageState
 
       final sourcePath = result!.files.single.path!;
       final current = ref.read(businessSettingsProvider);
-      final appDir = await getApplicationDocumentsDirectory();
-      final logoDir = Directory(p.join(appDir.path, 'fullpos', 'logo'));
+      final businessDir = await FullPosPaths.businessMediaDir();
+      final logoDir = Directory(p.join(businessDir.path, 'logo'));
       if (!await logoDir.exists()) {
         await logoDir.create(recursive: true);
       }
@@ -211,9 +211,9 @@ class _CompanyProfileSettingsPageState
       }
       if (!mounted) return;
       setState(() => _hasChanges = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(feedback)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(feedback)));
     } catch (e, st) {
       if (mounted) {
         await ErrorHandler.instance.handle(
@@ -326,7 +326,8 @@ class _CompanyProfileSettingsPageState
             child: _ResponsiveFieldWrap(
               children: [
                 _CurrencyDropdownField(
-                  value: _currencies.any((item) => item['code'] == _currencyCode)
+                  value:
+                      _currencies.any((item) => item['code'] == _currencyCode)
                       ? _currencyCode
                       : _currencies.first['code']!,
                   label: 'Código de moneda',
@@ -1374,8 +1375,12 @@ class _CurrencyDropdownButton extends StatelessWidget {
                       TextSpan(
                         text: code,
                         style: TextStyle(
-                          fontWeight: selected ? FontWeight.w800 : FontWeight.w700,
-                          color: selected ? const Color(0xFF1A56DB) : const Color(0xFF0F172A),
+                          fontWeight: selected
+                              ? FontWeight.w800
+                              : FontWeight.w700,
+                          color: selected
+                              ? const Color(0xFF1A56DB)
+                              : const Color(0xFF0F172A),
                         ),
                       ),
                       const TextSpan(text: ' · '),
@@ -1388,14 +1393,19 @@ class _CurrencyDropdownButton extends StatelessWidget {
                 ),
               ),
               if (selected)
-                const Icon(Icons.check_rounded, size: 16, color: Color(0xFF1A56DB)),
+                const Icon(
+                  Icons.check_rounded,
+                  size: 16,
+                  color: Color(0xFF1A56DB),
+                ),
             ],
           ),
         );
       }).toList(),
       builder: (context, controller, child) {
         return InkWell(
-          onTap: () => controller.isOpen ? controller.close() : controller.open(),
+          onTap: () =>
+              controller.isOpen ? controller.close() : controller.open(),
           borderRadius: BorderRadius.circular(12),
           child: InputDecorator(
             decoration: InputDecoration(
@@ -1411,9 +1421,7 @@ class _CurrencyDropdownButton extends StatelessWidget {
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(
-                  color: scheme.primary.withOpacity(0.55),
-                ),
+                borderSide: BorderSide(color: scheme.primary.withOpacity(0.55)),
               ),
             ),
             child: Row(

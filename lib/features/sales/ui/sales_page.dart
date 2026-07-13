@@ -416,7 +416,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
     return isDark
         ? Color.alphaBlend(Colors.white.withOpacity(0.03), gridBackground)
-        : _allegraBackgroundColor;
+        : const Color(0xFFEFF4F8);
   }
 
   final List<_Cart> _carts = [_Cart(name: 'Venta principal')];
@@ -528,6 +528,52 @@ class _SalesPageState extends ConsumerState<SalesPage>
   double _qtyInCart(int? productId) {
     if (productId == null) return 0.0;
     return _qtyByProductId[productId] ?? 0.0;
+  }
+
+  ProductModel? _productForCartItem(SaleItemModel item) {
+    final productId = item.productId;
+    if (productId == null) return null;
+    for (final product in _allProducts) {
+      if (product.id == productId) return product;
+    }
+    for (final product in _searchResults) {
+      if (product.id == productId) return product;
+    }
+    return null;
+  }
+
+  String? _stockWarningLabelForCartItem(SaleItemModel item) {
+    final product = _productForCartItem(item);
+    if (product == null) return null;
+    if (product.stock <= 0) return 'Fuera de stock';
+    if (item.qty > product.stock) return 'Stock insuficiente';
+    return null;
+  }
+
+  List<_CartItemBadge> _badgesForCartItem(SaleItemModel item) {
+    final badges = <_CartItemBadge>[];
+    final stockWarningLabel = _stockWarningLabelForCartItem(item);
+    if (stockWarningLabel != null) {
+      badges.add(
+        _CartItemBadge(
+          label: stockWarningLabel,
+          foreground: const Color(0xFFBE123C),
+          background: const Color(0xFFFFF1F2),
+          border: const Color(0xFFFDA4AF),
+        ),
+      );
+    }
+    if (item.discountLine > 0) {
+      badges.add(
+        const _CartItemBadge(
+          label: 'Descuento',
+          foreground: Color(0xFF166534),
+          background: Color(0xFFECFDF5),
+          border: Color(0xFF86EFAC),
+        ),
+      );
+    }
+    return badges;
   }
 
   void _setHoverStateDeferred<T>(Set<T> target, T value, bool isHovered) {
@@ -1213,11 +1259,11 @@ class _SalesPageState extends ConsumerState<SalesPage>
     if (!mounted || _isDisposingSalesPage) return;
 
     if (product == null) {
-      _scaffoldMessenger?.showSnackBar(
-        SnackBar(
-          content: Text('No se encontró producto con código: $code'),
-          backgroundColor: const Color(0xFFDC2626),
-        ),
+      FullPosNotifications.error(
+        'No encontramos ningún producto registrado con el código "$code". '
+        'Verifica el código o intenta buscarlo por nombre.',
+        title: 'Producto no encontrado',
+        deduplicationKey: 'sales-product-not-found-$code',
       );
       return;
     }
@@ -2318,7 +2364,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
             ),
           );
         }
-        return child;
+        return _DialogHotkeys(child: child);
       },
     );
   }
@@ -3983,11 +4029,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final effectiveStock = product.stock - qtyInCart;
     if (effectiveStock <= 0) {
       FullPosNotifications.inventory(
-        '${product.name} no tiene unidades disponibles.',
+        '${product.name} se agregará al detalle marcado como fuera de stock.',
         title: 'Producto sin stock',
         deduplicationKey: 'out-of-stock-${product.id}',
       );
-      return;
     }
 
     try {
@@ -4051,11 +4096,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
     if (available <= 0) {
       if (!mounted) return;
       FullPosNotifications.inventory(
-        'No hay más unidades de ${product.name} para agregar.',
+        '${product.name} quedará marcado como stock insuficiente en el detalle.',
         title: 'Stock insuficiente',
         deduplicationKey: 'insufficient-stock-${product.id}',
       );
-      return;
     }
 
     if (!mounted) return;
@@ -4509,19 +4553,22 @@ class _SalesPageState extends ConsumerState<SalesPage>
         }
 
         final proceed = await _presentDialog<bool>(
-          builder: (context) => AlertDialog(
-            title: const Text('Stock insuficiente'),
-            content: Text(e.messageUser),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('CANCELAR'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('CONTINUAR'),
-              ),
-            ],
+          builder: (context) => _DialogHotkeys(
+            onEnter: () => Navigator.pop(context, true),
+            child: AlertDialog(
+              title: const Text('Stock insuficiente'),
+              content: Text(e.messageUser),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('CANCELAR'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('CONTINUAR'),
+                ),
+              ],
+            ),
           ),
         );
 
@@ -5601,7 +5648,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
           child: Material(
             color: transparent,
             child: InkWell(
-              onTap: isOutOfStock ? null : () => _addProductToCart(product),
+              onTap: () => _addProductToCart(product),
               hoverColor: theme.hoverColor,
               child: SizedBox(
                 height: cardSize,
@@ -5629,6 +5676,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
                               height: 54,
                               borderRadius: BorderRadius.circular(10),
                               showBorder: false,
+                              showShadow: false,
+                              placeholderBackgroundColor: Colors.white,
                             ),
                           ),
                           if (qtyInCart > 0)
@@ -5825,9 +5874,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final imageContainerHoverSize = imageBoxSize;
 
     return MouseRegion(
-      cursor: isOutOfStock
-          ? SystemMouseCursors.forbidden
-          : SystemMouseCursors.click,
+      cursor: SystemMouseCursors.click,
       onEnter: (_) {
         setState(() {
           _hoveredProductIndexes.add(index);
@@ -5868,7 +5915,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 color: Colors.transparent,
                 child: InkWell(
                   borderRadius: cardRadius,
-                  onTap: isOutOfStock ? null : () => _addProductToCart(product),
+                  onTap: () => _addProductToCart(product),
                   hoverColor: tealAccent.withOpacity(0.035),
                   highlightColor: tealAccent.withOpacity(0.025),
                   splashColor: tealAccent.withOpacity(0.08),
@@ -5904,7 +5951,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                                           showBorder: false,
                                           showShadow: false,
                                           placeholderBackgroundColor:
-                                              Colors.transparent,
+                                              Colors.white,
                                         ),
                                       ),
                                     ),
@@ -6480,6 +6527,50 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
   Widget _buildClearCategoryFilterButton({required bool isExpanded}) {
     final selectedCount = _selectedCategoryIds.length;
+
+    final child = isExpanded
+        ? Center(
+            child: Text(
+              selectedCount == 1
+                  ? 'Limpiar (1 filtro)'
+                  : 'Limpiar ($selectedCount filtros)',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          )
+        : Center(
+            child: SizedBox(
+              width: 30,
+              height: 30,
+              child: Transform.translate(
+                offset: const Offset(1, 0),
+                child: Image.asset(
+                  'assets/imagen/iconos/eliminar_categoria.png',
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.contain,
+                  color: Colors.white,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.delete_forever_rounded,
+                    color: Colors.white,
+                    size: 28,
+                    shadows: [
+                      Shadow(
+                        color: Color(0x40000000),
+                        blurRadius: 6,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+
     return Container(
       width: double.infinity,
       height: 40,
@@ -6494,43 +6585,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
             hoverColor: Colors.transparent,
             splashColor: Colors.transparent,
             highlightColor: Colors.transparent,
-            child: isExpanded
-                ? Center(
-                    child: Text(
-                      selectedCount == 1
-                          ? 'Limpiar (1 filtro)'
-                          : 'Limpiar ($selectedCount filtros)',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                : Center(
-                    child: SizedBox(
-                      width: 34,
-                      height: 34,
-                      child: Transform.translate(
-                        offset: Offset(2, 0),
-                        child: Transform.rotate(
-                          angle: 0.08,
-                          child: Icon(
-                            Icons.delete_forever_rounded,
-                            color: Colors.white,
-                            size: 32,
-                            shadows: [
-                              Shadow(
-                                color: Color(0x40000000),
-                                blurRadius: 6,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+            child: child,
           ),
         ),
       ),
@@ -6645,71 +6700,81 @@ class _SalesPageState extends ConsumerState<SalesPage>
     // Tamaños para la mini tarjeta (usando métodos responsive)
     final cardWidth = _categoryCardWidthFor(context);
     final cardHeight = _categoryCardHeightFor(context);
-    final circleSize = _categoryCircleSizeFor(context);
+    final mediaWidth = hasImage
+        ? cardWidth - 8
+        : _categoryCircleSizeFor(context);
+    final mediaHeight = hasImage
+        ? cardHeight - (useCompactChrome ? 8 : 10)
+        : _categoryCircleSizeFor(context);
     final iconSize = useCompactChrome ? 18.0 : 20.0;
-    final borderRadius = 14.0;
+    final borderRadius = useCompactChrome ? 15.0 : 16.0;
 
-    // Colores del diseño
     const Color primaryBlue = Color(0xFF1A56DB);
     const Color softBlueBg = Color(0xFFEFF6FF);
     const Color softBlueBorder = Color(0xFFBFDBFE);
-    const Color cardBorder = Color(0xFFD9E3F0);
+    const Color cardBorder = Color(0xFFD5E0EC);
 
     return Container(
       width: cardWidth,
       height: cardHeight,
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isSelected
+              ? const [Color(0xFFFFFFFF), Color(0xFFEFF6FF)]
+              : const [Color(0xFFFFFFFF), Color(0xFFF8FAFC)],
+        ),
         borderRadius: BorderRadius.circular(borderRadius),
         border: Border.all(
           color: isSelected ? primaryBlue : cardBorder,
-          width: isSelected ? 1.5 : 1.0,
+          width: isSelected ? 1.6 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
+            color: const Color(
+              0xFF0F172A,
+            ).withOpacity(isSelected ? 0.13 : 0.055),
+            blurRadius: isSelected ? 14 : 8,
+            spreadRadius: isSelected ? -5 : -6,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Stack(
         children: [
-          // Barra lateral azul cuando está seleccionado
-          if (isSelected)
-            Positioned(
-              left: 0,
-              top: 4,
-              bottom: 4,
-              child: Container(
-                width: 3,
-                decoration: BoxDecoration(
-                  color: primaryBlue,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
           Center(
             child: Container(
-              width: circleSize,
-              height: circleSize,
+              width: mediaWidth,
+              height: mediaHeight,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: isSelected ? const Color(0xFFDBEAFE) : softBlueBg,
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(
+                  hasImage ? borderRadius - 4 : 999,
+                ),
                 border: Border.all(
                   color: isSelected ? primaryBlue : softBlueBorder,
-                  width: isSelected ? 1.5 : 1.0,
+                  width: isSelected ? 1.25 : 1.0,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryBlue.withOpacity(isSelected ? 0.14 : 0.06),
+                    blurRadius: isSelected ? 10 : 6,
+                    spreadRadius: -4,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               clipBehavior: Clip.antiAlias,
               child: hasImage
-                  ? ClipOval(
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(borderRadius - 5),
                       child: Image.file(
                         File(imagePath),
-                        width: circleSize,
-                        height: circleSize,
-                        fit: BoxFit.contain,
+                        width: mediaWidth,
+                        height: mediaHeight,
+                        fit: BoxFit.cover,
                         alignment: Alignment.center,
                         filterQuality: FilterQuality.high,
                         isAntiAlias: true,
@@ -6865,28 +6930,16 @@ class _SalesPageState extends ConsumerState<SalesPage>
         final isCompact = constraints.maxWidth < 760;
 
         const fullposBlue = Color(0xFF1A56DB);
-        const darkScanner = Color(0xFF111827);
         const borderColor = Color(0xFFD2DDE9);
         const textColor = Color(0xFF172033);
         const hintColor = Color(0xFF64748B);
 
         final barHeight = m.controlBarHeight;
-        const iconButtonWidth = 50.0;
 
         const completeRadius = BorderRadius.only(
           topLeft: Radius.circular(13),
           topRight: Radius.circular(5),
           bottomLeft: Radius.circular(5),
-          bottomRight: Radius.circular(13),
-        );
-
-        const leftRadius = BorderRadius.only(
-          topLeft: Radius.circular(12),
-          bottomLeft: Radius.circular(12),
-        );
-
-        const rightRadius = BorderRadius.only(
-          topRight: Radius.circular(5),
           bottomRight: Radius.circular(13),
         );
 
@@ -6897,40 +6950,8 @@ class _SalesPageState extends ConsumerState<SalesPage>
           bottomRight: Radius.circular(12),
         );
 
-        Widget buildActionButton({
-          required Widget icon,
-          required String tooltip,
-          required VoidCallback onTap,
-          required Color backgroundColor,
-          required BorderRadius radius,
-        }) {
-          return Tooltip(
-            message: tooltip,
-            waitDuration: const Duration(milliseconds: 350),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: radius,
-                hoverColor: Colors.white.withOpacity(0.075),
-                splashColor: Colors.white.withOpacity(0.12),
-                highlightColor: Colors.white.withOpacity(0.055),
-                child: Ink(
-                  width: iconButtonWidth,
-                  height: barHeight,
-                  decoration: BoxDecoration(
-                    color: backgroundColor,
-                    borderRadius: radius,
-                  ),
-                  child: Center(child: icon),
-                ),
-              ),
-            ),
-          );
-        }
-
         final searchBorder = OutlineInputBorder(
-          borderRadius: rightRadius,
+          borderRadius: completeRadius,
           borderSide: const BorderSide(color: borderColor, width: 0.65),
         );
         final controlRightPadding = math.max(
@@ -6949,6 +6970,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: completeRadius,
+                    border: Border.all(color: borderColor, width: 0.65),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.025),
@@ -6958,150 +6980,153 @@ class _SalesPageState extends ConsumerState<SalesPage>
                       ),
                     ],
                   ),
-                  child: Row(
-                    children: [
-                      buildActionButton(
-                        tooltip: 'Buscar producto',
-                        backgroundColor: fullposBlue,
-                        radius: leftRadius,
-                        onTap: () {
-                          _searchFocusNode.requestFocus();
-
-                          showSearchNotice(
-                            icon: Icons.search_rounded,
-                            message: 'Escribe el nombre o código del producto.',
-                          );
-                        },
-                        icon: Image.asset(
-                          'assets/imagen/iconos/lupa.png',
-                          width: 20,
-                          height: 20,
-                          color: Colors.white,
-                          filterQuality: FilterQuality.high,
-                          errorBuilder: (_, _, _) {
-                            return const Icon(
-                              Icons.search_rounded,
-                              color: Colors.white,
-                              size: 21,
-                            );
-                          },
+                  child: SizedBox(
+                    height: barHeight,
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      expands: true,
+                      minLines: null,
+                      maxLines: null,
+                      textAlignVertical: TextAlignVertical.center,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: 'Buscar producto por nombre o código...',
+                        hintStyle: const TextStyle(
+                          color: hintColor,
+                          fontSize: 14.4,
+                          fontWeight: FontWeight.w400,
+                          height: 1,
                         ),
-                      ),
-
-                      buildActionButton(
-                        tooltip: 'Escanear código de barras',
-                        backgroundColor: darkScanner,
-                        radius: BorderRadius.zero,
-                        onTap: () {
-                          _searchFocusNode.requestFocus();
-
-                          showSearchNotice(
-                            icon: Icons.qr_code_scanner_rounded,
-                            message:
-                                'Escanea el código de barras del producto.',
-                          );
-                        },
-                        icon: Image.asset(
-                          'assets/imagen/iconos/lectura-de-codigo-de-barras.png',
-                          width: 21,
-                          height: 21,
-                          color: Colors.white,
-                          filterQuality: FilterQuality.high,
-                          errorBuilder: (_, _, _) {
-                            return const Icon(
-                              Icons.qr_code_scanner_rounded,
-                              color: Colors.white,
-                              size: 21,
-                            );
-                          },
+                        isDense: true,
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 0,
                         ),
-                      ),
+                        prefixIcon: Tooltip(
+                          message: 'Buscar producto',
+                          waitDuration: const Duration(milliseconds: 350),
+                          child: InkWell(
+                            onTap: () {
+                              _searchFocusNode.requestFocus();
 
-                      Expanded(
-                        child: SizedBox(
-                          height: barHeight,
-                          child: TextField(
-                            controller: _searchController,
-                            focusNode: _searchFocusNode,
-                            expands: true,
-                            minLines: null,
-                            maxLines: null,
-                            textAlignVertical: TextAlignVertical.center,
-                            textInputAction: TextInputAction.search,
-                            decoration: InputDecoration(
-                              hintText:
-                                  'Buscar producto por nombre o código...',
-                              hintStyle: const TextStyle(
-                                color: hintColor,
-                                fontSize: 14.4,
-                                fontWeight: FontWeight.w400,
-                                height: 1,
-                              ),
-                              isDense: true,
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 0,
-                              ),
-                              border: searchBorder,
-                              enabledBorder: searchBorder,
-                              focusedBorder: searchBorder.copyWith(
-                                borderSide: const BorderSide(
-                                  color: fullposBlue,
-                                  width: 1,
-                                ),
-                              ),
-                              suffixIcon: _searchController.text.trim().isEmpty
-                                  ? null
-                                  : IconButton(
-                                      tooltip: 'Limpiar búsqueda',
-                                      splashRadius: 18,
-                                      onPressed: () {
-                                        _searchController.clear();
-                                        _searchProducts('');
-                                        _searchFocusNode.requestFocus();
-
-                                        if (mounted) {
-                                          setState(() {});
-                                        }
-                                      },
-                                      icon: const Icon(
-                                        Icons.close_rounded,
-                                        size: 18,
-                                        color: hintColor,
-                                      ),
-                                    ),
-                            ),
-                            style: const TextStyle(
-                              color: textColor,
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w500,
-                              height: 1,
-                            ),
-                            onChanged: (value) {
-                              _searchProducts(value);
-
-                              if (mounted) {
-                                setState(() {});
-                              }
-                            },
-                            onSubmitted: (value) async {
-                              final query = value.trim();
-
-                              if (query.isEmpty || query.contains(' ')) {
-                                return;
-                              }
-
-                              await _handleBarcodeScan(
-                                query,
-                                clearSearchField: true,
+                              showSearchNotice(
+                                icon: Icons.search_rounded,
+                                message:
+                                    'Escribe el nombre o código del producto.',
                               );
                             },
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(13),
+                              topRight: Radius.circular(5),
+                              bottomLeft: Radius.circular(5),
+                              bottomRight: Radius.circular(13),
+                            ),
+                            child: SizedBox(
+                              width: 58,
+                              child: Center(
+                                child: Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: fullposBlue,
+                                    borderRadius: const BorderRadius.only(
+                                      topLeft: Radius.circular(10),
+                                      topRight: Radius.circular(4),
+                                      bottomLeft: Radius.circular(4),
+                                      bottomRight: Radius.circular(10),
+                                    ),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.16),
+                                      width: 0.8,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: fullposBlue.withOpacity(0.22),
+                                        blurRadius: 9,
+                                        spreadRadius: -4,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: Image.asset(
+                                    'assets/imagen/iconos/buscar_limpio.png',
+                                    width: 19,
+                                    height: 19,
+                                    color: Colors.white,
+                                    filterQuality: FilterQuality.high,
+                                    errorBuilder: (_, _, _) {
+                                      return const Icon(
+                                        Icons.search_rounded,
+                                        color: Colors.white,
+                                        size: 19,
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
+                        prefixIconConstraints: const BoxConstraints(
+                          minWidth: 58,
+                          minHeight: 42,
+                        ),
+                        border: searchBorder,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: searchBorder.copyWith(
+                          borderSide: const BorderSide(
+                            color: fullposBlue,
+                            width: 1,
+                          ),
+                        ),
+                        suffixIcon: _searchController.text.trim().isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Limpiar búsqueda',
+                                splashRadius: 18,
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _searchProducts('');
+                                  _searchFocusNode.requestFocus();
+
+                                  if (mounted) {
+                                    setState(() {});
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  size: 18,
+                                  color: hintColor,
+                                ),
+                              ),
                       ),
-                    ],
+                      style: const TextStyle(
+                        color: textColor,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w500,
+                        height: 1,
+                      ),
+                      onChanged: (value) {
+                        _searchProducts(value);
+
+                        if (mounted) {
+                          setState(() {});
+                        }
+                      },
+                      onSubmitted: (value) async {
+                        final query = value.trim();
+
+                        if (query.isEmpty || query.contains(' ')) {
+                          return;
+                        }
+
+                        await _handleBarcodeScan(query, clearSearchField: true);
+                      },
+                    ),
                   ),
                 ),
               ),
@@ -8118,154 +8143,158 @@ class _SalesPageState extends ConsumerState<SalesPage>
               if (mounted) Navigator.of(dialogContext).pop();
             }
 
-            return Material(
-              color: Colors.transparent,
-              child: Stack(
-                children: [
-                  Positioned(
-                    right: 12,
-                    top: 92,
-                    width: math.min(320.0, panelWidth - 18),
-                    child: Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFDCE5F0)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.12),
-                            blurRadius: 30,
-                            offset: const Offset(0, 16),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.flash_on_rounded,
-                                color: Color(0xFF1A56DB),
-                              ),
-                              const SizedBox(width: 8),
-                              const Expanded(
-                                child: Text(
-                                  'Descuento',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF17324D),
-                                  ),
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () =>
-                                    Navigator.of(dialogContext).pop(),
-                                icon: const Icon(Icons.close),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildDiscountPanelTypeChip(
-                                  label: 'Porcentaje',
-                                  selected: isPercent,
-                                  onTap: () => setLocalState(() {
-                                    isPercent = true;
-                                  }),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: _buildDiscountPanelTypeChip(
-                                  label: 'Monto fijo',
-                                  selected: !isPercent,
-                                  onTap: () => setLocalState(() {
-                                    isPercent = false;
-                                  }),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              quickChip('5', 5),
-                              quickChip('10', 10),
-                              quickChip('15', 15),
-                              quickChip('20', 20),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: discountController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
+            return _DialogHotkeys(
+              onEnter: () => unawaited(applyDiscount()),
+              child: Material(
+                color: Colors.transparent,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      right: 12,
+                      top: 92,
+                      width: math.min(320.0, panelWidth - 18),
+                      child: Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFDCE5F0)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.12),
+                              blurRadius: 30,
+                              offset: const Offset(0, 16),
                             ),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'^\d*\.?\d{0,2}'),
-                              ),
-                            ],
-                            onSubmitted: (_) => applyDiscount(),
-                            decoration: InputDecoration(
-                              labelText: isPercent
-                                  ? 'Porcentaje de descuento'
-                                  : 'Monto de descuento',
-                              prefixText: isPercent ? '' : 'RD\$ ',
-                              suffixText: isPercent ? '%' : null,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Total actual: ${CurrencyDisplay.format(_currentCart.calculateTotal(), decimalDigits: 2)}',
-                            style: const TextStyle(
-                              color: Color(0xFF64748B),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              if ((_currentCart.discountTotalValue ?? 0) > 0)
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () {
-                                      _removeQuickDiscount();
-                                      Navigator.of(dialogContext).pop();
-                                    },
-                                    child: const Text('Quitar descuento'),
-                                  ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.flash_on_rounded,
+                                  color: Color(0xFF1A56DB),
                                 ),
-                              if ((_currentCart.discountTotalValue ?? 0) > 0)
                                 const SizedBox(width: 8),
-                              Expanded(
-                                child: FilledButton(
-                                  onPressed: applyDiscount,
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFF1A56DB),
+                                const Expanded(
+                                  child: Text(
+                                    'Descuento',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF17324D),
+                                    ),
                                   ),
-                                  child: const Text('Aplicar descuento'),
+                                ),
+                                IconButton(
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(),
+                                  icon: const Icon(Icons.close),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildDiscountPanelTypeChip(
+                                    label: 'Porcentaje',
+                                    selected: isPercent,
+                                    onTap: () => setLocalState(() {
+                                      isPercent = true;
+                                    }),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildDiscountPanelTypeChip(
+                                    label: 'Monto fijo',
+                                    selected: !isPercent,
+                                    onTap: () => setLocalState(() {
+                                      isPercent = false;
+                                    }),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                quickChip('5', 5),
+                                quickChip('10', 10),
+                                quickChip('15', 15),
+                                quickChip('20', 20),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: discountController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d*\.?\d{0,2}'),
+                                ),
+                              ],
+                              onSubmitted: (_) => applyDiscount(),
+                              decoration: InputDecoration(
+                                labelText: isPercent
+                                    ? 'Porcentaje de descuento'
+                                    : 'Monto de descuento',
+                                prefixText: isPercent ? '' : 'RD\$ ',
+                                suffixText: isPercent ? '%' : null,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                            ],
-                          ),
-                        ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Total actual: ${CurrencyDisplay.format(_currentCart.calculateTotal(), decimalDigits: 2)}',
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                if ((_currentCart.discountTotalValue ?? 0) > 0)
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () {
+                                        _removeQuickDiscount();
+                                        Navigator.of(dialogContext).pop();
+                                      },
+                                      child: const Text('Quitar descuento'),
+                                    ),
+                                  ),
+                                if ((_currentCart.discountTotalValue ?? 0) > 0)
+                                  const SizedBox(width: 8),
+                                Expanded(
+                                  child: FilledButton(
+                                    onPressed: applyDiscount,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(0xFF1A56DB),
+                                    ),
+                                    child: const Text('Aplicar descuento'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
@@ -8511,228 +8540,231 @@ class _SalesPageState extends ConsumerState<SalesPage>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          child: Container(
-            width: 460,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(4),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.16),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
-                ),
-              ],
+        return _DialogHotkeys(
+          onEnter: () => Navigator.of(dialogContext).pop(true),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 22, 20, 18),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Confirmar cliente',
+            child: Container(
+              width: 460,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 22, 20, 18),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Confirmar cliente',
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => Navigator.of(dialogContext).pop(false),
+                          borderRadius: BorderRadius.circular(100),
+                          child: const SizedBox(
+                            width: 32,
+                            height: 32,
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 24,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const Divider(height: 1, color: borderColor),
+
+                  // Body
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 26, 28, 24),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDBE5FF),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.person_outline_rounded,
+                            color: brandColor,
+                            size: 30,
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        const Text(
+                          '¿Deseas guardar esta cotización para este cliente?',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             color: textColor,
-                            fontSize: 22,
+                            fontSize: 16,
                             fontWeight: FontWeight.w500,
-                            height: 1.2,
+                            height: 1.35,
                           ),
                         ),
-                      ),
-                      InkWell(
-                        onTap: () => Navigator.of(dialogContext).pop(false),
-                        borderRadius: BorderRadius.circular(100),
-                        child: const SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 24,
-                            color: Color(0xFF94A3B8),
+
+                        const SizedBox(height: 18),
+
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Divider(height: 1, color: borderColor),
-
-                // Body
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 26, 28, 24),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFDBE5FF),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(
-                          Icons.person_outline_rounded,
-                          color: brandColor,
-                          size: 30,
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      const Text(
-                        '¿Deseas guardar esta cotización para este cliente?',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          height: 1.35,
-                        ),
-                      ),
-
-                      const SizedBox(height: 18),
-
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: borderColor, width: 1),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEFF6FF),
-                                borderRadius: BorderRadius.circular(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: borderColor, width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEFF6FF),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.account_circle_outlined,
+                                  color: brandColor,
+                                  size: 24,
+                                ),
                               ),
-                              child: const Icon(
-                                Icons.account_circle_outlined,
-                                color: brandColor,
-                                size: 24,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    clientName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: textColor,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      clientName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: textColor,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    clientPhone ?? 'Sin teléfono registrado',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: mutedTextColor,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w400,
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      clientPhone ?? 'Sin teléfono registrado',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: mutedTextColor,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        Text(
+                          client == null
+                              ? 'No hay un cliente específico seleccionado. Se usará Consumidor Final.'
+                              : 'Verifica que el cliente sea correcto antes de continuar.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: mutedTextColor,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const Divider(height: 1, color: borderColor),
+
+                  // Footer
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 18, 28, 22),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(false),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(42),
+                              foregroundColor: textColor,
+                              side: const BorderSide(
+                                color: Color(0xFFCBD5E1),
+                                width: 1,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      Text(
-                        client == null
-                            ? 'No hay un cliente específico seleccionado. Se usará Consumidor Final.'
-                            : 'Verifica que el cliente sea correcto antes de continuar.',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: mutedTextColor,
-                          fontSize: 12,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Divider(height: 1, color: borderColor),
-
-                // Footer
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 18, 28, 22),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(false),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(42),
-                            foregroundColor: textColor,
-                            side: const BorderSide(
-                              color: Color(0xFFCBD5E1),
-                              width: 1,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            textStyle: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                            child: const Text('Cancelar'),
                           ),
-                          child: const Text('Cancelar'),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(true),
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(42),
-                            backgroundColor: brandColor,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(true),
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(42),
+                              backgroundColor: brandColor,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                            textStyle: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            child: const Text('Confirmar'),
                           ),
-                          child: const Text('Confirmar'),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -8747,157 +8779,159 @@ class _SalesPageState extends ConsumerState<SalesPage>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          child: Container(
-            width: 430,
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.14),
-                  blurRadius: 26,
-                  offset: const Offset(0, 12),
-                ),
-              ],
+        return _DialogHotkeys(
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDBE5FF),
-                    borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 430,
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.14),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
                   ),
-                  child: const Icon(
-                    Icons.request_quote_outlined,
-                    color: Color(0xFF1A56DB),
-                    size: 30,
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                const Text(
-                  'Cotización guardada',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    height: 1.15,
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                const Text(
-                  'La cotización fue creada correctamente. Puedes verla, enviarla o salir.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                    height: 1.35,
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: ElevatedButton.icon(
-                    onPressed: quoteId == null
-                        ? null
-                        : () {
-                            Navigator.of(dialogContext).pop();
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (!mounted) return;
-                              unawaited(_openSavedQuotePdfPreview(quoteId));
-                            });
-                          },
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                    label: const Text('Ver cotización'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A56DB),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDBE5FF),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.request_quote_outlined,
+                      color: Color(0xFF1A56DB),
+                      size: 30,
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 10),
+                  const SizedBox(height: 16),
 
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.of(dialogContext).pop();
+                  const Text(
+                    'Cotización guardada',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                    ),
+                  ),
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: const Text(
-                            'La opción de enviar PDF se conectará al módulo de envío.',
-                          ),
-                          backgroundColor: status.info,
+                  const SizedBox(height: 8),
+
+                  const Text(
+                    'La cotización fue creada correctamente. Puedes verla, enviarla o salir.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                      height: 1.35,
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: quoteId == null
+                          ? null
+                          : () {
+                              Navigator.of(dialogContext).pop();
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted) return;
+                                unawaited(_openSavedQuotePdfPreview(quoteId));
+                              });
+                            },
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                      label: const Text('Ver cotización'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1A56DB),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                      );
-                    },
-                    icon: const Icon(Icons.send_outlined, size: 20),
-                    label: const Text('Enviar cotización PDF'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF1A56DB),
-                      side: const BorderSide(
-                        color: Color(0xFFBFD1FF),
-                        width: 1,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 10),
+                  const SizedBox(height: 10),
 
-                SizedBox(
-                  width: double.infinity,
-                  height: 42,
-                  child: TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF64748B),
-                      textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text(
+                              'La opción de enviar PDF se conectará al módulo de envío.',
+                            ),
+                            backgroundColor: status.info,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.send_outlined, size: 20),
+                      label: const Text('Enviar cotización PDF'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1A56DB),
+                        side: const BorderSide(
+                          color: Color(0xFFBFD1FF),
+                          width: 1,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                    child: const Text('Salir'),
                   ),
-                ),
-              ],
+
+                  const SizedBox(height: 10),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 42,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF64748B),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      child: const Text('Salir'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -9094,207 +9128,210 @@ class _SalesPageState extends ConsumerState<SalesPage>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          child: Container(
-            width: 460,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.16),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
-                ),
-              ],
+        return _DialogHotkeys(
+          onEnter: () => Navigator.of(dialogContext).pop(true),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 24, 20, 18),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Convertir venta en cotización',
+            child: Container(
+              width: 460,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 24, 20, 18),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Convertir venta en cotización',
+                            style: TextStyle(
+                              color: textColor,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () => Navigator.of(dialogContext).pop(false),
+                          borderRadius: BorderRadius.circular(100),
+                          child: const SizedBox(
+                            width: 32,
+                            height: 32,
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 24,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: borderColor),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 26, 28, 24),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDBE5FF),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.request_quote_outlined,
+                            color: brandColor,
+                            size: 30,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          '¿Seguro que deseas pasar esta venta a cotización?',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             color: textColor,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            height: 1.2,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
                           ),
                         ),
-                      ),
-                      InkWell(
-                        onTap: () => Navigator.of(dialogContext).pop(false),
-                        borderRadius: BorderRadius.circular(100),
-                        child: const SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: Icon(
-                            Icons.close_rounded,
-                            size: 24,
-                            color: Color(0xFF94A3B8),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'La cotización se guardará primero y luego se preparará el PDF con el formato profesional del sistema.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: mutedTextColor,
+                            fontSize: 12.5,
+                            height: 1.45,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 18),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: borderColor, width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEFF6FF),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.account_circle_outlined,
+                                  color: brandColor,
+                                  size: 24,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      clientName,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: textColor,
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      clientDocument ??
+                                          clientPhone ??
+                                          'Cliente general',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: mutedTextColor,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const Divider(height: 1, color: borderColor),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 26, 28, 24),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 54,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFDBE5FF),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(
-                          Icons.request_quote_outlined,
-                          color: brandColor,
-                          size: 30,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '¿Seguro que deseas pasar esta venta a cotización?',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          height: 1.35,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'La cotización se guardará primero y luego se preparará el PDF con el formato profesional del sistema.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: mutedTextColor,
-                          fontSize: 12.5,
-                          height: 1.45,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: borderColor, width: 1),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEFF6FF),
+                  const Divider(height: 1, color: borderColor),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 18, 28, 22),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(false),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(42),
+                              foregroundColor: textColor,
+                              side: const BorderSide(
+                                color: Color(0xFFCBD5E1),
+                                width: 1,
+                              ),
+                              shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: const Icon(
-                                Icons.account_circle_outlined,
-                                color: brandColor,
-                                size: 24,
+                            ),
+                            child: const Text('Cancelar'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(true),
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(42),
+                              backgroundColor: brandColor,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    clientName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: textColor,
-                                      fontSize: 14.5,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    clientDocument ??
-                                        clientPhone ??
-                                        'Cliente general',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: mutedTextColor,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: borderColor),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 18, 28, 22),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(false),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(42),
-                            foregroundColor: textColor,
-                            side: const BorderSide(
-                              color: Color(0xFFCBD5E1),
-                              width: 1,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
+                            child: const Text('Convertir'),
                           ),
-                          child: const Text('Cancelar'),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () =>
-                              Navigator.of(dialogContext).pop(true),
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(42),
-                            backgroundColor: brandColor,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text('Convertir'),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -9316,148 +9353,152 @@ class _SalesPageState extends ConsumerState<SalesPage>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          child: Container(
-            width: 430,
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.14),
-                  blurRadius: 26,
-                  offset: const Offset(0, 12),
-                ),
-              ],
+        return _DialogHotkeys(
+          onEnter: () =>
+              Navigator.of(dialogContext).pop(_QuoteFlowDialogAction.viewPdf),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDBE5FF),
-                    borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 430,
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.14),
+                    blurRadius: 26,
+                    offset: const Offset(0, 12),
                   ),
-                  child: const Icon(
-                    Icons.request_quote_outlined,
-                    color: Color(0xFF1A56DB),
-                    size: 30,
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDBE5FF),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.request_quote_outlined,
+                      color: Color(0xFF1A56DB),
+                      size: 30,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Cotización creada correctamente',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    height: 1.15,
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Cotización creada correctamente',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'La venta fue convertida en cotización y el PDF ya está listo.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                    height: 1.35,
+                  const SizedBox(height: 8),
+                  const Text(
+                    'La venta fue convertida en cotización y el PDF ya está listo.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                      height: 1.35,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  const SizedBox(height: 24),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildQuotePdfSummaryRow('Cotización', quoteLabel),
+                        const SizedBox(height: 8),
+                        _buildQuotePdfSummaryRow(
+                          'Cliente',
+                          quoteDetail.clientName,
+                        ),
+                        const SizedBox(height: 8),
+                        _buildQuotePdfSummaryRow(
+                          'Total',
+                          CurrencyDisplay.format(quote.total),
+                          emphasize: true,
+                        ),
+                      ],
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      _buildQuotePdfSummaryRow('Cotización', quoteLabel),
-                      const SizedBox(height: 8),
-                      _buildQuotePdfSummaryRow(
-                        'Cliente',
-                        quoteDetail.clientName,
-                      ),
-                      const SizedBox(height: 8),
-                      _buildQuotePdfSummaryRow(
-                        'Total',
-                        CurrencyDisplay.format(quote.total),
-                        emphasize: true,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.of(
-                      dialogContext,
-                    ).pop(_QuoteFlowDialogAction.viewPdf),
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                    label: const Text('Ver PDF'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A56DB),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_QuoteFlowDialogAction.viewPdf),
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                      label: const Text('Ver PDF'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1A56DB),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.of(
-                      dialogContext,
-                    ).pop(_QuoteFlowDialogAction.goToQuotation),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                    label: const Text('Ir a cotización'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF1A56DB),
-                      side: const BorderSide(
-                        color: Color(0xFFBFD1FF),
-                        width: 1,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_QuoteFlowDialogAction.goToQuotation),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                      label: const Text('Ir a cotización'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1A56DB),
+                        side: const BorderSide(
+                          color: Color(0xFFBFD1FF),
+                          width: 1,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 42,
-                  child: TextButton(
-                    onPressed: () => Navigator.of(
-                      dialogContext,
-                    ).pop(_QuoteFlowDialogAction.backToSales),
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF64748B),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 42,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_QuoteFlowDialogAction.backToSales),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF64748B),
+                      ),
+                      child: const Text('Volver a ventas'),
                     ),
-                    child: const Text('Volver a ventas'),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -9588,78 +9629,81 @@ class _SalesPageState extends ConsumerState<SalesPage>
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          child: Container(
-            width: 420,
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.14),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                ),
-              ],
+        return _DialogHotkeys(
+          onEnter: () => Navigator.of(dialogContext).pop(),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: accentColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 420,
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.14),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
                   ),
-                  child: Icon(icon, color: accentColor, size: 30),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    height: 1.15,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 13.2,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: accentColor,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: accentColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Text(primaryLabel),
+                    child: Icon(icon, color: accentColor, size: 30),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 13.2,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accentColor,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text(primaryLabel),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -9679,98 +9723,103 @@ class _SalesPageState extends ConsumerState<SalesPage>
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          child: Container(
-            width: 430,
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.14),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                ),
-              ],
+        return _DialogHotkeys(
+          onEnter: () => Navigator.of(
+            dialogContext,
+          ).pop(_QuoteFlowDialogAction.goToQuotation),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 24,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
-                    borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 430,
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.14),
+                    blurRadius: 24,
+                    offset: const Offset(0, 12),
                   ),
-                  child: const Icon(
-                    Icons.warning_amber_rounded,
-                    color: Color(0xFFF59E0B),
-                    size: 32,
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFF59E0B),
+                      size: 32,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Cotización creada con advertencia',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Cotización creada con advertencia',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'La cotización $quoteLabel fue guardada, pero el PDF no pudo generarse en este momento.',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF64748B),
-                    fontSize: 13.2,
-                    height: 1.4,
+                  const SizedBox(height: 10),
+                  Text(
+                    'La cotización $quoteLabel fue guardada, pero el PDF no pudo generarse en este momento.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 13.2,
+                      height: 1.4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: ElevatedButton.icon(
-                    onPressed: () => Navigator.of(
-                      dialogContext,
-                    ).pop(_QuoteFlowDialogAction.goToQuotation),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 20),
-                    label: const Text('Ir a cotización'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A56DB),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_QuoteFlowDialogAction.goToQuotation),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                      label: const Text('Ir a cotización'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1A56DB),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 42,
-                  child: TextButton(
-                    onPressed: () => Navigator.of(
-                      dialogContext,
-                    ).pop(_QuoteFlowDialogAction.backToSales),
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF64748B),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 42,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_QuoteFlowDialogAction.backToSales),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF64748B),
+                      ),
+                      child: const Text('Volver a ventas'),
                     ),
-                    child: const Text('Volver a ventas'),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -10859,6 +10908,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     final showActions = isHovered;
     final rowBackground = isHovered ? const Color(0xFFFAFCFF) : Colors.white;
     final isNewItem = animationToken > 0;
+    final badges = _badgesForCartItem(item);
 
     return TweenAnimationBuilder<double>(
       key: ValueKey<String>('cart-row-$index-$animationToken'),
@@ -10892,6 +10942,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
                 rowDividerColor,
                 showActions,
                 subtotal,
+                badges: badges,
                 isCompact: isCompact,
               ),
             )
@@ -10902,6 +10953,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
               rowDividerColor,
               showActions,
               subtotal,
+              badges: badges,
               isCompact: isCompact,
             ),
     );
@@ -10914,6 +10966,7 @@ class _SalesPageState extends ConsumerState<SalesPage>
     Color rowDividerColor,
     bool showActions,
     double subtotal, {
+    List<_CartItemBadge> badges = const <_CartItemBadge>[],
     bool isCompact = false,
   }) {
     return Builder(
@@ -10978,6 +11031,41 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (badges.isNotEmpty) ...[
+                        SizedBox(height: isCompact ? 4 : 5),
+                        Wrap(
+                          spacing: 5,
+                          runSpacing: 4,
+                          children: [
+                            for (final badge in badges)
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isCompact ? 6 : 7,
+                                  vertical: isCompact ? 2.5 : 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: badge.background,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border: Border.all(
+                                    color: badge.border,
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Text(
+                                  badge.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: isCompact ? 9.8 : 10.4,
+                                    fontWeight: FontWeight.w700,
+                                    color: badge.foreground,
+                                    height: 1.0,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -11752,159 +11840,166 @@ class _SalesPageState extends ConsumerState<SalesPage>
         context: context,
         builder: (context) {
           final borderColor = const Color(0xFFDCE4EC);
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(
-              horizontal: 42,
-              vertical: 24,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Material(
-                color: Colors.white,
-                child: SizedBox(
-                  width: 680,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 22, 18, 18),
-                        child: Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Renombrar factura pendiente',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                  color: Color(0xFF1F3B5B),
+          return _DialogHotkeys(
+            onEnter: () => Navigator.of(context).pop(controller.text.trim()),
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 42,
+                vertical: 24,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Material(
+                  color: Colors.white,
+                  child: SizedBox(
+                    width: 680,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(28, 22, 18, 18),
+                          child: Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Renombrar factura pendiente',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xFF1F3B5B),
+                                  ),
                                 ),
                               ),
-                            ),
-                            IconButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              icon: const Icon(
-                                Icons.close,
-                                color: Color(0xFF9AA8B6),
+                              IconButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(
+                                  Icons.close,
+                                  color: Color(0xFF9AA8B6),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      Divider(height: 1, color: borderColor),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 28, 28, 34),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Center(
-                              child: RichText(
-                                text: const TextSpan(
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: Color(0xFF6F7F8F),
-                                  ),
-                                  children: [
-                                    TextSpan(
-                                      text:
-                                          'Para cambiar el prefijo general tienes que dirigirte a ',
+                        Divider(height: 1, color: borderColor),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(28, 28, 28, 34),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Center(
+                                child: RichText(
+                                  text: const TextSpan(
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      color: Color(0xFF6F7F8F),
                                     ),
-                                    TextSpan(
-                                      text: 'aquí',
-                                      style: TextStyle(
-                                        color: Color(0xFF11B8B2),
-                                        fontWeight: FontWeight.w500,
+                                    children: [
+                                      TextSpan(
+                                        text:
+                                            'Para cambiar el prefijo general tienes que dirigirte a ',
+                                      ),
+                                      TextSpan(
+                                        text: 'aquí',
+                                        style: TextStyle(
+                                          color: Color(0xFF11B8B2),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 34),
+                              const Text(
+                                'Nombre *',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF687785),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: 266,
+                                child: TextField(
+                                  controller: controller,
+                                  autofocus: true,
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 12,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                      borderSide: BorderSide(
+                                        color: borderColor,
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 34),
-                            const Text(
-                              'Nombre *',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Color(0xFF687785),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: 266,
-                              child: TextField(
-                                controller: controller,
-                                autofocus: true,
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 12,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(6),
-                                    borderSide: BorderSide(color: borderColor),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(6),
-                                    borderSide: BorderSide(color: borderColor),
-                                  ),
-                                  focusedBorder: const OutlineInputBorder(
-                                    borderRadius: BorderRadius.all(
-                                      Radius.circular(6),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(6),
+                                      borderSide: BorderSide(
+                                        color: borderColor,
+                                      ),
                                     ),
-                                    borderSide: BorderSide(
-                                      color: Color(0xFFBFD1E2),
+                                    focusedBorder: const OutlineInputBorder(
+                                      borderRadius: BorderRadius.all(
+                                        Radius.circular(6),
+                                      ),
+                                      borderSide: BorderSide(
+                                        color: Color(0xFFBFD1E2),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      Divider(height: 1, color: borderColor),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 18, 28, 18),
-                        child: Row(
-                          children: [
-                            const Text(
-                              '* Campos obligatorios',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF7C8A97),
-                              ),
-                            ),
-                            const Spacer(),
-                            OutlinedButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(102, 40),
-                                side: BorderSide(color: borderColor),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                        Divider(height: 1, color: borderColor),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(28, 18, 28, 18),
+                          child: Row(
+                            children: [
+                              const Text(
+                                '* Campos obligatorios',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF7C8A97),
                                 ),
                               ),
-                              child: const Text('Cancelar'),
-                            ),
-                            const SizedBox(width: 10),
-                            FilledButton(
-                              onPressed: () => Navigator.of(
-                                context,
-                              ).pop(controller.text.trim()),
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size(92, 40),
-                                backgroundColor: const Color(0xFF1A56DB),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                              const Spacer(),
+                              OutlinedButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(102, 40),
+                                  side: BorderSide(color: borderColor),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
+                                child: const Text('Cancelar'),
                               ),
-                              child: const Text('Guardar'),
-                            ),
-                          ],
+                              const SizedBox(width: 10),
+                              FilledButton(
+                                onPressed: () => Navigator.of(
+                                  context,
+                                ).pop(controller.text.trim()),
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size(92, 40),
+                                  backgroundColor: const Color(0xFF1A56DB),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('Guardar'),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -11940,113 +12035,116 @@ class _SalesPageState extends ConsumerState<SalesPage>
       builder: (context) {
         final borderColor = const Color(0xFFDCE4EC);
         final label = _footerTicketLabel(_carts[index], index);
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 42,
-            vertical: 24,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Material(
-              color: Colors.white,
-              child: SizedBox(
-                width: 680,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(28, 22, 18, 18),
-                      child: Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Eliminar venta pendiente',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF1F3B5B),
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            icon: const Icon(
-                              Icons.close,
-                              color: Color(0xFF9AA8B6),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Divider(height: 1, color: borderColor),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(28, 28, 28, 34),
-                      child: Center(
-                        child: RichText(
-                          textAlign: TextAlign.center,
-                          text: TextSpan(
-                            style: const TextStyle(
-                              fontSize: 15,
-                              color: Color(0xFF3D4D5C),
-                            ),
-                            children: [
-                              const TextSpan(
-                                text:
-                                    '¿Seguro que quieres eliminar la venta pendiente? ',
-                              ),
-                              TextSpan(
-                                text: label,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF203854),
+        return _DialogHotkeys(
+          onEnter: () => Navigator.of(context).pop(true),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 42,
+              vertical: 24,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Material(
+                color: Colors.white,
+                child: SizedBox(
+                  width: 680,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(28, 22, 18, 18),
+                        child: Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Eliminar venta pendiente',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF1F3B5B),
                                 ),
                               ),
-                            ],
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              icon: const Icon(
+                                Icons.close,
+                                color: Color(0xFF9AA8B6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Divider(height: 1, color: borderColor),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(28, 28, 28, 34),
+                        child: Center(
+                          child: RichText(
+                            textAlign: TextAlign.center,
+                            text: TextSpan(
+                              style: const TextStyle(
+                                fontSize: 15,
+                                color: Color(0xFF3D4D5C),
+                              ),
+                              children: [
+                                const TextSpan(
+                                  text:
+                                      '¿Seguro que quieres eliminar la venta pendiente? ',
+                                ),
+                                TextSpan(
+                                  text: label,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF203854),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Divider(height: 1, color: borderColor),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(28, 18, 28, 18),
-                      child: Row(
-                        children: [
-                          const Text(
-                            '* Campos obligatorios',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF7C8A97),
-                            ),
-                          ),
-                          const Spacer(),
-                          OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(64, 40),
-                              side: BorderSide(color: borderColor),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                      Divider(height: 1, color: borderColor),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(28, 18, 28, 18),
+                        child: Row(
+                          children: [
+                            const Text(
+                              '* Campos obligatorios',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF7C8A97),
                               ),
                             ),
-                            child: const Text('No'),
-                          ),
-                          const SizedBox(width: 12),
-                          FilledButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size(64, 40),
-                              backgroundColor: const Color(0xFF1A56DB),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                            const Spacer(),
+                            OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(64, 40),
+                                side: BorderSide(color: borderColor),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
+                              child: const Text('No'),
                             ),
-                            child: const Text('Si'),
-                          ),
-                        ],
+                            const SizedBox(width: 12),
+                            FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(64, 40),
+                                backgroundColor: const Color(0xFF1A56DB),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Si'),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -12449,8 +12547,18 @@ class _DialogHotkeys extends StatelessWidget {
     return Shortcuts(
       shortcuts: <LogicalKeySet, Intent>{
         LogicalKeySet(LogicalKeyboardKey.escape): const DismissIntent(),
-        LogicalKeySet(LogicalKeyboardKey.enter): const ActivateIntent(),
-        LogicalKeySet(LogicalKeyboardKey.numpadEnter): const ActivateIntent(),
+        if (onEnter != null)
+          LogicalKeySet(LogicalKeyboardKey.enter): const ActivateIntent(),
+        if (onEnter != null)
+          LogicalKeySet(LogicalKeyboardKey.numpadEnter): const ActivateIntent(),
+        if (onEnter != null)
+          LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.enter):
+              const ActivateIntent(),
+        if (onEnter != null)
+          LogicalKeySet(
+            LogicalKeyboardKey.control,
+            LogicalKeyboardKey.numpadEnter,
+          ): const ActivateIntent(),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
@@ -12478,6 +12586,20 @@ class _DialogHotkeys extends StatelessWidget {
 enum _QuoteFlowDialogAction { viewPdf, goToQuotation, backToSales }
 
 enum _SalesDocumentType { consumidorFinal, creditoFiscal }
+
+class _CartItemBadge {
+  const _CartItemBadge({
+    required this.label,
+    required this.foreground,
+    required this.background,
+    required this.border,
+  });
+
+  final String label;
+  final Color foreground;
+  final Color background;
+  final Color border;
+}
 
 class _Cart {
   String name;
@@ -12757,15 +12879,8 @@ class _CategorySidebarItemState extends State<_CategorySidebarItem> {
           color: isSelected
               ? const Color(0xFFF2F7FF)
               : (isHovered ? const Color(0xFFF7FAFD) : Colors.transparent),
-          border: Border(
-            left: BorderSide(
-              color: isSelected
-                  ? const Color(0xFF1A56DB)
-                  : (isHovered
-                        ? const Color(0xFF1A56DB).withOpacity(0.3)
-                        : Colors.transparent),
-              width: isSelected ? 3 : 1.5,
-            ),
+          borderRadius: BorderRadius.circular(
+            widget.useCompactChrome ? 14 : 16,
           ),
         ),
         child: Material(
@@ -12808,7 +12923,9 @@ class _CategorySidebarItemState extends State<_CategorySidebarItem> {
                             style: TextStyle(
                               color: const Color(0xFF172033),
                               fontSize: widget.useCompactChrome ? 13 : 14,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
                             ),
                           ),
                         ),
@@ -13097,23 +13214,26 @@ class _CompactCashMovementFormState
 
           final decision = await showDialog<String>(
             context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Caja sin efectivo suficiente'),
-              content: Text(
-                'Disponible en caja: RD\$${available.toStringAsFixed(2)}\n'
-                'Intentas retirar: RD\$${amount.toStringAsFixed(2)}\n\n'
-                'Ingresa efectivo antes de registrar este retiro.',
+            builder: (ctx) => _DialogHotkeys(
+              onEnter: () => Navigator.pop(ctx, 'add'),
+              child: AlertDialog(
+                title: const Text('Caja sin efectivo suficiente'),
+                content: Text(
+                  'Disponible en caja: RD\$${available.toStringAsFixed(2)}\n'
+                  'Intentas retirar: RD\$${amount.toStringAsFixed(2)}\n\n'
+                  'Ingresa efectivo antes de registrar este retiro.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, 'add'),
+                    child: const Text('Agregar efectivo'),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, 'cancel'),
+                    child: const Text('Cancelar'),
+                  ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, 'add'),
-                  child: const Text('Agregar efectivo'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, 'cancel'),
-                  child: const Text('Cancelar'),
-                ),
-              ],
             ),
           );
 

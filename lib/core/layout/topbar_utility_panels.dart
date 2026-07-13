@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -27,6 +26,7 @@ import '../../features/tools/data/owner_app_links.dart';
 import '../config/app_config.dart';
 import '../notifications/fullpos_notifications.dart';
 import '../services/cloud_sync_service.dart';
+import '../storage/fullpos_paths.dart';
 import '../session/session_manager.dart';
 import '../session/ui_preferences.dart';
 import '../sync/product_sync_service.dart';
@@ -159,8 +159,7 @@ class _ProfileUtilityPanelState extends State<_ProfileUtilityPanel> {
   }
 
   Future<Directory> _ensureProfileImagesDir() async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docsDir.path, 'profile_images'));
+    final dir = await FullPosPaths.profileImagesDir();
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

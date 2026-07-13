@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fullpos/core/db/app_db.dart';
 import 'package:fullpos/core/db/auto_repair.dart';
 import 'package:fullpos/core/recovery/app_recovery.dart';
+import 'package:fullpos/core/storage/fullpos_paths.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -64,7 +65,11 @@ void main() {
       throwsA(isA<AppRecoveryRequiredException>()),
     );
 
-    final log = File(p.join(docs, 'FULLPOS_LOGS', 'auto_repair.log'));
+    final support = await PathProviderPlatform.instance
+        .getApplicationSupportPath();
+    final log = File(
+      p.join(support!, 'FullPOS_PTV', 'logs', 'support', 'auto_repair.log'),
+    );
     expect(await log.exists(), isTrue);
     expect(await log.readAsString(), contains('REINDEX'));
     expect(await dbFile.exists(), isTrue);
@@ -74,8 +79,10 @@ void main() {
   test('WAL con transacciones pendientes se preserva con checkpoint', () async {
     final docs = await PathProviderPlatform.instance
         .getApplicationDocumentsPath();
-    final walFile = File(p.join(docs!, 'fullpos.db-wal'));
     final db = await AppDb.database;
+    final walFile = File(
+      '${await FullPosPaths.databasePath(AppDb.dbFileName)}-wal',
+    );
     await _createWalTableAndRow(db, 'pendiente');
 
     expect(await walFile.exists(), isTrue);
@@ -85,7 +92,7 @@ void main() {
     final reopened = await AppDb.database;
     final count = await _qaWalCount(reopened, 'pendiente');
     expect(count, 1);
-    final log = await _autoRepairLog(docs);
+    final log = await _autoRepairLog(docs!);
     expect(log, contains('wal_checkpoint(TRUNCATE) ok=true'));
     expect(log, isNot(contains('deleted ${walFile.path}')));
   });
@@ -93,13 +100,15 @@ void main() {
   test('checkpoint correcto no elimina WAL valido como primer paso', () async {
     final docs = await PathProviderPlatform.instance
         .getApplicationDocumentsPath();
-    final walFile = File(p.join(docs!, 'fullpos.db-wal'));
     final db = await AppDb.database;
+    final walFile = File(
+      '${await FullPosPaths.databasePath(AppDb.dbFileName)}-wal',
+    );
     await _createWalTableAndRow(db, 'checkpoint');
 
     await AutoRepair.instance.ensureDbHealthy(reason: 'test_checkpoint');
 
-    final log = await _autoRepairLog(docs);
+    final log = await _autoRepairLog(docs!);
     expect(log, contains('wal_checkpoint(TRUNCATE) ok=true'));
     expect(log, isNot(contains('deleted ${walFile.path}')));
     expect(await _qaWalCount(await AppDb.database, 'checkpoint'), 1);
@@ -114,12 +123,14 @@ void main() {
     );
     await AppDb.close();
 
-    final walFile = File(p.join(docs!, 'fullpos.db-wal'));
+    final walFile = File(
+      '${await FullPosPaths.databasePath(AppDb.dbFileName)}-wal',
+    );
     await walFile.writeAsString('wal corrupto', flush: true);
 
     await AutoRepair.instance.ensureDbHealthy(reason: 'test_corrupt_wal');
 
-    final log = await _autoRepairLog(docs);
+    final log = await _autoRepairLog(docs!);
     expect(log, contains('wal_checkpoint'));
     if (log.contains('wal_checkpoint(TRUNCATE) ok=false')) {
       expect(log, contains('resetWalShmIfNeeded start'));
@@ -136,12 +147,14 @@ void main() {
         'CREATE TABLE IF NOT EXISTS qa_wal (id INTEGER PRIMARY KEY, value TEXT)',
       );
       await AppDb.close();
-      final walFile = File(p.join(docs!, 'fullpos.db-wal'));
+      final walFile = File(
+        '${await FullPosPaths.databasePath(AppDb.dbFileName)}-wal',
+      );
       if (await walFile.exists()) await walFile.delete();
 
       await AutoRepair.instance.ensureDbHealthy(reason: 'test_no_wal');
 
-      final log = await _autoRepairLog(docs);
+      final log = await _autoRepairLog(docs!);
       expect(log, contains('wal_checkpoint(TRUNCATE) ok=true'));
       expect(log, isNot(contains('deleted ${walFile.path}')));
     },
@@ -179,7 +192,11 @@ Future<int> _qaWalCount(dynamic db, String value) async {
 }
 
 Future<String> _autoRepairLog(String docs) async {
-  final log = File(p.join(docs, 'FULLPOS_LOGS', 'auto_repair.log'));
+  final support = await PathProviderPlatform.instance
+      .getApplicationSupportPath();
+  final log = File(
+    p.join(support!, 'FullPOS_PTV', 'logs', 'support', 'auto_repair.log'),
+  );
   expect(await log.exists(), isTrue);
   return log.readAsString();
 }

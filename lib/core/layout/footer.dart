@@ -9,30 +9,35 @@ class Footer extends ConsumerWidget {
 
   final double scale;
 
+  static bool useCompactLayout(Size size) {
+    return size.width <= 1366 || size.height <= 900;
+  }
+
+  static double preferredHeightFor(Size size) {
+    return useCompactLayout(size) ? 40.0 : 44.0;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(footerTicketControllerProvider);
     final tabs = controller.tabs;
 
     final screenSize = MediaQuery.sizeOf(context);
-    final useCompactFooter =
-        screenSize.width <= 1366 || screenSize.height <= 900;
+    final useCompactFooter = Footer.useCompactLayout(screenSize);
 
-    final compactScale = useCompactFooter ? 0.76 : 1.0;
+    final compactScale = useCompactFooter ? 0.82 : 1.0;
     final effectiveScale = scale * compactScale;
 
-    final footerHeight = useCompactFooter
-        ? 36.0
-        : (58 * effectiveScale).clamp(44.0, 64.0).toDouble();
+    final footerHeight = Footer.preferredHeightFor(screenSize);
 
     return SizedBox(
       height: footerHeight,
       child: DecoratedBox(
         decoration: const BoxDecoration(
-          color: Color(0xFFF3F6FA),
+          color: Color(0xFFECF2F7),
           border: Border(
-            top: BorderSide(color: Color.fromARGB(255, 0, 0, 0), width: 0.3),
-            bottom: BorderSide(color: Color(0xFFB2BFCC), width: 0.8),
+            top: BorderSide(color: Color(0xFFC9D4E1), width: 0.8),
+            bottom: BorderSide(color: Color(0xFFB5C2D0), width: 0.8),
           ),
         ),
         child: Row(
@@ -43,10 +48,10 @@ class Footer extends ConsumerWidget {
                 scrollDirection: Axis.horizontal,
                 physics: const ClampingScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(
-                  useCompactFooter ? 6 : 8 * effectiveScale,
-                  useCompactFooter ? 3 : 6 * effectiveScale,
+                  useCompactFooter ? 8 : 9 * effectiveScale,
+                  useCompactFooter ? 2 : 4 * effectiveScale,
                   useCompactFooter ? 8 : 10 * effectiveScale,
-                  useCompactFooter ? 3 : 6 * effectiveScale,
+                  useCompactFooter ? 2 : 4 * effectiveScale,
                 ),
                 itemCount: tabs.length + 1,
                 separatorBuilder: (_, _) {
@@ -154,14 +159,14 @@ class _FooterSaleTab extends StatelessWidget {
     const dotColor = Color(0xFFEF4444);
 
     final tabHeight = compact
-        ? 30.0
-        : (46 * scale).clamp(44.0, 50.0).toDouble();
+        ? 36.0
+        : (40 * scale).clamp(38.0, 40.0).toDouble();
 
     const tabRadius = BorderRadius.only(
-      topLeft: Radius.circular(14),
-      topRight: Radius.circular(6),
-      bottomLeft: Radius.circular(6),
-      bottomRight: Radius.circular(14),
+      topLeft: Radius.circular(5),
+      topRight: Radius.circular(3),
+      bottomLeft: Radius.circular(3),
+      bottomRight: Radius.circular(5),
     );
 
     const iconRadius = BorderRadius.only(
@@ -192,7 +197,7 @@ class _FooterSaleTab extends StatelessWidget {
         borderRadius: tabRadius,
         border: Border.all(
           color: isActive ? activeColor.withOpacity(0.78) : borderColor,
-          width: isActive ? 1.15 : 0.95,
+          width: isActive ? 1.35 : 1.05,
         ),
         boxShadow: [
           BoxShadow(
@@ -216,10 +221,10 @@ class _FooterSaleTab extends StatelessWidget {
           highlightColor: activeColor.withOpacity(0.025),
           child: Padding(
             padding: EdgeInsets.fromLTRB(
-              compact ? 5 : 7 * scale,
-              compact ? 3 : 5 * scale,
-              compact ? 3 : 4 * scale,
-              compact ? 3 : 5 * scale,
+              compact ? 6 : 7 * scale,
+              compact ? 5 : 5 * scale,
+              compact ? 4 : 4 * scale,
+              compact ? 5 : 5 * scale,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -403,14 +408,14 @@ class _FooterAddButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = compact ? 44.0 : (46 * scale).clamp(44.0, 50.0).toDouble();
-    final height = compact ? 30.0 : (46 * scale).clamp(44.0, 50.0).toDouble();
+    final width = compact ? 32.0 : (34 * scale).clamp(32.0, 36.0).toDouble();
+    final height = compact ? 36.0 : (40 * scale).clamp(38.0, 40.0).toDouble();
 
     const buttonRadius = BorderRadius.only(
-      topLeft: Radius.circular(14),
-      topRight: Radius.circular(6),
-      bottomLeft: Radius.circular(6),
-      bottomRight: Radius.circular(14),
+      topLeft: Radius.circular(5),
+      topRight: Radius.circular(3),
+      bottomLeft: Radius.circular(3),
+      bottomRight: Radius.circular(5),
     );
 
     return Tooltip(
@@ -427,11 +432,11 @@ class _FooterAddButton extends StatelessWidget {
             width: width,
             height: height,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF1FF),
+              color: const Color(0xFFF2F6FF),
               borderRadius: buttonRadius,
               border: Border.all(
                 color: const Color(0xFF1A56DB).withOpacity(0.48),
-                width: 1.2,
+                width: 1.05,
               ),
               boxShadow: [
                 BoxShadow(
@@ -444,7 +449,7 @@ class _FooterAddButton extends StatelessWidget {
             ),
             child: Icon(
               Icons.add_rounded,
-              size: compact ? 17.0 : (23 * scale).clamp(21.0, 25.0).toDouble(),
+              size: compact ? 16.0 : (20 * scale).clamp(18.0, 22.0).toDouble(),
               color: const Color(0xFF1A56DB),
             ),
           ),

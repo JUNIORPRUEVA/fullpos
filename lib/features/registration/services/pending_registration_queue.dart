@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+
+import '../../../core/storage/fullpos_paths.dart';
 
 class PendingRegistrationItem {
   final String id;
@@ -40,9 +41,12 @@ class PendingRegistrationItem {
       lastError: (json['last_error'] ?? '').toString().trim().isEmpty
           ? null
           : (json['last_error'] ?? '').toString(),
-      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+      createdAt:
+          DateTime.tryParse((json['created_at'] ?? '').toString()) ??
           DateTime.now(),
-      lastAttemptAt: DateTime.tryParse((json['last_attempt_at'] ?? '').toString()),
+      lastAttemptAt: DateTime.tryParse(
+        (json['last_attempt_at'] ?? '').toString(),
+      ),
     );
   }
 
@@ -66,8 +70,7 @@ class PendingRegistrationQueue {
   static const _fileName = 'pending_registration_queue_v1.json';
 
   Future<File> _file() async {
-    final dir = await getApplicationSupportDirectory();
-    final base = Directory(p.join(dir.path, 'FullPOS'));
+    final base = await FullPosPaths.dataDir();
     if (!base.existsSync()) base.createSync(recursive: true);
     return File(p.join(base.path, _fileName));
   }
@@ -81,7 +84,9 @@ class PendingRegistrationQueue {
       if (decoded is! List) return <PendingRegistrationItem>[];
       return decoded
           .whereType<Map>()
-          .map((m) => PendingRegistrationItem.fromJson(m.cast<String, dynamic>()))
+          .map(
+            (m) => PendingRegistrationItem.fromJson(m.cast<String, dynamic>()),
+          )
           .toList();
     } catch (_) {
       return <PendingRegistrationItem>[];

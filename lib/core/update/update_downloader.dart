@@ -2,10 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'app_update_policy.dart';
 import 'installer_verifier.dart';
+import '../storage/fullpos_paths.dart';
 
 typedef DownloadProgress = void Function(int received, int? total);
 
@@ -56,15 +56,7 @@ class UpdateDownloader {
   bool get isDownloading => _inFlight != null;
 
   Future<Directory> updateRoot() async {
-    final local = await getApplicationSupportDirectory();
-    final normalized = p.normalize(local.path);
-    final appDataIndex = normalized.toLowerCase().lastIndexOf(
-      '${p.separator}appdata${p.separator}roaming',
-    );
-    final localAppData = appDataIndex >= 0
-        ? '${normalized.substring(0, appDataIndex)}${p.separator}AppData${p.separator}Local'
-        : (Platform.environment['LOCALAPPDATA'] ?? local.path);
-    return Directory(p.join(localAppData, 'FullPOS', 'updates'));
+    return FullPosPaths.updatesDir();
   }
 
   Future<File> download(

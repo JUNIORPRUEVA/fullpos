@@ -10,6 +10,7 @@ import 'core/debug/render_diagnostics.dart';
 import 'core/db/db_init.dart';
 import 'core/errors/error_handler.dart';
 import 'core/logging/app_logger.dart';
+import 'core/storage/fullpos_data_migrator.dart';
 import 'core/theme/theme_audit.dart';
 import 'core/window/window_startup_controller.dart';
 import 'package:window_manager/window_manager.dart';
@@ -90,16 +91,22 @@ Future<void> main() async {
         }
       };
 
+      // Configuración central (base URL, UA, etc.).
+      await AppConfig.init();
+
+      DbInit.ensureInitialized();
+      try {
+        await FullPosDataMigrator.instance.migrateIfNeeded();
+      } catch (e) {
+        debugPrint('FULLPOS_DATA_MIGRATION_WARNING: $e');
+      }
+
       try {
         await AppLogger.instance.init();
       } catch (_) {
         // Si falla el logger, no detenemos el arranque.
       }
 
-      // Configuración central (base URL, UA, etc.).
-      await AppConfig.init();
-
-      DbInit.ensureInitialized();
       if (kDebugMode) {
         ThemeAudit.run();
         await runDbAudit();

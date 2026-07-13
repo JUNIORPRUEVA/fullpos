@@ -17,10 +17,41 @@ class ProductsExporter {
     required List<ProductModel> products,
     List<CategoryModel> categories = const <CategoryModel>[],
     List<SupplierModel> suppliers = const <SupplierModel>[],
+    @Deprecated('La exportacion de inventario siempre incluye Precio Compra.')
     bool includePurchasePrice = true,
   }) async {
     ImportExportActivityTracker.instance.markStarted();
     try {
+      final excel = buildProductsWorkbook(
+        products: products,
+        categories: categories,
+        suppliers: suppliers,
+      );
+
+      final bytes = excel.encode();
+      if (bytes == null) {
+        throw StateError('No se pudo generar el archivo Excel');
+      }
+
+      final downloadsDir = await getDownloadsDirectory();
+      if (downloadsDir == null) {
+        throw StateError('No se pudo acceder al directorio de descargas');
+      }
+
+      final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final file = File('${downloadsDir.path}/Productos_$ts.xlsx');
+      await file.writeAsBytes(Uint8List.fromList(bytes), flush: true);
+      return file;
+    } finally {
+      ImportExportActivityTracker.instance.markCompleted();
+    }
+  }
+
+  static Excel buildProductsWorkbook({
+    required List<ProductModel> products,
+    List<CategoryModel> categories = const <CategoryModel>[],
+    List<SupplierModel> suppliers = const <SupplierModel>[],
+  }) {
     final excel = Excel.createExcel();
     try {
       excel.delete('Sheet1');
@@ -42,7 +73,7 @@ class ProductsExporter {
       TextCellValue('Nombre'),
       TextCellValue('Categoria'),
       TextCellValue('Suplidor'),
-      if (includePurchasePrice) TextCellValue('Precio Compra'),
+      TextCellValue('Precio Compra'),
       TextCellValue('Precio Venta'),
       TextCellValue('Stock'),
       TextCellValue('Reservado'),
@@ -69,7 +100,7 @@ class ProductsExporter {
         TextCellValue(p.name),
         TextCellValue(categoryName),
         TextCellValue(supplierName),
-        if (includePurchasePrice) DoubleCellValue(p.purchasePrice),
+        DoubleCellValue(p.purchasePrice),
         DoubleCellValue(p.salePrice),
         DoubleCellValue(p.stock),
         DoubleCellValue(p.reservedStock),
@@ -107,22 +138,6 @@ class ProductsExporter {
       ]);
     }
 
-    final bytes = excel.encode();
-    if (bytes == null) {
-      throw StateError('No se pudo generar el archivo Excel');
-    }
-
-    final downloadsDir = await getDownloadsDirectory();
-    if (downloadsDir == null) {
-      throw StateError('No se pudo acceder al directorio de descargas');
-    }
-
-    final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-    final file = File('${downloadsDir.path}/Productos_$ts.xlsx');
-    await file.writeAsBytes(Uint8List.fromList(bytes), flush: true);
-    return file;
-    } finally {
-      ImportExportActivityTracker.instance.markCompleted();
-    }
+    return excel;
   }
 }

@@ -4,8 +4,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import '../../../../core/storage/fullpos_paths.dart';
 import '../../../../core/ui/app_toast.dart';
 import '../../../../core/window/window_service.dart';
 import '../../data/categories_repository.dart';
@@ -52,8 +52,7 @@ class _CategoryFormDialogState extends State<CategoryFormDialog> {
   String? get _previewImagePath => _pendingImageSourcePath ?? _imagePath;
 
   Future<Directory> _ensureCategoryImagesDir() async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docsDir.path, 'category_images'));
+    final dir = await FullPosPaths.categoryImagesDir();
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

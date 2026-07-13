@@ -3,10 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-const String _kAppVersion =
-    String.fromEnvironment('FULLPOS_APP_VERSION', defaultValue: '1.0.0+1');
+import '../storage/fullpos_paths.dart';
+
+const String _kAppVersion = String.fromEnvironment(
+  'FULLPOS_APP_VERSION',
+  defaultValue: '1.0.0+1',
+);
 
 class DbLogger {
   DbLogger._();
@@ -48,8 +51,7 @@ class DbLogger {
 
   Future<File> _resolveLogFile() async {
     if (_file != null) return _file!;
-    final supportDir = await getApplicationSupportDirectory();
-    final logDir = Directory(p.join(supportDir.path, 'logs'));
+    final logDir = await FullPosPaths.dbLogsDir();
     if (!await logDir.exists()) {
       await logDir.create(recursive: true);
     }

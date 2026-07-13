@@ -19,6 +19,9 @@ class ModuleAccess {
     // Pantalla neutral: siempre permitir para que el usuario vea el mensaje.
     if (path == '/no-access') return true;
 
+    // Actualizaciones: cualquier usuario autenticado puede revisar e instalar.
+    if (path == '/settings/updates') return true;
+
     if (path == '/cash-gate') {
       return permissions.canOpenCash ||
           permissions.canOpenCashbox ||

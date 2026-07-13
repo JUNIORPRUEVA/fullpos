@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../db/app_db.dart';
 import '../recovery/app_recovery.dart';
+import '../storage/fullpos_paths.dart';
 import 'identity_recovery_bundle.dart';
 
 class TerminalIdLogRecoveryResult {
@@ -218,6 +219,7 @@ class TerminalIdLogRecoveryService {
   Future<List<File>> _localLogFiles() async {
     final support = await getApplicationSupportDirectory();
     final dirs = <Directory>[
+      await FullPosPaths.appLogsDir(),
       Directory(p.join(support.path, 'logs')),
       Directory(p.join(support.path, 'FULLPOS', 'logs')),
     ];
@@ -364,11 +366,9 @@ class TerminalIdLogRecoveryService {
   }
 
   Future<void> _createSafetyBackup({required String reason}) async {
-    final docs = await getApplicationDocumentsDirectory();
     final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
-    final dir = Directory(
-      p.join(docs.path, 'FULLPOS_BACKUPS', 'identity_log_recovery', stamp),
-    );
+    final backups = await FullPosPaths.backupsDir();
+    final dir = Directory(p.join(backups.path, 'identity_log_recovery', stamp));
     await dir.create(recursive: true);
 
     Future<void> copyIfExists(File file, String name) async {

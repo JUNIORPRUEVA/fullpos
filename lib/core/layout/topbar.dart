@@ -83,6 +83,7 @@ class _TopbarState extends ConsumerState<Topbar> {
 
   bool _loadingOpenCashSessionId = false;
   int? _openCashSessionId;
+  bool _menuButtonHovered = false;
 
   @override
   void initState() {
@@ -604,74 +605,126 @@ class _TopbarState extends ConsumerState<Topbar> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               if (widget.showMenuButton) ...[
-                Tooltip(
-                  message: widget.isMenuOpen ? 'Cerrar menú' : 'Abrir menú',
-                  waitDuration: const Duration(milliseconds: 350),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: widget.onMenuPressed,
-                      borderRadius: BorderRadius.circular(10),
-                      hoverColor: brandAccent.withOpacity(0.055),
-                      splashColor: brandAccent.withOpacity(0.08),
-                      highlightColor: brandAccent.withOpacity(0.045),
-                      focusColor: brandAccent.withOpacity(0.075),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 190),
-                        curve: Curves.easeOutCubic,
-                        width: menuButtonSize,
-                        height: menuButtonSize,
-                        decoration: BoxDecoration(
-                          color: widget.isMenuOpen
-                              ? brandAccent
-                              : Color.alphaBlend(
-                                  brandAccent.withOpacity(0.055),
-                                  topbarBg,
-                                ),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: widget.isMenuOpen
-                                ? brandAccent
-                                : brandAccent.withOpacity(0.20),
-                            width: 1,
-                          ),
-                          boxShadow: widget.isMenuOpen
-                              ? [
-                                  BoxShadow(
-                                    color: brandAccent.withOpacity(0.18),
-                                    blurRadius: 12,
-                                    spreadRadius: -4,
-                                    offset: const Offset(0, 5),
-                                  ),
-                                ]
-                              : const [],
-                        ),
-                        alignment: Alignment.center,
-                        child: AnimatedSwitcher(
+                MouseRegion(
+                  onEnter: (_) => setState(() => _menuButtonHovered = true),
+                  onExit: (_) => setState(() => _menuButtonHovered = false),
+                  child: Tooltip(
+                    message: widget.isMenuOpen ? 'Cerrar menú' : 'Abrir menú',
+                    waitDuration: const Duration(milliseconds: 350),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: widget.onMenuPressed,
+                        borderRadius: BorderRadius.circular(12),
+                        hoverColor: brandAccent.withOpacity(0.045),
+                        splashColor: brandAccent.withOpacity(0.07),
+                        highlightColor: brandAccent.withOpacity(0.035),
+                        focusColor: brandAccent.withOpacity(0.06),
+                        child: AnimatedContainer(
                           duration: const Duration(milliseconds: 190),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, animation) {
-                            return FadeTransition(
-                              opacity: animation,
-                              child: ScaleTransition(
-                                scale: Tween<double>(
-                                  begin: 0.86,
-                                  end: 1,
-                                ).animate(animation),
-                                child: child,
+                          curve: Curves.easeOutCubic,
+                          width: menuButtonSize,
+                          height: menuButtonSize,
+                          transform: Matrix4.identity()
+                            ..translate(
+                              _menuButtonHovered && !widget.isMenuOpen
+                                  ? 0.0
+                                  : 0.0,
+                              _menuButtonHovered && !widget.isMenuOpen
+                                  ? -1.0
+                                  : 0.0,
+                            ),
+                          decoration: BoxDecoration(
+                            gradient: widget.isMenuOpen
+                                ? LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      brandAccent,
+                                      Color.alphaBlend(
+                                        const Color(
+                                          0xFF0F172A,
+                                        ).withOpacity(0.14),
+                                        brandAccent,
+                                      ),
+                                    ],
+                                  )
+                                : LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      Colors.white,
+                                      Color.alphaBlend(
+                                        brandAccent.withOpacity(
+                                          _menuButtonHovered ? 0.075 : 0.045,
+                                        ),
+                                        topbarBg,
+                                      ),
+                                    ],
+                                  ),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: widget.isMenuOpen
+                                  ? brandAccent.withOpacity(0.92)
+                                  : (_menuButtonHovered
+                                        ? const Color(0xFF93B7F5)
+                                        : const Color(0xFFC9D7E8)),
+                              width: widget.isMenuOpen ? 1.1 : 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF0F172A).withOpacity(
+                                  widget.isMenuOpen
+                                      ? 0.13
+                                      : (_menuButtonHovered ? 0.11 : 0.075),
+                                ),
+                                blurRadius: widget.isMenuOpen
+                                    ? 14
+                                    : (_menuButtonHovered ? 14 : 10),
+                                spreadRadius: -6,
+                                offset: Offset(
+                                  0,
+                                  _menuButtonHovered && !widget.isMenuOpen
+                                      ? 8
+                                      : 6,
+                                ),
                               ),
-                            );
-                          },
-                          child: Icon(
-                            widget.isMenuOpen
-                                ? Icons.close_rounded
-                                : Icons.menu_rounded,
-                            key: ValueKey<bool>(widget.isMenuOpen),
-                            size: menuIconSize,
-                            color: widget.isMenuOpen
-                                ? Colors.white
-                                : brandAccent,
+                              if (!widget.isMenuOpen)
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.86),
+                                  blurRadius: 1,
+                                  offset: const Offset(0, 1),
+                                ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 190),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: ScaleTransition(
+                                  scale: Tween<double>(
+                                    begin: 0.86,
+                                    end: 1,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _DrawerMenuGlyph(
+                              key: ValueKey<String>(
+                                '${widget.isMenuOpen}-$_menuButtonHovered',
+                              ),
+                              isOpen: widget.isMenuOpen,
+                              isHovered: _menuButtonHovered,
+                              size: menuIconSize + 4,
+                              color: widget.isMenuOpen
+                                  ? Colors.white
+                                  : const Color(0xFF1D4ED8),
+                            ),
                           ),
                         ),
                       ),
@@ -1130,6 +1183,104 @@ class _TopbarHoverSurfaceState extends State<_TopbarHoverSurface> {
           ],
         ),
         child: widget.child,
+      ),
+    );
+  }
+}
+
+class _DrawerMenuGlyph extends StatelessWidget {
+  const _DrawerMenuGlyph({
+    super.key,
+    required this.isOpen,
+    required this.isHovered,
+    required this.size,
+    required this.color,
+  });
+
+  final bool isOpen;
+  final bool isHovered;
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final stroke = (size * 0.095).clamp(1.7, 2.2).toDouble();
+    final longWidth = size * 0.62;
+    final shortWidth = size * 0.42;
+
+    Widget bar(double width) {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 190),
+        curve: Curves.easeOutCubic,
+        width: width,
+        height: stroke,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(999),
+        ),
+      );
+    }
+
+    if (isOpen) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Transform.rotate(angle: 0.78, child: bar(longWidth)),
+            Transform.rotate(angle: -0.78, child: bar(longWidth)),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 190),
+            curve: Curves.easeOutCubic,
+            left: isHovered ? size * 0.12 : size * 0.04,
+            top: size * 0.20,
+            bottom: size * 0.20,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 160),
+              opacity: isHovered ? 1 : 0,
+              child: Container(
+                width: stroke,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.72),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+          ),
+          AnimatedPadding(
+            duration: const Duration(milliseconds: 190),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(left: isHovered ? size * 0.14 : 0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Align(
+                  alignment: isHovered
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: bar(longWidth),
+                ),
+                SizedBox(height: size * 0.16),
+                Align(alignment: Alignment.center, child: bar(shortWidth)),
+                SizedBox(height: size * 0.16),
+                Align(alignment: Alignment.centerRight, child: bar(longWidth)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../errors/app_exception.dart';
+import '../storage/fullpos_paths.dart';
 
 enum AppLogLevel { info, warn, error }
 
@@ -25,8 +25,7 @@ class AppLogger {
   Future<void> init() async {
     if (isInitialized) return;
 
-    final baseDir = await getApplicationSupportDirectory();
-    final dir = Directory(p.join(baseDir.path, 'logs'));
+    final dir = await FullPosPaths.appLogsDir();
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

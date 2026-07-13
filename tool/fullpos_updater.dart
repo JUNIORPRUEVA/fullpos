@@ -125,11 +125,11 @@ Future<void> _validateInstallerLocation(File installer) async {
   if (await installer.length() <= 0) {
     throw StateError('Installer is empty: ${installer.path}');
   }
-  final localAppData = Platform.environment['LOCALAPPDATA'];
-  if (localAppData == null || localAppData.trim().isEmpty) {
-    throw StateError('LOCALAPPDATA is not available');
+  final programData = Platform.environment['PROGRAMDATA'];
+  if (programData == null || programData.trim().isEmpty) {
+    throw StateError('PROGRAMDATA is not available');
   }
-  final allowedRoot = Directory('$localAppData\\FullPOS\\updates');
+  final allowedRoot = Directory('$programData\\FullPOS_PTV\\updates');
   final rootPath = await allowedRoot
       .create(recursive: true)
       .then((dir) => dir.resolveSymbolicLinks());
@@ -194,9 +194,9 @@ Future<void> _showFailureMessage() async {
 }
 
 String _defaultLogPath() {
-  final localAppData =
-      Platform.environment['LOCALAPPDATA'] ?? Directory.current.path;
-  return '$localAppData\\FullPOS\\updates\\FullPOSUpdater.log';
+  final programData =
+      Platform.environment['PROGRAMDATA'] ?? Directory.current.path;
+  return '$programData\\FullPOS_PTV\\updates\\FullPOSUpdater.log';
 }
 
 class _UpdaterLog {

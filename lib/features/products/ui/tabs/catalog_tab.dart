@@ -78,7 +78,6 @@ class _CatalogTabState extends State<CatalogTab> {
         products: products,
         categories: categories,
         suppliers: suppliers,
-        includePurchasePrice: _isAdmin || _permissions.canViewPurchasePrice,
       );
 
       if (!mounted) return;
@@ -377,6 +376,8 @@ class _CatalogTabState extends State<CatalogTab> {
   Future<void> _showFilters() async {
     final filters = await showDialog<ProductFilters>(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.18),
+      useSafeArea: false,
       builder: (context) => ProductFiltersDialog(
         initialFilters: _currentFilters,
         categories: _categories,

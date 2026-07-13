@@ -4,10 +4,11 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../../../core/window/window_service.dart';
 import '../../../../core/ui/app_toast.dart';
+import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
+import '../../../../core/storage/fullpos_paths.dart';
 import '../../../../core/utils/color_utils.dart';
 import '../../../../core/security/app_actions.dart';
 import '../../../../core/security/authorization_guard.dart';
@@ -292,8 +293,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   }
 
   Future<Directory> _ensureProductsImagesDir() async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docsDir.path, 'product_images'));
+    final dir = await FullPosPaths.productImagesDir();
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -631,19 +631,23 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
     _categoryMenuController.close();
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar categoría'),
-        content: Text('¿Está seguro de eliminar "${category.name}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Eliminar'),
-          ),
-        ],
+      builder: (context) => DialogKeyboardShortcuts(
+        onSubmit: () => Navigator.pop(context, true),
+        onCancel: () => Navigator.pop(context, false),
+        child: AlertDialog(
+          title: const Text('Eliminar categoría'),
+          content: Text('¿Está seguro de eliminar "${category.name}"?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        ),
       ),
     );
 

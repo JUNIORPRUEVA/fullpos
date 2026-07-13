@@ -12,6 +12,7 @@ import '../backup/backup_service.dart';
 import '../debug/loader_watchdog.dart';
 import '../recovery/app_recovery.dart';
 import '../recovery/recovery_lock.dart';
+import '../storage/fullpos_paths.dart';
 import 'app_db.dart';
 import 'database_manager.dart';
 
@@ -359,8 +360,7 @@ class AutoRepair {
   }
 
   Future<File> _logFile() async {
-    final docs = await BackupPaths.documentsDir();
-    final dir = Directory(p.join(docs.path, 'FULLPOS_LOGS'));
+    final dir = await FullPosPaths.supportLogsDir();
     if (!await dir.exists()) await dir.create(recursive: true);
     return File(p.join(dir.path, 'auto_repair.log'));
   }

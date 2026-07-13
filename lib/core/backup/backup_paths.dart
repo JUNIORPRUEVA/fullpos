@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../db/app_db.dart';
+import '../storage/fullpos_paths.dart';
 
 class BackupPaths {
   BackupPaths._();
@@ -11,23 +11,17 @@ class BackupPaths {
   static const String backupsDirName = 'FULLPOS_BACKUPS';
 
   static Future<Directory> documentsDir() async {
-    // En desktop, getApplicationDocumentsDirectory apunta a Documents.
-    // En Android, es el Documents dir de la app.
-    return getApplicationDocumentsDirectory();
+    return FullPosPaths.rootDir();
   }
 
   static Future<Directory> backupsBaseDir() async {
-    final docs = await documentsDir();
-
-    // Windows: fuera de carpeta de instalación, dentro de Documents.
-    // Android: dentro del Documents dir de la app.
-    final dir = Directory(p.join(docs.path, backupsDirName));
+    final dir = await FullPosPaths.backupsDir();
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
 
   static Future<Directory> tempWorkDir() async {
-    final temp = await getTemporaryDirectory();
+    final temp = await FullPosPaths.tempDir();
     final dir = Directory(p.join(temp.path, 'backup_work'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
@@ -38,17 +32,14 @@ class BackupPaths {
   }
 
   static Future<List<Directory>> optionalDataDirs() async {
-    final docs = await documentsDir();
-    final candidates = <String>[
-      'product_images',
+    final dirs = <Directory>[
+      await FullPosPaths.productImagesDir(),
+      await FullPosPaths.categoryImagesDir(),
     ];
-
-    final dirs = <Directory>[];
-    for (final name in candidates) {
-      final dir = Directory(p.join(docs.path, name));
-      if (await dir.exists()) dirs.add(dir);
-    }
-    return dirs;
+    return [
+      for (final dir in dirs)
+        if (await dir.exists()) dir,
+    ];
   }
 
   static Future<void> cleanTempWorkDir() async {

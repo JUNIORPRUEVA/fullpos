@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -1481,13 +1483,16 @@ class InventoryMovementsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        return ListView(
-          padding: productsResponsivePagePadding(constraints),
-          children: const [
-            _InventoryMovementsHeader(),
-            SizedBox(height: 14),
-            _InventoryMovementsWorkspace(),
-          ],
+        final padding = productsResponsivePagePadding(constraints);
+        return Padding(
+          padding: padding,
+          child: const Column(
+            children: [
+              _InventoryMovementsHeader(),
+              SizedBox(height: 14),
+              Expanded(child: _InventoryMovementsWorkspace()),
+            ],
+          ),
         );
       },
     );
@@ -1545,6 +1550,8 @@ class _InventoryMovementsWorkspaceState
     extends State<_InventoryMovementsWorkspace> {
   final StockRepository _stockRepository = StockRepository();
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _tableScrollController = ScrollController();
+  final ScrollController _rowsScrollController = ScrollController();
   final DateFormat _dateTimeFormat = DateFormat('dd/MM/yyyy HH:mm');
   final NumberFormat _numberFormat = NumberFormat.decimalPattern('en_US');
 
@@ -1565,6 +1572,8 @@ class _InventoryMovementsWorkspaceState
   @override
   void dispose() {
     _searchController.dispose();
+    _tableScrollController.dispose();
+    _rowsScrollController.dispose();
     super.dispose();
   }
 
@@ -1590,22 +1599,58 @@ class _InventoryMovementsWorkspaceState
     }
   }
 
-  Future<void> _pickRange() async {
-    final now = DateTime.now();
-    final range = await showDateRangePicker(
+  Future<void> _showFiltersPanel() async {
+    final result = await showDialog<_InventoryMovementFiltersResult>(
       context: context,
-      firstDate: now.subtract(const Duration(days: 365)),
-      lastDate: now.add(const Duration(days: 1)),
-      initialDateRange:
-          _dateRange ??
-          DateTimeRange(
-            start: now.subtract(const Duration(days: 30)),
-            end: now,
-          ),
+      barrierColor: Colors.black.withOpacity(0.18),
+      useSafeArea: false,
+      builder: (context) => _InventoryMovementFiltersPanel(
+        initialType: _typeFilter,
+        initialRange: _dateRange,
+      ),
     );
-    if (range == null) return;
-    setState(() => _dateRange = range);
+
+    if (result == null || !mounted) return;
+    setState(() {
+      _typeFilter = result.type;
+      _dateRange = result.range;
+    });
     _loadHistory();
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _typeFilter = null;
+      _dateRange = null;
+      _searchController.clear();
+    });
+    _loadHistory();
+  }
+
+  int get _activeFilterCount {
+    var count = 0;
+    if (_typeFilter != null) count++;
+    if (_dateRange != null) count++;
+    if (_searchController.text.trim().isNotEmpty) count++;
+    return count;
+  }
+
+  String get _typeFilterLabel {
+    switch (_typeFilter) {
+      case StockMovementType.input:
+        return 'Entradas';
+      case StockMovementType.output:
+        return 'Salidas';
+      case StockMovementType.adjust:
+        return 'Ajustes';
+      case null:
+        return 'Todos';
+    }
+  }
+
+  String _rangeLabel(DateTimeRange range) {
+    final formatter = DateFormat('dd/MM/yyyy');
+    return '${formatter.format(range.start)} - ${formatter.format(range.end)}';
   }
 
   List<StockMovementDetail> _filteredHistory() {
@@ -1631,189 +1676,814 @@ class _InventoryMovementsWorkspaceState
     return scheme.primary;
   }
 
+  String _qtyText(StockMovementModel movement) {
+    return '${movement.quantity >= 0 ? '+' : ''}${_numberFormat.format(movement.quantity)}';
+  }
+
+  Widget _tableHeaderCell(
+    String label, {
+    required double width,
+    TextAlign align = TextAlign.left,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        label,
+        textAlign: align,
+        maxLines: 1,
+        overflow: TextOverflow.visible,
+        style: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          color: Color(0xFF64748B),
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+
+  Widget _tableTextCell(
+    String text, {
+    required double width,
+    TextAlign align = TextAlign.left,
+    int maxLines = 1,
+    Color color = const Color(0xFF111827),
+    FontWeight weight = FontWeight.w700,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        textAlign: align,
+        maxLines: maxLines,
+        overflow: TextOverflow.visible,
+        style: TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 12.6,
+          height: 1.25,
+          fontWeight: weight,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableHeader(ColorScheme scheme) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        border: Border(
+          bottom: BorderSide(color: scheme.outlineVariant.withOpacity(0.85)),
+        ),
+      ),
+      child: Row(
+        children: [
+          _tableHeaderCell('Fecha', width: 160),
+          _tableHeaderCell('Producto', width: 340),
+          _tableHeaderCell('Tipo', width: 120),
+          _tableHeaderCell('Cantidad', width: 110, align: TextAlign.right),
+          _tableHeaderCell('Stock anterior', width: 135),
+          _tableHeaderCell('Stock nuevo', width: 125),
+          _tableHeaderCell('Usuario', width: 150),
+          _tableHeaderCell('Referencia / notas', width: 430),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMovementRow(
+    BuildContext context,
+    StockMovementDetail detail,
+    int index,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final movement = detail.movement;
+    final color = _movementColor(context, movement);
+    final productLabel = detail.productCode == null
+        ? detail.productLabel
+        : '${detail.productLabel} • ${detail.productCode}';
+    final note = detail.movement.note?.trim().isNotEmpty == true
+        ? detail.movement.note!.trim()
+        : 'Sin referencia';
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      color: index.isEven ? Colors.white : const Color(0xFFFBFDFF),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _tableTextCell(
+            _dateTimeFormat.format(movement.createdAt),
+            width: 160,
+            color: const Color(0xFF334155),
+          ),
+          _tableTextCell(productLabel, width: 340, maxLines: 2),
+          SizedBox(
+            width: 120,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _movementLabel(movement),
+                  maxLines: 1,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ),
+            ),
+          ),
+          _tableTextCell(
+            _qtyText(movement),
+            width: 110,
+            align: TextAlign.right,
+            color: color,
+            weight: FontWeight.w900,
+          ),
+          _tableTextCell('N/D', width: 135, color: scheme.onSurfaceVariant),
+          _tableTextCell('N/D', width: 125, color: scheme.onSurfaceVariant),
+          _tableTextCell(detail.userLabel, width: 150, maxLines: 1),
+          _tableTextCell(note, width: 430, maxLines: 2),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final visibleItems = _filteredHistory();
-    final rangeLabel = _dateRange == null
-        ? 'Rango de fechas'
-        : '${DateFormat('dd/MM/yyyy').format(_dateRange!.start)} - ${DateFormat('dd/MM/yyyy').format(_dateRange!.end)}';
 
     return ProductsSurface(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      radius: 18,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
+          Row(
             children: [
-              SizedBox(
-                width: 240,
-                child: FilledButton.tonalIcon(
-                  onPressed: _pickRange,
-                  icon: const Icon(Icons.date_range_rounded),
-                  label: Text(rangeLabel),
-                ),
-              ),
-              SizedBox(
-                width: 240,
-                child: DropdownButtonFormField<StockMovementType?>(
-                  value: _typeFilter,
-                  decoration: InputDecoration(
-                    labelText: 'Tipo de movimiento',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  items: const [
-                    DropdownMenuItem<StockMovementType?>(
-                      value: null,
-                      child: Text('Todos'),
-                    ),
-                    DropdownMenuItem<StockMovementType?>(
-                      value: StockMovementType.input,
-                      child: Text('Entradas'),
-                    ),
-                    DropdownMenuItem<StockMovementType?>(
-                      value: StockMovementType.output,
-                      child: Text('Salidas'),
-                    ),
-                    DropdownMenuItem<StockMovementType?>(
-                      value: StockMovementType.adjust,
-                      child: Text('Ajustes'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    setState(() => _typeFilter = value);
-                    _loadHistory();
-                  },
-                ),
-              ),
-              SizedBox(
-                width: 280,
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    labelText: 'Buscar producto',
-                    hintText: 'Nombre, código o nota',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-              ),
-              if (_dateRange != null)
-                OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() => _dateRange = null);
-                    _loadHistory();
-                  },
-                  icon: const Icon(Icons.clear_rounded),
-                  label: const Text('Limpiar rango'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 30),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (visibleItems.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Text(
-                'No se encontraron movimientos con los filtros actuales.',
-              ),
-            )
-          else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowHeight: 46,
-                dataRowMinHeight: 58,
-                dataRowMaxHeight: 66,
-                columnSpacing: 20,
-                headingTextStyle: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: scheme.onSurfaceVariant,
-                  fontFamily: 'Inter',
-                ),
-                columns: const [
-                  DataColumn(label: Text('Fecha')),
-                  DataColumn(label: Text('Producto')),
-                  DataColumn(label: Text('Tipo')),
-                  DataColumn(label: Text('Cantidad')),
-                  DataColumn(label: Text('Stock anterior')),
-                  DataColumn(label: Text('Stock nuevo')),
-                  DataColumn(label: Text('Usuario')),
-                  DataColumn(label: Text('Referencia / notas')),
-                ],
-                rows: visibleItems.map((detail) {
-                  final movement = detail.movement;
-                  final color = _movementColor(context, movement);
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        Text(_dateTimeFormat.format(movement.createdAt)),
+              Expanded(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: SizedBox(
+                    height: 46,
+                    child: TextField(
+                      controller: _searchController,
+                      textAlignVertical: TextAlignVertical.center,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF111827),
                       ),
-                      DataCell(
-                        SizedBox(
-                          width: 220,
-                          child: Text(
-                            detail.productCode == null
-                                ? detail.productLabel
-                                : '${detail.productLabel} • ${detail.productCode}',
-                            overflow: TextOverflow.ellipsis,
+                      decoration: InputDecoration(
+                        hintText: 'Buscar producto, código o referencia',
+                        hintStyle: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 21),
+                        suffixIcon: _searchController.text.isEmpty
+                            ? null
+                            : IconButton(
+                                tooltip: 'Limpiar búsqueda',
+                                onPressed: () =>
+                                    setState(() => _searchController.clear()),
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                              ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 13,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: scheme.outlineVariant,
+                            width: 1.2,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: scheme.outlineVariant,
+                            width: 1.2,
                           ),
                         ),
                       ),
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: _showFiltersPanel,
+                    icon: const Icon(Icons.tune_rounded, size: 18),
+                    label: Text(
+                      _activeFilterCount > 0 ? 'Filtros activos' : 'Filtrar',
+                    ),
+                    style: FilledButton.styleFrom(
+                      foregroundColor: scheme.primary,
+                      backgroundColor: scheme.primary.withOpacity(0.10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  if (_activeFilterCount > 0)
+                    Positioned(
+                      top: -7,
+                      right: -6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.primary,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: Text(
+                          '$_activeFilterCount',
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            height: 1,
                           ),
-                          decoration: BoxDecoration(
-                            color: color.withOpacity(0.10),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            _movementLabel(movement),
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: color,
-                              fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          if (_activeFilterCount > 0) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _FilterSummaryChip(
+                  icon: Icons.swap_vert_rounded,
+                  label: 'Tipo: $_typeFilterLabel',
+                ),
+                if (_dateRange != null)
+                  _FilterSummaryChip(
+                    icon: Icons.date_range_rounded,
+                    label: _rangeLabel(_dateRange!),
+                  ),
+                if (_searchController.text.trim().isNotEmpty)
+                  _FilterSummaryChip(
+                    icon: Icons.search_rounded,
+                    label: _searchController.text.trim(),
+                  ),
+                TextButton.icon(
+                  onPressed: _clearAllFilters,
+                  icon: const Icon(Icons.close_rounded, size: 17),
+                  label: const Text('Limpiar'),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 14),
+          if (_loading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (visibleItems.isEmpty)
+            Expanded(
+              child: Center(
+                child: Text(
+                  'No se encontraron movimientos con los filtros actuales.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final tableWidth = math.max(constraints.maxWidth, 1570.0);
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(
+                          color: scheme.outlineVariant.withOpacity(0.78),
+                        ),
+                      ),
+                      child: Scrollbar(
+                        controller: _tableScrollController,
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: _tableScrollController,
+                          primary: false,
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: tableWidth,
+                            height: constraints.maxHeight,
+                            child: Column(
+                              children: [
+                                _buildTableHeader(scheme),
+                                Expanded(
+                                  child: Scrollbar(
+                                    controller: _rowsScrollController,
+                                    thumbVisibility: true,
+                                    child: ListView.separated(
+                                      controller: _rowsScrollController,
+                                      primary: false,
+                                      padding: EdgeInsets.zero,
+                                      itemCount: visibleItems.length,
+                                      separatorBuilder: (context, index) =>
+                                          Divider(
+                                            height: 1,
+                                            thickness: 1,
+                                            color: scheme.outlineVariant
+                                                .withOpacity(0.65),
+                                          ),
+                                      itemBuilder: (context, index) {
+                                        return _buildMovementRow(
+                                          context,
+                                          visibleItems[index],
+                                          index,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
-                      DataCell(
-                        Text(
-                          '${movement.quantity >= 0 ? '+' : ''}${_numberFormat.format(movement.quantity)}',
-                        ),
-                      ),
-                      const DataCell(Text('N/D')),
-                      const DataCell(Text('N/D')),
-                      DataCell(Text(detail.userLabel)),
-                      DataCell(
-                        SizedBox(
-                          width: 260,
-                          child: Text(
-                            detail.movement.note?.trim().isNotEmpty == true
-                                ? detail.movement.note!.trim()
-                                : 'Sin referencia',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   );
-                }).toList(),
+                },
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InventoryMovementFiltersResult {
+  const _InventoryMovementFiltersResult({
+    required this.type,
+    required this.range,
+  });
+
+  final StockMovementType? type;
+  final DateTimeRange? range;
+}
+
+class _InventoryMovementFiltersPanel extends StatefulWidget {
+  const _InventoryMovementFiltersPanel({
+    required this.initialType,
+    required this.initialRange,
+  });
+
+  final StockMovementType? initialType;
+  final DateTimeRange? initialRange;
+
+  @override
+  State<_InventoryMovementFiltersPanel> createState() =>
+      _InventoryMovementFiltersPanelState();
+}
+
+class _InventoryMovementFiltersPanelState
+    extends State<_InventoryMovementFiltersPanel> {
+  StockMovementType? _type;
+  DateTimeRange? _range;
+
+  @override
+  void initState() {
+    super.initState();
+    _type = widget.initialType;
+    _range = widget.initialRange;
+  }
+
+  int get _activeCount {
+    var count = 0;
+    if (_type != null) count++;
+    if (_range != null) count++;
+    return count;
+  }
+
+  String _rangeLabel(DateTimeRange range) {
+    final formatter = DateFormat('dd/MM/yyyy');
+    return '${formatter.format(range.start)} - ${formatter.format(range.end)}';
+  }
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now.add(const Duration(days: 1)),
+      initialDateRange:
+          _range ??
+          DateTimeRange(
+            start: now.subtract(const Duration(days: 30)),
+            end: now,
+          ),
+    );
+    if (range == null || !mounted) return;
+    setState(() => _range = range);
+  }
+
+  void _clear() {
+    setState(() {
+      _type = null;
+      _range = null;
+    });
+  }
+
+  void _apply() {
+    Navigator.pop(
+      context,
+      _InventoryMovementFiltersResult(type: _type, range: _range),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final viewport = MediaQuery.sizeOf(context);
+    final panelWidth = viewport.width < 620
+        ? viewport.width
+        : (viewport.width * 0.28).clamp(390.0, 460.0);
+
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Material(
+        color: scheme.surface,
+        elevation: 0,
+        child: SizedBox(
+          width: panelWidth,
+          height: double.infinity,
+          child: SafeArea(
+            left: false,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                border: Border(
+                  left: BorderSide(
+                    color: scheme.outlineVariant.withOpacity(0.85),
+                  ),
+                ),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 14, 14),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: scheme.outlineVariant.withOpacity(0.85),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: scheme.primary.withOpacity(0.10),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.tune_rounded,
+                            color: scheme.primary,
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Filtros de movimientos',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFF0F172A),
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _activeCount == 0
+                                    ? 'Sin filtros activos'
+                                    : '$_activeCount filtros activos',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Cerrar',
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                      children: [
+                        Text(
+                          'Ajusta fecha y tipo de movimiento sin cubrir la tabla.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                            height: 1.35,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _MovementFilterSection(
+                          title: 'Tipo de movimiento',
+                          icon: Icons.swap_vert_rounded,
+                          child: Column(
+                            children: [
+                              _movementOption(theme, scheme, null, 'Todos'),
+                              _movementOption(
+                                theme,
+                                scheme,
+                                StockMovementType.input,
+                                'Entradas',
+                              ),
+                              _movementOption(
+                                theme,
+                                scheme,
+                                StockMovementType.output,
+                                'Salidas',
+                              ),
+                              _movementOption(
+                                theme,
+                                scheme,
+                                StockMovementType.adjust,
+                                'Ajustes',
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        _MovementFilterSection(
+                          title: 'Rango de fechas',
+                          icon: Icons.date_range_rounded,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 11,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: scheme.outlineVariant.withOpacity(
+                                      0.75,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  _range == null
+                                      ? 'Sin rango seleccionado'
+                                      : _rangeLabel(_range!),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF111827),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              FilledButton.tonalIcon(
+                                onPressed: _pickRange,
+                                icon: const Icon(Icons.calendar_month_rounded),
+                                label: const Text('Seleccionar rango'),
+                              ),
+                              if (_range != null) ...[
+                                const SizedBox(height: 8),
+                                OutlinedButton.icon(
+                                  onPressed: () =>
+                                      setState(() => _range = null),
+                                  icon: const Icon(Icons.close_rounded),
+                                  label: const Text('Quitar rango'),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        top: BorderSide(
+                          color: scheme.outlineVariant.withOpacity(0.85),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _clear,
+                            child: const Text('Limpiar'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _apply,
+                            child: const Text('Aplicar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _movementOption(
+    ThemeData theme,
+    ColorScheme scheme,
+    StockMovementType? value,
+    String label,
+  ) {
+    final selected = _type == value;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => setState(() => _type = value),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? scheme.primary.withOpacity(0.09) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected
+                  ? scheme.primary.withOpacity(0.35)
+                  : scheme.outlineVariant.withOpacity(0.72),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                size: 18,
+                color: selected ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF111827),
+                    fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MovementFilterSection extends StatelessWidget {
+  const _MovementFilterSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.75)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterSummaryChip extends StatelessWidget {
+  const _FilterSummaryChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: scheme.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.primary.withOpacity(0.14)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: scheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: scheme.primary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              fontFamily: 'Inter',
+            ),
+          ),
         ],
       ),
     );
@@ -1829,12 +2499,17 @@ class InventoryCountPage extends StatefulWidget {
 
 class _InventoryCountPageState extends State<InventoryCountPage> {
   final ProductsRepository _productsRepo = ProductsRepository();
+  final CategoriesRepository _categoriesRepo = CategoriesRepository();
+  final ScrollController _categoryTableScrollController = ScrollController();
+  final ScrollController _supplierTableScrollController = ScrollController();
+
   final NumberFormat _currencyFormat = NumberFormat.currency(
     locale: 'en_US',
     symbol: 'RD\$ ',
     decimalDigits: 2,
   );
-  final NumberFormat _unitsFormat = NumberFormat.decimalPattern();
+
+  final NumberFormat _unitsFormat = NumberFormat.decimalPattern('en_US');
 
   bool _isLoading = true;
   int _totalProducts = 0;
@@ -1843,13 +2518,366 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
   double _totalPotentialRevenue = 0;
   double _totalPotentialProfit = 0;
   double _averageMargin = 0;
+
   List<Map<String, dynamic>> _inventoryByCategory = [];
   List<Map<String, dynamic>> _inventoryBySupplier = [];
+  Map<int, String> _categoryNameById = <int, String>{};
 
   @override
   void initState() {
     super.initState();
     Future.microtask(_loadReportData);
+  }
+
+  @override
+  void dispose() {
+    _categoryTableScrollController.dispose();
+    _supplierTableScrollController.dispose();
+    super.dispose();
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString().replaceAll(',', '').trim()) ?? 0;
+  }
+
+  int _toInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString().trim()) ?? 0;
+  }
+
+  String _firstText(
+    Map<String, dynamic> row,
+    List<String> keys, {
+    required String fallback,
+  }) {
+    for (final key in keys) {
+      final value = row[key];
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+    return fallback;
+  }
+
+  int? _firstId(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      if (!row.containsKey(key)) continue;
+      final value = row[key];
+      if (value is num) return value.toInt();
+      final parsed = int.tryParse(value?.toString().trim() ?? '');
+      if (parsed != null) return parsed;
+    }
+    return null;
+  }
+
+  String _resolvedCategoryName(Map<String, dynamic> row) {
+    final directName = _firstText(row, const [
+      'name',
+      'category_name',
+      'category',
+      'category_label',
+      'label',
+      'group_name',
+    ], fallback: '');
+    if (directName.isNotEmpty &&
+        !RegExp(
+          r'^Categoría\s*#?\d+$',
+          caseSensitive: false,
+        ).hasMatch(directName)) {
+      return directName;
+    }
+
+    final categoryId = _firstId(row, const ['category_id', 'categoryId', 'id']);
+    if (categoryId != null) {
+      return _categoryNameById[categoryId] ?? 'Categoría sin nombre';
+    }
+
+    return 'Sin categoría';
+  }
+
+  String _resolvedSupplierName(Map<String, dynamic> row) {
+    final directName = _firstText(row, const [
+      'name',
+      'supplier_name',
+      'provider_name',
+      'supplier',
+      'provider',
+      'supplier_label',
+      'provider_label',
+      'label',
+      'group_name',
+    ], fallback: '');
+
+    if (directName.isNotEmpty &&
+        !RegExp(
+          r'^(Suplidor|Proveedor)\s*#?\d+$',
+          caseSensitive: false,
+        ).hasMatch(directName)) {
+      return directName;
+    }
+
+    return 'Sin suplidor';
+  }
+
+  double _firstNumber(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      if (!row.containsKey(key)) continue;
+      final value = _toDouble(row[key]);
+      if (value != 0 || row[key] != null) return value;
+    }
+    return 0;
+  }
+
+  dynamic _readDynamic(ProductModel product, String field) {
+    final dynamic value = product;
+    try {
+      switch (field) {
+        case 'cost':
+          return value.cost;
+        case 'costPrice':
+          return value.costPrice;
+        case 'purchasePrice':
+          return value.purchasePrice;
+        case 'priceCost':
+          return value.priceCost;
+        case 'unitCost':
+          return value.unitCost;
+        case 'price':
+          return value.price;
+        case 'salePrice':
+          return value.salePrice;
+        case 'sellingPrice':
+          return value.sellingPrice;
+        case 'unitPrice':
+          return value.unitPrice;
+        case 'supplierId':
+          return value.supplierId;
+        case 'providerId':
+          return value.providerId;
+        case 'supplierName':
+          return value.supplierName;
+        case 'providerName':
+          return value.providerName;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  double _productCost(ProductModel product) {
+    for (final field in const [
+      'cost',
+      'costPrice',
+      'purchasePrice',
+      'priceCost',
+      'unitCost',
+    ]) {
+      final value = _readDynamic(product, field);
+      if (value != null) return _toDouble(value);
+    }
+    return 0;
+  }
+
+  double _productSalePrice(ProductModel product) {
+    for (final field in const [
+      'price',
+      'salePrice',
+      'sellingPrice',
+      'unitPrice',
+    ]) {
+      final value = _readDynamic(product, field);
+      if (value != null) return _toDouble(value);
+    }
+    return 0;
+  }
+
+  String _productSupplierName(ProductModel product) {
+    for (final field in const ['supplierName', 'providerName']) {
+      final value = _readDynamic(product, field);
+      final text = value?.toString().trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+
+    return 'Sin suplidor';
+  }
+
+  List<Map<String, dynamic>> _normalizeBreakdownRows(
+    List<Map<String, dynamic>> source, {
+    required String Function(Map<String, dynamic> row) resolveName,
+  }) {
+    return source
+        .map((raw) {
+          final row = Map<String, dynamic>.from(raw);
+
+          final name = resolveName(row);
+
+          final count = _firstNumber(row, const [
+            'product_count',
+            'products_count',
+            'count',
+            'total_products',
+            'products',
+          ]);
+
+          final units = _firstNumber(row, const [
+            'total_units',
+            'units',
+            'stock',
+            'total_stock',
+            'stock_units',
+          ]);
+
+          final inventoryValue = _firstNumber(row, const [
+            'inventory_value',
+            'total_inventory_value',
+            'cost_value',
+            'total_cost',
+            'total_value',
+            'investment',
+            'inversion',
+          ]);
+
+          final revenue = _firstNumber(row, const [
+            'potential_revenue',
+            'total_potential_revenue',
+            'sale_value',
+            'sales_value',
+            'total_sale_value',
+            'total_revenue',
+            'revenue',
+            'venta',
+          ]);
+
+          var profit = _firstNumber(row, const [
+            'potential_profit',
+            'total_potential_profit',
+            'total_profit',
+            'profit',
+            'ganancia',
+          ]);
+
+          if (profit == 0 && (revenue != 0 || inventoryValue != 0)) {
+            profit = revenue - inventoryValue;
+          }
+
+          return <String, dynamic>{
+            'name': name,
+            'product_count': count.toInt(),
+            'total_units': units,
+            'inventory_value': inventoryValue,
+            'potential_revenue': revenue,
+            'potential_profit': profit,
+          };
+        })
+        .where((row) {
+          return _toInt(row['product_count']) > 0 ||
+              _toDouble(row['total_units']).abs() > 0.0001 ||
+              _toDouble(row['inventory_value']).abs() > 0.0001 ||
+              _toDouble(row['potential_revenue']).abs() > 0.0001 ||
+              _toDouble(row['potential_profit']).abs() > 0.0001;
+        })
+        .toList()
+      ..sort(
+        (a, b) => _toDouble(
+          b['inventory_value'],
+        ).compareTo(_toDouble(a['inventory_value'])),
+      );
+  }
+
+  List<Map<String, dynamic>> _buildCategoryFallback(
+    List<ProductModel> products,
+  ) {
+    final groups = <String, Map<String, dynamic>>{};
+
+    for (final product in products) {
+      final categoryName = product.categoryId == null
+          ? 'Sin categoría'
+          : _categoryNameById[product.categoryId!] ?? 'Categoría sin nombre';
+
+      final row = groups.putIfAbsent(
+        categoryName,
+        () => <String, dynamic>{
+          'name': categoryName,
+          'product_count': 0,
+          'total_units': 0.0,
+          'inventory_value': 0.0,
+          'potential_revenue': 0.0,
+          'potential_profit': 0.0,
+        },
+      );
+
+      final stock = product.stock;
+      final cost = _productCost(product);
+      final price = _productSalePrice(product);
+
+      row['product_count'] = _toInt(row['product_count']) + 1;
+      row['total_units'] = _toDouble(row['total_units']) + stock;
+      row['inventory_value'] =
+          _toDouble(row['inventory_value']) + (stock * cost);
+      row['potential_revenue'] =
+          _toDouble(row['potential_revenue']) + (stock * price);
+      row['potential_profit'] =
+          _toDouble(row['potential_profit']) + (stock * (price - cost));
+    }
+
+    return groups.values.toList()..sort(
+      (a, b) => _toDouble(
+        b['inventory_value'],
+      ).compareTo(_toDouble(a['inventory_value'])),
+    );
+  }
+
+  List<Map<String, dynamic>> _buildSupplierFallback(
+    List<ProductModel> products,
+  ) {
+    final groups = <String, Map<String, dynamic>>{};
+
+    for (final product in products) {
+      final supplierName = _productSupplierName(product);
+
+      final row = groups.putIfAbsent(
+        supplierName,
+        () => <String, dynamic>{
+          'name': supplierName,
+          'product_count': 0,
+          'total_units': 0.0,
+          'inventory_value': 0.0,
+          'potential_revenue': 0.0,
+          'potential_profit': 0.0,
+        },
+      );
+
+      final stock = product.stock;
+      final cost = _productCost(product);
+      final price = _productSalePrice(product);
+
+      row['product_count'] = _toInt(row['product_count']) + 1;
+      row['total_units'] = _toDouble(row['total_units']) + stock;
+      row['inventory_value'] =
+          _toDouble(row['inventory_value']) + (stock * cost);
+      row['potential_revenue'] =
+          _toDouble(row['potential_revenue']) + (stock * price);
+      row['potential_profit'] =
+          _toDouble(row['potential_profit']) + (stock * (price - cost));
+    }
+
+    return groups.values.toList()..sort(
+      (a, b) => _toDouble(
+        b['inventory_value'],
+      ).compareTo(_toDouble(a['inventory_value'])),
+    );
+  }
+
+  bool _breakdownHasFinancialValues(List<Map<String, dynamic>> rows) {
+    return rows.any(
+      (row) =>
+          _toDouble(row['inventory_value']).abs() > 0.0001 ||
+          _toDouble(row['potential_revenue']).abs() > 0.0001 ||
+          _toDouble(row['potential_profit']).abs() > 0.0001,
+    );
   }
 
   Future<void> _loadReportData() async {
@@ -1864,16 +2892,95 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
         _productsRepo.calculateTotalPotentialProfit(),
         _productsRepo.getInventoryByCategory(),
         _productsRepo.getInventoryBySupplier(),
+        _categoriesRepo.getAll(),
       ]);
 
       final products = results[0] as List<ProductModel>;
-      final inventoryValue = results[1] as double;
-      final potentialRevenue = results[2] as double;
-      final potentialProfit = results[3] as double;
-      final byCategory = results[4] as List<Map<String, dynamic>>;
-      final bySupplier = results[5] as List<Map<String, dynamic>>;
+      final repositoryInventoryValue = _toDouble(results[1]);
+      final repositoryPotentialRevenue = _toDouble(results[2]);
+      final repositoryPotentialProfit = _toDouble(results[3]);
 
-      final totalUnits = products.fold<double>(0, (sum, p) => sum + p.stock);
+      final rawCategory = (results[4] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+
+      final rawSupplier = (results[5] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+
+      final categories = results[6] as List<CategoryModel>;
+      _categoryNameById = <int, String>{
+        for (final category in categories)
+          if (category.id != null && category.name.trim().isNotEmpty)
+            category.id!: category.name.trim(),
+      };
+
+      final normalizedCategory = _normalizeBreakdownRows(
+        rawCategory,
+        resolveName: _resolvedCategoryName,
+      );
+
+      final normalizedSupplier = _normalizeBreakdownRows(
+        rawSupplier,
+        resolveName: _resolvedSupplierName,
+      );
+
+      final categoryFallback = _buildCategoryFallback(products);
+      final supplierFallback = _buildSupplierFallback(products);
+
+      final categoryHasRealNames = normalizedCategory.any(
+        (row) =>
+            (row['name']?.toString().trim().isNotEmpty ?? false) &&
+            row['name'] != 'Sin categoría' &&
+            row['name'] != 'Categoría sin nombre',
+      );
+
+      final supplierHasRealNames = normalizedSupplier.any(
+        (row) =>
+            (row['name']?.toString().trim().isNotEmpty ?? false) &&
+            row['name'] != 'Sin suplidor',
+      );
+
+      final byCategory =
+          categoryHasRealNames ||
+              _breakdownHasFinancialValues(normalizedCategory)
+          ? normalizedCategory
+          : categoryFallback;
+
+      final bySupplier =
+          supplierHasRealNames ||
+              _breakdownHasFinancialValues(normalizedSupplier)
+          ? normalizedSupplier
+          : supplierFallback;
+
+      final totalUnits = products.fold<double>(
+        0,
+        (sum, product) => sum + product.stock,
+      );
+
+      final fallbackInventoryValue = products.fold<double>(
+        0,
+        (sum, product) => sum + (product.stock * _productCost(product)),
+      );
+
+      final fallbackRevenue = products.fold<double>(
+        0,
+        (sum, product) => sum + (product.stock * _productSalePrice(product)),
+      );
+
+      final fallbackProfit = fallbackRevenue - fallbackInventoryValue;
+
+      final inventoryValue = repositoryInventoryValue.abs() > 0.0001
+          ? repositoryInventoryValue
+          : fallbackInventoryValue;
+
+      final potentialRevenue = repositoryPotentialRevenue.abs() > 0.0001
+          ? repositoryPotentialRevenue
+          : fallbackRevenue;
+
+      final potentialProfit = repositoryPotentialProfit.abs() > 0.0001
+          ? repositoryPotentialProfit
+          : fallbackProfit;
 
       if (!mounted) return;
 
@@ -1883,8 +2990,8 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
         _totalInventoryValue = inventoryValue;
         _totalPotentialRevenue = potentialRevenue;
         _totalPotentialProfit = potentialProfit;
-        _averageMargin = inventoryValue > 0
-            ? (potentialProfit / inventoryValue) * 100
+        _averageMargin = potentialRevenue > 0
+            ? (potentialProfit / potentialRevenue) * 100
             : 0;
         _inventoryByCategory = byCategory;
         _inventoryBySupplier = bySupplier;
@@ -1992,18 +3099,22 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                       content: Text('Exportar PDF - próximamente'),
                     ),
                   );
+                  break;
                 case _ReportAction.exportExcel:
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Exportar Excel - próximamente'),
                     ),
                   );
+                  break;
                 case _ReportAction.print:
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Imprimir - próximamente')),
                   );
+                  break;
                 case _ReportAction.refresh:
                   _loadReportData();
+                  break;
               }
             },
             shape: RoundedRectangleBorder(
@@ -2026,12 +3137,12 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                       color: scheme.error,
                     ),
                     const SizedBox(width: 10),
-                    Text(
+                    const Text(
                       'Exportar PDF',
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF0F172A),
+                        color: Color(0xFF0F172A),
                       ),
                     ),
                   ],
@@ -2048,12 +3159,12 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                       color: Colors.green.shade700,
                     ),
                     const SizedBox(width: 10),
-                    Text(
+                    const Text(
                       'Exportar Excel',
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF0F172A),
+                        color: Color(0xFF0F172A),
                       ),
                     ),
                   ],
@@ -2066,12 +3177,12 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                   children: [
                     Icon(Icons.print_rounded, size: 18, color: scheme.primary),
                     const SizedBox(width: 10),
-                    Text(
+                    const Text(
                       'Imprimir',
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF0F172A),
+                        color: Color(0xFF0F172A),
                       ),
                     ),
                   ],
@@ -2089,12 +3200,12 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                       color: scheme.onSurfaceVariant,
                     ),
                     const SizedBox(width: 10),
-                    Text(
+                    const Text(
                       'Actualizar datos',
                       style: TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF0F172A),
+                        color: Color(0xFF0F172A),
                       ),
                     ),
                   ],
@@ -2111,10 +3222,10 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                   color: scheme.outlineVariant.withOpacity(0.5),
                 ),
               ),
-              child: Icon(
+              child: const Icon(
                 Icons.more_horiz_rounded,
                 size: 20,
-                color: const Color(0xFF0F172A),
+                color: Color(0xFF0F172A),
               ),
             ),
           ),
@@ -2157,53 +3268,74 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
             ],
           ),
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildKpiCard(
-                scheme: scheme,
-                icon: Icons.inventory_2_rounded,
-                label: 'Productos activos',
-                value: _unitsFormat.format(_totalProducts),
-                color: Colors.indigo,
-              ),
-              _buildKpiCard(
-                scheme: scheme,
-                icon: Icons.inventory_rounded,
-                label: 'Unidades en stock',
-                value: _unitsFormat.format(_totalUnits),
-                color: Colors.blue,
-              ),
-              _buildKpiCard(
-                scheme: scheme,
-                icon: Icons.account_balance_wallet_rounded,
-                label: 'Inversión total',
-                value: _currencyFormat.format(_totalInventoryValue),
-                color: Colors.teal,
-              ),
-              _buildKpiCard(
-                scheme: scheme,
-                icon: Icons.attach_money_rounded,
-                label: 'Valor de venta',
-                value: _currencyFormat.format(_totalPotentialRevenue),
-                color: Colors.green,
-              ),
-              _buildKpiCard(
-                scheme: scheme,
-                icon: Icons.trending_up_rounded,
-                label: 'Ganancia potencial',
-                value: _currencyFormat.format(_totalPotentialProfit),
-                color: Colors.purple,
-              ),
-              _buildKpiCard(
-                scheme: scheme,
-                icon: Icons.percent_rounded,
-                label: 'Margen promedio',
-                value: '${_averageMargin.toStringAsFixed(1)}%',
-                color: Colors.orange,
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final columns = width >= 1450
+                  ? 6
+                  : width >= 1050
+                  ? 3
+                  : width >= 680
+                  ? 2
+                  : 1;
+              const gap = 10.0;
+              final cardWidth = (width - (gap * (columns - 1))) / columns;
+
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: [
+                  _buildKpiCard(
+                    width: cardWidth,
+                    scheme: scheme,
+                    icon: Icons.inventory_2_rounded,
+                    label: 'Productos activos',
+                    value: _unitsFormat.format(_totalProducts),
+                    color: Colors.indigo,
+                  ),
+                  _buildKpiCard(
+                    width: cardWidth,
+                    scheme: scheme,
+                    icon: Icons.inventory_rounded,
+                    label: 'Unidades en stock',
+                    value: _unitsFormat.format(_totalUnits),
+                    color: Colors.blue,
+                  ),
+                  _buildKpiCard(
+                    width: cardWidth,
+                    scheme: scheme,
+                    icon: Icons.account_balance_wallet_rounded,
+                    label: 'Inversión total',
+                    value: _currencyFormat.format(_totalInventoryValue),
+                    color: Colors.teal,
+                  ),
+                  _buildKpiCard(
+                    width: cardWidth,
+                    scheme: scheme,
+                    icon: Icons.attach_money_rounded,
+                    label: 'Valor de venta',
+                    value: _currencyFormat.format(_totalPotentialRevenue),
+                    color: Colors.green,
+                  ),
+                  _buildKpiCard(
+                    width: cardWidth,
+                    scheme: scheme,
+                    icon: Icons.trending_up_rounded,
+                    label: 'Ganancia potencial',
+                    value: _currencyFormat.format(_totalPotentialProfit),
+                    color: Colors.purple,
+                  ),
+                  _buildKpiCard(
+                    width: cardWidth,
+                    scheme: scheme,
+                    icon: Icons.percent_rounded,
+                    label: 'Margen sobre venta',
+                    value: '${_averageMargin.toStringAsFixed(1)}%',
+                    color: Colors.orange,
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -2211,6 +3343,7 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
   }
 
   Widget _buildKpiCard({
+    required double width,
     required ColorScheme scheme,
     required IconData icon,
     required String label,
@@ -2218,8 +3351,9 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
     required Color color,
   }) {
     return Container(
-      width: 170,
-      padding: const EdgeInsets.all(12),
+      width: width,
+      constraints: const BoxConstraints(minHeight: 82),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: color.withOpacity(0.07),
         borderRadius: BorderRadius.circular(14),
@@ -2228,39 +3362,42 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
       child: Row(
         children: [
           Container(
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
               color: color.withOpacity(0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 17, color: color),
+            child: Icon(icon, size: 18, color: color),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                    fontFamily: 'Inter',
-                    color: const Color(0xFF0F172A),
-                    letterSpacing: -0.2,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Inter',
+                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.2,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 1),
+                const SizedBox(height: 3),
                 Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                     color: scheme.onSurfaceVariant,
                     fontFamily: 'Inter',
@@ -2275,153 +3412,47 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
   }
 
   Widget _buildCategoryBreakdown(ThemeData theme, ColorScheme scheme) {
-    return ProductsSurface(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-      radius: 18,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: scheme.primary.withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.category_rounded,
-                  size: 15,
-                  color: scheme.primary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Por categoría',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  fontFamily: 'Inter',
-                  color: const Color(0xFF0F172A),
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${_inventoryByCategory.length} categorías',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (_inventoryByCategory.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: Text(
-                  'No hay datos de inventario por categoría',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-            )
-          else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowHeight: 40,
-                dataRowMinHeight: 46,
-                dataRowMaxHeight: 50,
-                columnSpacing: 20,
-                headingTextStyle: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: scheme.onSurfaceVariant,
-                  fontFamily: 'Inter',
-                  fontSize: 11,
-                ),
-                columns: const [
-                  DataColumn(label: Text('Categoría')),
-                  DataColumn(label: Text('Prod.'), numeric: true),
-                  DataColumn(label: Text('Unds.'), numeric: true),
-                  DataColumn(label: Text('Inversión'), numeric: true),
-                  DataColumn(label: Text('Venta'), numeric: true),
-                  DataColumn(label: Text('Ganancia'), numeric: true),
-                ],
-                rows: _inventoryByCategory.map((item) {
-                  final name = (item['name'] as String?) ?? 'Sin categoría';
-                  final count = (item['product_count'] as num?)?.toInt() ?? 0;
-                  final units = (item['total_units'] as num?)?.toDouble() ?? 0;
-                  final invValue =
-                      (item['inventory_value'] as num?)?.toDouble() ?? 0;
-                  final revValue =
-                      (item['potential_revenue'] as num?)?.toDouble() ?? 0;
-                  final profit =
-                      (item['potential_profit'] as num?)?.toDouble() ?? 0;
-
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        SizedBox(
-                          width: 160,
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _unitsFormat.format(count),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _unitsFormat.format(units),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _currencyFormat.format(invValue),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _currencyFormat.format(revValue),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _currencyFormat.format(profit),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.green.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }).toList(),
-              ),
-            ),
-        ],
-      ),
+    return _buildBreakdownCard(
+      theme: theme,
+      scheme: scheme,
+      title: 'Por categoría',
+      icon: Icons.category_rounded,
+      accent: scheme.primary,
+      countLabel: '${_inventoryByCategory.length} categorías',
+      emptyText: 'No hay datos de inventario por categoría',
+      firstColumnTitle: 'Categoría',
+      rows: _inventoryByCategory,
+      scrollController: _categoryTableScrollController,
     );
   }
 
   Widget _buildSupplierBreakdown(ThemeData theme, ColorScheme scheme) {
+    return _buildBreakdownCard(
+      theme: theme,
+      scheme: scheme,
+      title: 'Por suplidor',
+      icon: Icons.local_shipping_rounded,
+      accent: scheme.tertiary,
+      countLabel: '${_inventoryBySupplier.length} suplidores',
+      emptyText: 'No hay datos de inventario por suplidor',
+      firstColumnTitle: 'Suplidor',
+      rows: _inventoryBySupplier,
+      scrollController: _supplierTableScrollController,
+    );
+  }
+
+  Widget _buildBreakdownCard({
+    required ThemeData theme,
+    required ColorScheme scheme,
+    required String title,
+    required IconData icon,
+    required Color accent,
+    required String countLabel,
+    required String emptyText,
+    required String firstColumnTitle,
+    required List<Map<String, dynamic>> rows,
+    required ScrollController scrollController,
+  }) {
     return ProductsSurface(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
       radius: 18,
@@ -2434,18 +3465,14 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: scheme.tertiary.withOpacity(0.10),
+                  color: accent.withOpacity(0.10),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  Icons.local_shipping_rounded,
-                  size: 15,
-                  color: scheme.tertiary,
-                ),
+                child: Icon(icon, size: 15, color: accent),
               ),
               const SizedBox(width: 8),
               Text(
-                'Por suplidor',
+                title,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                   fontFamily: 'Inter',
@@ -2454,7 +3481,7 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
               ),
               const Spacer(),
               Text(
-                '${_inventoryBySupplier.length} suplidores',
+                countLabel,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
@@ -2463,12 +3490,12 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
             ],
           ),
           const SizedBox(height: 14),
-          if (_inventoryBySupplier.isEmpty)
+          if (rows.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                 child: Text(
-                  'No hay datos de inventario por suplidor',
+                  emptyText,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -2476,92 +3503,146 @@ class _InventoryCountPageState extends State<InventoryCountPage> {
               ),
             )
           else
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowHeight: 40,
-                dataRowMinHeight: 46,
-                dataRowMaxHeight: 50,
-                columnSpacing: 20,
-                headingTextStyle: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: scheme.onSurfaceVariant,
-                  fontFamily: 'Inter',
-                  fontSize: 11,
-                ),
-                columns: const [
-                  DataColumn(label: Text('Suplidor')),
-                  DataColumn(label: Text('Prod.'), numeric: true),
-                  DataColumn(label: Text('Unds.'), numeric: true),
-                  DataColumn(label: Text('Inversión'), numeric: true),
-                  DataColumn(label: Text('Venta'), numeric: true),
-                  DataColumn(label: Text('Ganancia'), numeric: true),
-                ],
-                rows: _inventoryBySupplier.map((item) {
-                  final name = (item['name'] as String?) ?? 'Sin suplidor';
-                  final count = (item['product_count'] as num?)?.toInt() ?? 0;
-                  final units = (item['total_units'] as num?)?.toDouble() ?? 0;
-                  final invValue =
-                      (item['inventory_value'] as num?)?.toDouble() ?? 0;
-                  final revValue =
-                      (item['potential_revenue'] as num?)?.toDouble() ?? 0;
-                  final profit =
-                      (item['potential_profit'] as num?)?.toDouble() ?? 0;
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return Scrollbar(
+                  controller: scrollController,
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: scrollController,
+                    primary: false,
+                    scrollDirection: Axis.horizontal,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: constraints.maxWidth,
+                      ),
+                      child: DataTable(
+                        headingRowHeight: 42,
+                        dataRowMinHeight: 48,
+                        dataRowMaxHeight: 54,
+                        columnSpacing: 26,
+                        horizontalMargin: 12,
+                        headingTextStyle: theme.textTheme.labelSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurfaceVariant,
+                          fontFamily: 'Inter',
+                          fontSize: 11,
+                        ),
+                        columns: [
+                          DataColumn(label: Text(firstColumnTitle)),
+                          const DataColumn(
+                            label: Text('Productos'),
+                            numeric: true,
+                          ),
+                          const DataColumn(
+                            label: Text('Unidades'),
+                            numeric: true,
+                          ),
+                          const DataColumn(
+                            label: Text('Inversión'),
+                            numeric: true,
+                          ),
+                          const DataColumn(
+                            label: Text('Valor venta'),
+                            numeric: true,
+                          ),
+                          const DataColumn(
+                            label: Text('Ganancia'),
+                            numeric: true,
+                          ),
+                        ],
+                        rows: rows.map((item) {
+                          final name =
+                              item['name']?.toString().trim().isNotEmpty == true
+                              ? item['name'].toString().trim()
+                              : firstColumnTitle == 'Categoría'
+                              ? 'Sin categoría'
+                              : 'Sin suplidor';
 
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        SizedBox(
-                          width: 160,
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+                          final count = _toInt(item['product_count']);
+                          final units = _toDouble(item['total_units']);
+                          final invValue = _toDouble(item['inventory_value']);
+                          final revValue = _toDouble(item['potential_revenue']);
+                          final profit = _toDouble(item['potential_profit']);
+
+                          final profitColor = profit < 0
+                              ? scheme.error
+                              : Colors.green.shade700;
+
+                          return DataRow(
+                            cells: [
+                              DataCell(
+                                SizedBox(
+                                  width: 220,
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _unitsFormat.format(count),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _unitsFormat.format(units),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _currencyFormat.format(invValue),
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _currencyFormat.format(revValue),
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  _currencyFormat.format(profit),
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: profitColor,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList(),
                       ),
-                      DataCell(
-                        Text(
-                          _unitsFormat.format(count),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _unitsFormat.format(units),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _currencyFormat.format(invValue),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _currencyFormat.format(revValue),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                      DataCell(
-                        Text(
-                          _currencyFormat.format(profit),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.green.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }).toList(),
-              ),
+                    ),
+                  ),
+                );
+              },
             ),
         ],
       ),

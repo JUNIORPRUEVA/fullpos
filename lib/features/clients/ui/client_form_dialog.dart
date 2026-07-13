@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/errors/error_handler.dart';
+import '../../../core/ui/dialog_keyboard_shortcuts.dart';
 import '../data/client_model.dart';
 import '../data/clients_repository.dart';
 import '../utils/phone_validator.dart';
@@ -283,8 +285,25 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
   Widget build(BuildContext context) {
     final isEditing = widget.client != null;
 
-    return Dialog(
-      child: Container(
+    return DialogKeyboardShortcuts(
+      onSubmit: () {
+        if (!_isLoading) return _handleSave();
+      },
+      onCancel: () {
+        if (!_isLoading) Navigator.of(context).pop(null);
+      },
+      extraShortcuts: {
+        const SingleActivator(
+          LogicalKeyboardKey.enter,
+          control: true,
+        ): const ActivateIntent(),
+        const SingleActivator(
+          LogicalKeyboardKey.numpadEnter,
+          control: true,
+        ): const ActivateIntent(),
+      },
+      child: Dialog(
+        child: Container(
         constraints: const BoxConstraints(maxWidth: 600),
         child: SingleChildScrollView(
           child: Padding(
@@ -447,6 +466,7 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
               ),
             ),
           ),
+        ),
         ),
       ),
     );

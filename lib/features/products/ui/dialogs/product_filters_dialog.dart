@@ -4,9 +4,8 @@ import 'package:flutter/services.dart';
 import '../../data/products_repository.dart';
 import '../../models/category_model.dart';
 import '../../models/supplier_model.dart';
-import '../widgets/products_surface.dart';
 
-/// Diálogo de filtros avanzados para productos
+/// Panel lateral de filtros avanzados para productos.
 class ProductFiltersDialog extends StatefulWidget {
   final ProductFilters? initialFilters;
   final List<CategoryModel> categories;
@@ -32,11 +31,12 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialFilters != null) {
-      _selectedCategoryId = widget.initialFilters!.categoryId;
-      _selectedSupplierId = widget.initialFilters!.supplierId;
-      _hasLowStock = widget.initialFilters!.hasLowStock;
-      _isOutOfStock = widget.initialFilters!.isOutOfStock;
+    final filters = widget.initialFilters;
+    if (filters != null) {
+      _selectedCategoryId = filters.categoryId;
+      _selectedSupplierId = filters.supplierId;
+      _hasLowStock = filters.hasLowStock;
+      _isOutOfStock = filters.isOutOfStock;
     }
   }
 
@@ -50,13 +50,24 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
   }
 
   void _applyFilters() {
-    final filters = ProductFilters(
-      categoryId: _selectedCategoryId,
-      supplierId: _selectedSupplierId,
-      hasLowStock: _hasLowStock,
-      isOutOfStock: _isOutOfStock,
+    Navigator.pop(
+      context,
+      ProductFilters(
+        categoryId: _selectedCategoryId,
+        supplierId: _selectedSupplierId,
+        hasLowStock: _hasLowStock,
+        isOutOfStock: _isOutOfStock,
+      ),
     );
-    Navigator.pop(context, filters);
+  }
+
+  int get _activeFilterCount {
+    var count = 0;
+    if (_selectedCategoryId != null) count++;
+    if (_selectedSupplierId != null) count++;
+    if (_hasLowStock == true) count++;
+    if (_isOutOfStock == true) count++;
+    return count;
   }
 
   @override
@@ -64,7 +75,9 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final viewport = MediaQuery.sizeOf(context);
-    final dialogWidth = (viewport.width * 0.34).clamp(420.0, 540.0);
+    final panelWidth = viewport.width < 620
+        ? viewport.width
+        : (viewport.width * 0.28).clamp(390.0, 460.0);
 
     return Shortcuts(
       shortcuts: {
@@ -87,190 +100,52 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
           autofocus: true,
           child: Align(
             alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(72, 12, 12, 12),
-              child: Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: EdgeInsets.zero,
-                child: SizedBox(
-                  width: dialogWidth,
-                  child: ProductsSurface(
-                    padding: EdgeInsets.zero,
+            child: Material(
+              color: scheme.surface,
+              elevation: 0,
+              child: SizedBox(
+                width: panelWidth,
+                height: double.infinity,
+                child: SafeArea(
+                  left: false,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      border: Border(
+                        left: BorderSide(
+                          color: scheme.outlineVariant.withOpacity(0.85),
+                        ),
+                      ),
+                    ),
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-                          decoration: BoxDecoration(
-                            color: scheme.surface,
-                            border: Border(
-                              bottom: BorderSide(color: scheme.outlineVariant),
-                            ),
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(22),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'FILTROS DE CATÁLOGO',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.5,
-                                  ),
+                        _buildHeader(theme, scheme),
+                        Expanded(
+                          child: CustomScrollView(
+                            slivers: [
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  18,
+                                  18,
+                                  18,
+                                  20,
                                 ),
-                              ),
-                              IconButton(
-                                visualDensity: VisualDensity.compact,
-                                onPressed: () => Navigator.pop(context),
-                                icon: const Icon(Icons.close),
+                                sliver: SliverList.list(
+                                  children: [
+                                    _buildHint(theme, scheme),
+                                    const SizedBox(height: 18),
+                                    _buildCategorySection(theme, scheme),
+                                    const SizedBox(height: 18),
+                                    _buildSupplierSection(theme, scheme),
+                                    const SizedBox(height: 18),
+                                    _buildStockSection(theme, scheme),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Refina el catálogo con los filtros clave del día a día.',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: scheme.onSurfaceVariant,
-                                    height: 1.35,
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                DropdownButtonFormField<int?>(
-                                  value: _selectedCategoryId,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Categoría',
-                                    isDense: true,
-                                    filled: true,
-                                    fillColor: Colors.white,
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: [
-                                    const DropdownMenuItem<int?>(
-                                      value: null,
-                                      child: Text('Todas'),
-                                    ),
-                                    ...widget.categories.map(
-                                      (c) => DropdownMenuItem<int?>(
-                                        value: c.id,
-                                        child: Text(c.name),
-                                      ),
-                                    ),
-                                  ],
-                                  onChanged: (value) => setState(
-                                    () => _selectedCategoryId = value,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                DropdownButtonFormField<int?>(
-                                  value: _selectedSupplierId,
-                                  isExpanded: true,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Suplidor',
-                                    isDense: true,
-                                    filled: true,
-                                    fillColor: Colors.white,
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: [
-                                    const DropdownMenuItem<int?>(
-                                      value: null,
-                                      child: Text('Todos'),
-                                    ),
-                                    ...widget.suppliers.map(
-                                      (s) => DropdownMenuItem<int?>(
-                                        value: s.id,
-                                        child: Text(s.name),
-                                      ),
-                                    ),
-                                  ],
-                                  onChanged: (value) => setState(
-                                    () => _selectedSupplierId = value,
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: scheme.surfaceContainerHighest.withOpacity(0.45),
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(color: scheme.outlineVariant),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Stock',
-                                        style: theme.textTheme.labelLarge?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          color: scheme.onSurface,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 8,
-                                        children: [
-                                          FilterChip(
-                                            label: const Text('Stock bajo'),
-                                            selected: _hasLowStock == true,
-                                            onSelected: (selected) {
-                                              setState(() {
-                                                _hasLowStock = selected ? true : null;
-                                              });
-                                            },
-                                          ),
-                                          FilterChip(
-                                            label: const Text('Agotados'),
-                                            selected: _isOutOfStock == true,
-                                            onSelected: (selected) {
-                                              setState(() {
-                                                _isOutOfStock = selected ? true : null;
-                                              });
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('Cancelar'),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    TextButton(
-                                      onPressed: _clearFilters,
-                                      child: const Text('Limpiar'),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    FilledButton(
-                                      onPressed: _applyFilters,
-                                      child: const Text('Aplicar'),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                        _buildActions(scheme),
                       ],
                     ),
                   ),
@@ -279,6 +154,353 @@ class _ProductFiltersDialogState extends State<ProductFiltersDialog> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme, ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 14, 14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(
+          bottom: BorderSide(color: scheme.outlineVariant.withOpacity(0.85)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: scheme.primary.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.tune_rounded, color: scheme.primary, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Filtros de catálogo',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF0F172A),
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _activeFilterCount == 0
+                      ? 'Sin filtros activos'
+                      : '$_activeFilterCount filtros activos',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Cerrar',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHint(ThemeData theme, ColorScheme scheme) {
+    return Text(
+      'Refina el listado sin salir del catálogo.',
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: scheme.onSurfaceVariant,
+        fontWeight: FontWeight.w600,
+        height: 1.35,
+      ),
+    );
+  }
+
+  Widget _buildCategorySection(ThemeData theme, ColorScheme scheme) {
+    return _FilterSection(
+      title: 'Categoría',
+      icon: Icons.category_rounded,
+      child: Column(
+        children: [
+          _optionTile<int?>(
+            theme: theme,
+            scheme: scheme,
+            label: 'Todas',
+            value: null,
+            selectedValue: _selectedCategoryId,
+            onSelected: (value) => setState(() => _selectedCategoryId = value),
+          ),
+          ...widget.categories.map(
+            (category) => _optionTile<int?>(
+              theme: theme,
+              scheme: scheme,
+              label: category.name,
+              value: category.id,
+              selectedValue: _selectedCategoryId,
+              onSelected: (value) =>
+                  setState(() => _selectedCategoryId = value),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSupplierSection(ThemeData theme, ColorScheme scheme) {
+    return _FilterSection(
+      title: 'Suplidor',
+      icon: Icons.local_shipping_rounded,
+      child: Column(
+        children: [
+          _optionTile<int?>(
+            theme: theme,
+            scheme: scheme,
+            label: 'Todos',
+            value: null,
+            selectedValue: _selectedSupplierId,
+            onSelected: (value) => setState(() => _selectedSupplierId = value),
+          ),
+          ...widget.suppliers.map(
+            (supplier) => _optionTile<int?>(
+              theme: theme,
+              scheme: scheme,
+              label: supplier.name,
+              value: supplier.id,
+              selectedValue: _selectedSupplierId,
+              onSelected: (value) =>
+                  setState(() => _selectedSupplierId = value),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStockSection(ThemeData theme, ColorScheme scheme) {
+    return _FilterSection(
+      title: 'Stock',
+      icon: Icons.inventory_2_rounded,
+      child: Column(
+        children: [
+          _toggleTile(
+            theme: theme,
+            scheme: scheme,
+            label: 'Stock bajo',
+            icon: Icons.priority_high_rounded,
+            selected: _hasLowStock == true,
+            onTap: () {
+              setState(() {
+                _hasLowStock = _hasLowStock == true ? null : true;
+              });
+            },
+          ),
+          _toggleTile(
+            theme: theme,
+            scheme: scheme,
+            label: 'Agotados',
+            icon: Icons.remove_shopping_cart_rounded,
+            selected: _isOutOfStock == true,
+            onTap: () {
+              setState(() {
+                _isOutOfStock = _isOutOfStock == true ? null : true;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _optionTile<T>({
+    required ThemeData theme,
+    required ColorScheme scheme,
+    required String label,
+    required T value,
+    required T selectedValue,
+    required ValueChanged<T> onSelected,
+  }) {
+    final selected = value == selectedValue;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => onSelected(value),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 38),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected ? scheme.primary.withOpacity(0.09) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected
+                  ? scheme.primary.withOpacity(0.35)
+                  : scheme.outlineVariant.withOpacity(0.72),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                size: 18,
+                color: selected ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF111827),
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _toggleTile({
+    required ThemeData theme,
+    required ColorScheme scheme,
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? scheme.primary.withOpacity(0.09) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? scheme.primary.withOpacity(0.38)
+                  : scheme.outlineVariant.withOpacity(0.75),
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? scheme.primary : scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF111827),
+                  ),
+                ),
+              ),
+              Switch.adaptive(
+                value: selected,
+                onChanged: (_) => onTap(),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActions(ColorScheme scheme) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(
+          top: BorderSide(color: scheme.outlineVariant.withOpacity(0.85)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _clearFilters,
+              child: const Text('Limpiar'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton(
+              onPressed: _applyFilters,
+              child: const Text('Aplicar'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterSection extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _FilterSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.75)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: scheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
       ),
     );
   }

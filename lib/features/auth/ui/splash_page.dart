@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/bootstrap/app_bootstrap_controller.dart';
 import '../../../core/bootstrap/bootstrap_recovery_dialog.dart';
@@ -20,6 +23,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
   late final Animation<double> _logoFade;
   late final Animation<double> _logoScale;
   late final Animation<double> _logoFloat;
+  bool _retrying = false;
 
   @override
   void initState() {
@@ -33,17 +37,12 @@ class _SplashPageState extends ConsumerState<SplashPage>
       parent: _controller,
       curve: const Interval(0.0, 0.28, curve: Curves.easeOut),
     );
-    _logoScale = Tween<double>(begin: 0.92, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    _logoScale = Tween<double>(
+      begin: 0.92,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _logoFloat = Tween<double>(begin: -4, end: 6).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeInOutSine,
-      ),
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine),
     );
   }
 
@@ -53,127 +52,209 @@ class _SplashPageState extends ConsumerState<SplashPage>
     super.dispose();
   }
 
+  Future<void> _retryBootstrap() async {
+    if (_retrying) return;
+    setState(() => _retrying = true);
+    try {
+      await ref.read(appBootstrapProvider).retry();
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
+
+  void _showRecoveryOptions(String message) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      BootstrapRecoveryDialog.show(
+        context,
+        errorMessage: message,
+        onRetry: _retryBootstrap,
+      );
+    });
+  }
+
+  void _closeApp() {
+    SystemNavigator.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final boot = ref.watch(appBootstrapProvider).snapshot;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFFFFFFF),
-              Color(0xFFF7FAFF),
-              Color(0xFFEEF4FF),
-            ],
+    return Shortcuts(
+      shortcuts: <ShortcutActivator, Intent>{
+        const SingleActivator(LogicalKeyboardKey.f5): const _RetryIntent(),
+        const SingleActivator(LogicalKeyboardKey.keyO, control: true):
+            const _OptionsIntent(),
+        const SingleActivator(LogicalKeyboardKey.escape): const _CloseIntent(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _RetryIntent: CallbackAction<_RetryIntent>(
+            onInvoke: (_) {
+              if (boot.status == BootStatus.error) unawaited(_retryBootstrap());
+              return null;
+            },
           ),
-        ),
-        child: Stack(
-          children: [
-            const Positioned(
-              top: -110,
-              right: -70,
-              child: _SplashGlow(size: 280, color: Color(0x261A56DB)),
-            ),
-            const Positioned(
-              bottom: -140,
-              left: -90,
-              child: _SplashGlow(size: 320, color: Color(0x1438BDF8)),
-            ),
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _AnimatedLogo(
-                        controller: _controller,
-                        logoFade: _logoFade,
-                        logoScale: _logoScale,
-                        logoFloat: _logoFloat,
-                      ),
-                      const SizedBox(height: 28),
-                      if (boot.status == BootStatus.error) ...[
-                        const Icon(
-                          Icons.error_outline_rounded,
-                          color: AppColors.error,
-                          size: 44,
-                        ),
-                        const SizedBox(height: AppSizes.spaceM),
-                        Text(
-                          boot.errorMessage ?? 'No se pudo iniciar la aplicación.',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurface.withOpacity(0.78),
-                            height: 1.3,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: AppSizes.spaceL),
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: () =>
-                                  ref.read(appBootstrapProvider).retry(),
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Reintentar'),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: () {
-                                final msg =
-                                    boot.errorMessage ??
-                                    'No se pudo iniciar la aplicación.';
-                                BootstrapRecoveryDialog.show(
-                                  context,
-                                  errorMessage: msg,
-                                  onRetry: () =>
-                                      ref.read(appBootstrapProvider).retry(),
-                                );
-                              },
-                              icon: const Icon(Icons.tune),
-                              label: const Text('Opciones'),
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: scheme.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          boot.message.isNotEmpty ? boot.message : 'Iniciando...',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF64748B),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ],
-                  ),
+          _OptionsIntent: CallbackAction<_OptionsIntent>(
+            onInvoke: (_) {
+              if (boot.status == BootStatus.error) {
+                _showRecoveryOptions(
+                  boot.errorMessage ?? 'No se pudo iniciar la aplicación.',
+                );
+              }
+              return null;
+            },
+          ),
+          _CloseIntent: CallbackAction<_CloseIntent>(
+            onInvoke: (_) {
+              if (boot.status == BootStatus.error) _closeApp();
+              return null;
+            },
+          ),
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            backgroundColor: Colors.white,
+            body: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFFFFFFF),
+                    Color(0xFFF7FAFF),
+                    Color(0xFFEEF4FF),
+                  ],
                 ),
               ),
+              child: Stack(
+                children: [
+                  const Positioned(
+                    top: -110,
+                    right: -70,
+                    child: _SplashGlow(size: 280, color: Color(0x261A56DB)),
+                  ),
+                  const Positioned(
+                    bottom: -140,
+                    left: -90,
+                    child: _SplashGlow(size: 320, color: Color(0x1438BDF8)),
+                  ),
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _AnimatedLogo(
+                              controller: _controller,
+                              logoFade: _logoFade,
+                              logoScale: _logoScale,
+                              logoFloat: _logoFloat,
+                            ),
+                            const SizedBox(height: 28),
+                            if (boot.status == BootStatus.error) ...[
+                              const Icon(
+                                Icons.error_outline_rounded,
+                                color: AppColors.error,
+                                size: 44,
+                              ),
+                              const SizedBox(height: AppSizes.spaceM),
+                              Text(
+                                boot.errorMessage ??
+                                    'No se pudo iniciar la aplicación.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: scheme.onSurface.withOpacity(0.78),
+                                  height: 1.3,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: AppSizes.spaceL),
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  FilledButton.icon(
+                                    onPressed: _retrying
+                                        ? null
+                                        : _retryBootstrap,
+                                    icon: const Icon(Icons.refresh),
+                                    label: Text(
+                                      _retrying
+                                          ? 'Reintentando...'
+                                          : 'Reintentar',
+                                    ),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      final msg =
+                                          boot.errorMessage ??
+                                          'No se pudo iniciar la aplicación.';
+                                      _showRecoveryOptions(msg);
+                                    },
+                                    icon: const Icon(Icons.tune),
+                                    label: const Text('Opciones'),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: _closeApp,
+                                    icon: const Icon(Icons.close),
+                                    label: const Text('Cerrar'),
+                                  ),
+                                ],
+                              ),
+                            ] else ...[
+                              SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  color: scheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                boot.message.isNotEmpty
+                                    ? boot.message
+                                    : 'Iniciando...',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: const Color(0xFF64748B),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _RetryIntent extends Intent {
+  const _RetryIntent();
+}
+
+class _OptionsIntent extends Intent {
+  const _OptionsIntent();
+}
+
+class _CloseIntent extends Intent {
+  const _CloseIntent();
 }
 
 class _AnimatedLogo extends StatelessWidget {
@@ -235,11 +316,7 @@ class _SplashGlow extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: RadialGradient(
-            colors: [
-              color,
-              color.withOpacity(0.26),
-              Colors.transparent,
-            ],
+            colors: [color, color.withOpacity(0.26), Colors.transparent],
             stops: const [0.0, 0.38, 1.0],
           ),
         ),

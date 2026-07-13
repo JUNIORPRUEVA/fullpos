@@ -77,30 +77,96 @@ class _UpdateGateState extends State<UpdateGate> {
           context: context,
           useRootNavigator: true,
           barrierDismissible: true,
-          builder: (dialogContext) => AlertDialog(
-            icon: const Icon(Icons.system_update_alt_rounded),
-            title: const Text('Actualización disponible'),
-            content: const Text(
-              'Hay una nueva actualización de FullPOS disponible.',
+          builder: (dialogContext) => Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cerrar'),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEAF2FF),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFBFD1F7)),
+                          ),
+                          child: const Icon(
+                            Icons.system_update_alt_rounded,
+                            color: Color(0xFF1A56DB),
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Actualización disponible',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Cerrar',
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          icon: const Icon(Icons.close_rounded, size: 20),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Hay una nueva versión de FullPOS lista para revisar.',
+                      style: TextStyle(
+                        color: Color(0xFF475569),
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text('Más tarde'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop();
+                              try {
+                                context.push('/settings/updates');
+                              } catch (_) {
+                                // Si falla la navegación, no interrumpir.
+                              }
+                            },
+                            icon: const Icon(
+                              Icons.visibility_rounded,
+                              size: 18,
+                            ),
+                            label: const Text('Ver actualización'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              FilledButton.icon(
-                onPressed: () {
-                  Navigator.of(dialogContext).pop();
-                  try {
-                    context.push('/settings/updates');
-                  } catch (_) {
-                    // Si falla la navegación, no interrumpir al usuario.
-                  }
-                },
-                icon: const Icon(Icons.visibility_rounded, size: 18),
-                label: const Text('Ver'),
-              ),
-            ],
+            ),
           ),
         ).whenComplete(() {
           _notificationDialogOpen = false;

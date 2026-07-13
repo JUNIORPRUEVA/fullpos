@@ -82,7 +82,7 @@ class _AppShellState extends State<AppShell> {
         final useCompactChrome = size.width <= 1366 || size.height <= 900;
         final topbarHeight = useCompactChrome ? 46.0 : AppSizes.topbarHeight;
         final footerHeight = showSalesFooter
-            ? (useCompactChrome ? 36.0 : AppSizes.footerHeight)
+            ? Footer.preferredHeightFor(size)
             : 0.0;
 
         final topbarWidget = Builder(

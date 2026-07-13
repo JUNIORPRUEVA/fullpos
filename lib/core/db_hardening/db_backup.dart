@@ -1,9 +1,9 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../backup/backup_paths.dart';
+import '../storage/fullpos_paths.dart';
 
 class DbBackup {
   DbBackup._();
@@ -14,7 +14,7 @@ class DbBackup {
   static const String _backupDirName = 'backups';
 
   Future<Directory> get _baseDir async {
-    final supportDir = await getApplicationSupportDirectory();
+    final supportDir = await FullPosPaths.dbHardeningBackupsDir();
     final dir = Directory(p.join(supportDir.path, _backupDirName));
     if (!await dir.exists()) {
       await dir.create(recursive: true);
@@ -25,7 +25,8 @@ class DbBackup {
   Future<void> createBackup(File dbFile, {String? reason}) async {
     if (!await dbFile.exists()) return;
     final baseDir = await _baseDir;
-    final name = 'fullpos_db_${_timestamp()}${reason != null ? '_$reason' : ''}.sqlite';
+    final name =
+        'fullpos_db_${_timestamp()}${reason != null ? '_$reason' : ''}.sqlite';
     final target = File(p.join(baseDir.path, name));
     await target.parent.create(recursive: true);
     await dbFile.copy(target.path);

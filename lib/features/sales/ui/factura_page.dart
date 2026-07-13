@@ -578,19 +578,19 @@ class _FacturaPageState extends State<FacturaPage> {
             12.0,
             28.0,
           );
-          final verticalPadding = 10.0;
-          final isWide = constraints.maxWidth >= 1200;
-          final detailWidth = constraints.maxWidth < 1300
-              ? 520.0
-              : constraints.maxWidth < 1600
-              ? 590.0
-              : 640.0;
+          const verticalPadding = 10.0;
+          const bottomPadding = 22.0;
+          const panelGap = 16.0;
 
-          final listPadding = EdgeInsets.fromLTRB(
+          // En escritorio mantenemos una distribución maestro-detalle estable.
+          // El listado ocupa aproximadamente 60% y el detalle 40%.
+          final isWide = constraints.maxWidth >= 1100;
+
+          final mobileListPadding = EdgeInsets.fromLTRB(
             horizontalPadding,
             verticalPadding,
             horizontalPadding,
-            22.0,
+            bottomPadding,
           );
 
           return Column(
@@ -600,25 +600,37 @@ class _FacturaPageState extends State<FacturaPage> {
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : isWide
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            child: _buildSalesTab(
-                              listPadding: listPadding,
-                              isWide: true,
+                    ? Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          horizontalPadding,
+                          verticalPadding,
+                          horizontalPadding,
+                          bottomPadding,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: _buildSalesTab(
+                                listPadding: EdgeInsets.zero,
+                                isWide: true,
+                              ),
                             ),
-                          ),
-                          if (_selectedSale != null) ...[
-                            const SizedBox(width: 16),
-                            SizedBox(
-                              width: detailWidth,
-                              child: _buildDetailsPanel(),
+                            const SizedBox(width: panelGap),
+                            Expanded(
+                              flex: 2,
+                              child: _selectedSale != null
+                                  ? _buildDetailsPanel()
+                                  : _buildEmptyDetailsPanel(),
                             ),
                           ],
-                        ],
+                        ),
                       )
-                    : _buildSalesTab(listPadding: listPadding, isWide: false),
+                    : _buildSalesTab(
+                        listPadding: mobileListPadding,
+                        isWide: false,
+                      ),
               ),
             ],
           );
@@ -1188,11 +1200,11 @@ class _FacturaPageState extends State<FacturaPage> {
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 18,
-                            vertical: 17,
+                            vertical: 14,
                           ),
                           child: LayoutBuilder(
                             builder: (context, rowConstraints) {
-                              final compact = rowConstraints.maxWidth < 860;
+                              final compact = rowConstraints.maxWidth < 760;
                               if (compact) {
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1626,6 +1638,69 @@ class _FacturaPageState extends State<FacturaPage> {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildEmptyDetailsPanel() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderSoft, width: 1),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 330),
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.receipt_long_outlined,
+                    size: 28,
+                    color: Color(0xFF2563EB),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Selecciona una factura',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: const Color(0xFF0F172A),
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Elige una factura del listado para consultar sus productos, '
+                  'totales, pagos y acciones disponibles.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w400,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

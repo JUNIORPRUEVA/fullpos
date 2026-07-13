@@ -14,6 +14,7 @@ import '../identity/terminal_id_log_recovery_service.dart';
 import '../recovery/app_recovery.dart';
 import '../recovery/recovery_lock.dart';
 import '../session/session_manager.dart';
+import '../storage/fullpos_paths.dart';
 
 enum HealingSeverity { info, warning, repairable, blocking }
 
@@ -384,9 +385,13 @@ class DatabaseEvidenceCollector {
   Future<List<Directory>> _candidateRoots() async {
     final docs = await getApplicationDocumentsDirectory();
     final support = await getApplicationSupportDirectory();
+    final root = await FullPosPaths.rootDir();
+    final backups = await FullPosPaths.backupsDir();
     final roots = <Directory>[
+      root,
       docs,
       support,
+      backups,
       Directory(p.join(docs.path, 'FULLPOS_BACKUPS')),
       Directory(p.join(support.path, 'FULLPOS_BACKUPS')),
     ];
@@ -577,10 +582,10 @@ class DatabaseHealer {
     String officialPath,
     String sourcePath,
   ) async {
-    final docs = await getApplicationDocumentsDirectory();
     final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
+    final backups = await FullPosPaths.backupsDir();
     final dir = Directory(
-      p.join(docs.path, 'FULLPOS_BACKUPS', 'self_healing_db_restore', stamp),
+      p.join(backups.path, 'self_healing_db_restore', stamp),
     );
     await dir.create(recursive: true);
     final official = File(officialPath);
@@ -892,6 +897,8 @@ class PathHealer {
     final hints = <String>[];
     final docs = await getApplicationDocumentsDirectory();
     final support = await getApplicationSupportDirectory();
+    final root = await FullPosPaths.rootDir();
+    hints.add('fullpos_root=${root.path}');
     hints.add('documents=${docs.path}');
     hints.add('support=${support.path}');
     final oneDrive = Platform.environment['OneDrive'];
@@ -922,11 +929,9 @@ class SelfHealingLog {
 
   static Future<File> _file() async {
     const isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
-    if (Platform.isWindows && !isFlutterTest) {
-      final local = _trim(Platform.environment['LOCALAPPDATA']);
-      if (local != null) {
-        return File(p.join(local, 'FullPOS', 'logs', 'self_healing.log'));
-      }
+    if (!isFlutterTest) {
+      final dir = await FullPosPaths.appLogsDir();
+      return File(p.join(dir.path, 'self_healing.log'));
     }
     final support = await getApplicationSupportDirectory();
     return File(p.join(support.path, 'FullPOS', 'logs', 'self_healing.log'));

@@ -3,7 +3,6 @@ import 'package:sqflite/sqflite.dart';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
@@ -12,6 +11,7 @@ import '../../../core/services/cloud_sync_service.dart';
 import '../../../core/sync/product_sync_event_bus.dart';
 import '../../../core/sync/product_sync_outbox_repository.dart';
 import '../../../core/sync/product_sync_service.dart';
+import '../../../core/storage/fullpos_paths.dart';
 import '../../../core/utils/color_utils.dart';
 import '../../settings/data/business_settings_repository.dart';
 import '../models/product_model.dart';
@@ -259,8 +259,7 @@ class ProductsRepository {
   }
 
   Future<Directory> _ensureProductsImagesDir() async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docsDir.path, 'product_images'));
+    final dir = await FullPosPaths.productImagesDir();
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

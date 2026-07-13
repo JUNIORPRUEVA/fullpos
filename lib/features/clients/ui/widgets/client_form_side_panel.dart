@@ -1,8 +1,10 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/errors/error_handler.dart';
+import '../../../../core/ui/dialog_keyboard_shortcuts.dart';
 import '../../data/client_model.dart';
 import '../../data/clients_repository.dart';
 import '../../utils/phone_validator.dart';
@@ -213,9 +215,26 @@ class _ClientFormSidePanelState extends State<ClientFormSidePanel> {
       builder: (context, constraints) {
         final contentMaxWidth = (constraints.maxWidth - 32).clamp(320.0, 460.0);
 
-        return Material(
-          color: Colors.white,
-          child: SafeArea(
+        return DialogKeyboardShortcuts(
+          onSubmit: () {
+            if (!_isSaving) return _save();
+          },
+          onCancel: () {
+            if (!_isSaving) widget.onClose();
+          },
+          extraShortcuts: {
+            const SingleActivator(
+              LogicalKeyboardKey.enter,
+              control: true,
+            ): const ActivateIntent(),
+            const SingleActivator(
+              LogicalKeyboardKey.numpadEnter,
+              control: true,
+            ): const ActivateIntent(),
+          },
+          child: Material(
+            color: Colors.white,
+            child: SafeArea(
             left: false,
             top: false,
             bottom: false,
@@ -416,6 +435,7 @@ class _ClientFormSidePanelState extends State<ClientFormSidePanel> {
                 ),
               ],
             ),
+          ),
           ),
         );
       },

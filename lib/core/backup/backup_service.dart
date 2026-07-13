@@ -17,6 +17,7 @@ import '../errors/error_mapper.dart';
 import '../identity/identity_recovery_bundle.dart';
 import '../logging/app_logger.dart';
 import '../session/session_manager.dart';
+import '../storage/fullpos_paths.dart';
 import '../update/update_shutdown_coordinator.dart';
 import '../utils/id_utils.dart';
 import 'backup_models.dart';
@@ -179,8 +180,14 @@ class BackupService {
 
       if (includeOptionalFiles) {
         final dirs = await BackupPaths.optionalDataDirs();
+        final productImagesDir = await FullPosPaths.productImagesDir();
+        final categoryImagesDir = await FullPosPaths.categoryImagesDir();
         for (final dir in dirs) {
-          final name = p.basename(dir.path);
+          final name = p.equals(dir.path, productImagesDir.path)
+              ? 'product_images'
+              : p.equals(dir.path, categoryImagesDir.path)
+              ? 'category_images'
+              : p.basename(dir.path);
           included.add('files/$name/');
           await for (final entity in dir.list(
             recursive: true,
@@ -538,13 +545,16 @@ class BackupService {
       // Restaurar archivos opcionales (si existen en zip).
       final extractedFilesDir = Directory(p.join(extractDir.path, 'files'));
       if (await extractedFilesDir.exists()) {
-        final docs = await BackupPaths.documentsDir();
         for (final entity
             in extractedFilesDir
                 .listSync(recursive: false)
                 .whereType<Directory>()) {
           final name = p.basename(entity.path);
-          final dest = Directory(p.join(docs.path, name));
+          final dest = name == 'product_images'
+              ? await FullPosPaths.productImagesDir()
+              : name == 'category_images'
+              ? await FullPosPaths.categoryImagesDir()
+              : Directory(p.join((await FullPosPaths.mediaDir()).path, name));
           await _copyDir(entity, dest);
         }
       }

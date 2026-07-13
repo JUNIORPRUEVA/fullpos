@@ -4,10 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import '../../../core/constants/app_sizes.dart';
 import '../../../core/session/ui_preferences.dart';
 import '../../../core/session/session_manager.dart';
+import '../../../core/storage/fullpos_paths.dart';
 import '../../../core/window/window_service.dart';
 import '../../auth/services/logout_flow_service.dart';
 import '../../auth/data/auth_repository.dart';
@@ -84,8 +84,7 @@ class _AccountPageState extends State<AccountPage> {
   }
 
   Future<Directory> _ensureProfileImagesDir() async {
-    final docsDir = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docsDir.path, 'profile_images'));
+    final dir = await FullPosPaths.profileImagesDir();
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

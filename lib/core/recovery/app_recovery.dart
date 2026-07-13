@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../identity/identity_recovery_bundle.dart';
+import '../storage/fullpos_paths.dart';
 
 enum AppRecoveryKind { identity, database }
 
@@ -220,11 +221,9 @@ const String _appVersion = String.fromEnvironment(
 
 Future<Directory> _recoveryDir() async {
   const isFlutterTest = bool.fromEnvironment('FLUTTER_TEST');
-  if (Platform.isWindows && !isFlutterTest) {
-    final local = (Platform.environment['LOCALAPPDATA'] ?? '').trim();
-    if (local.isNotEmpty) {
-      return Directory(p.join(local, 'FullPOS', 'recovery'));
-    }
+  if (!isFlutterTest) {
+    final root = await FullPosPaths.rootDir();
+    return Directory(p.join(root.path, 'recovery'));
   }
   final support = await getApplicationSupportDirectory();
   return Directory(p.join(support.path, 'FullPOS', 'recovery'));

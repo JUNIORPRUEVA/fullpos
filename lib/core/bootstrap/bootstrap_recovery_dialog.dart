@@ -4,12 +4,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../backup/backup_paths.dart';
 import '../config/app_config.dart';
 import '../db/app_db.dart';
+import '../storage/fullpos_paths.dart';
 import '../storage/prefs_safe.dart';
 import '../support/support_logs_service.dart';
 import '../utils/platform_open.dart';
@@ -31,6 +31,7 @@ class BootstrapRecoveryDialog extends StatefulWidget {
   }) {
     return showDialog<void>(
       context: context,
+      useRootNavigator: true,
       barrierDismissible: true,
       builder: (_) =>
           BootstrapRecoveryDialog(errorMessage: errorMessage, onRetry: onRetry),
@@ -82,8 +83,7 @@ class _BootstrapRecoveryDialogState extends State<BootstrapRecoveryDialog> {
 
   Future<void> _openLogs() async {
     await _run('Abriendo logs...', () async {
-      final docs = await BackupPaths.documentsDir();
-      final dir = Directory(p.join(docs.path, 'FULLPOS_LOGS'));
+      final dir = await FullPosPaths.supportLogsDir();
       if (!await dir.exists()) await dir.create(recursive: true);
       await PlatformOpen.openFolder(dir.path);
     });
@@ -174,11 +174,9 @@ class _BootstrapRecoveryDialogState extends State<BootstrapRecoveryDialog> {
   Future<String> _buildSupportReportText() async {
     final diagnostics = _buildDiagnosticsText();
 
-    final supportDir = await getApplicationSupportDirectory();
-    final appLogsDir = Directory(p.join(supportDir.path, 'logs'));
+    final appLogsDir = await FullPosPaths.appLogsDir();
 
-    final docs = await BackupPaths.documentsDir();
-    final docsLogsDir = Directory(p.join(docs.path, 'FULLPOS_LOGS'));
+    final docsLogsDir = await FullPosPaths.supportLogsDir();
 
     final appFiles = await _listLatestLogFiles(appLogsDir, limit: 2);
     final docsFiles = await _listLatestLogFiles(docsLogsDir, limit: 2);
@@ -207,8 +205,8 @@ class _BootstrapRecoveryDialogState extends State<BootstrapRecoveryDialog> {
       }
     }
 
-    await addFiles('app_support/logs', appFiles);
-    await addFiles('documents/FULLPOS_LOGS', docsFiles);
+    await addFiles('logs/app', appFiles);
+    await addFiles('logs/support', docsFiles);
 
     return b.toString().trimRight();
   }
@@ -228,8 +226,7 @@ class _BootstrapRecoveryDialogState extends State<BootstrapRecoveryDialog> {
         errorMessage: widget.errorMessage,
       );
 
-      final docs = await BackupPaths.documentsDir();
-      final outDir = Directory(p.join(docs.path, 'FULLPOS_LOGS'));
+      final outDir = await FullPosPaths.supportLogsDir();
       if (!await outDir.exists()) await outDir.create(recursive: true);
 
       final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
@@ -255,7 +252,7 @@ class _BootstrapRecoveryDialogState extends State<BootstrapRecoveryDialog> {
       final message = _truncateForWhatsApp(
         'Hola soporte FULLPOS.\n\n${_buildDiagnosticsText()}\n\n'
         'ZIP logs (adjuntar en WhatsApp): $zipPath\n'
-        'Nota: el reporte completo fue copiado al portapapeles y guardado en FULLPOS_LOGS.\n\n'
+        'Nota: el reporte completo fue copiado al portapapeles y guardado en la carpeta de soporte.\n\n'
         '${report.split('\n\nLOGS (extracto/tail)\n').length > 1 ? 'LOGS (extracto/tail)\n${report.split('\n\nLOGS (extracto/tail)\n').last}' : ''}',
       );
 
@@ -282,7 +279,7 @@ class _BootstrapRecoveryDialogState extends State<BootstrapRecoveryDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'WhatsApp abierto. Reporte copiado y guardado en FULLPOS_LOGS.',
+            'WhatsApp abierto. Reporte copiado y guardado en la carpeta de soporte.',
           ),
         ),
       );
