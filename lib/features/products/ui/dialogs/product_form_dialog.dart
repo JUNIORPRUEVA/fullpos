@@ -185,7 +185,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   String? _imageUrl;
   String? _pendingImageSourcePath;
   bool _removeImage = false;
-  String _placeholderType = 'image';
+  String _placeholderType = 'color';
   String? _placeholderColorHex;
 
   CategoryModel? get _selectedCategory {
@@ -349,15 +349,11 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final usingColor = _placeholderType == 'color';
-    if (!usingColor && !_hasPreviewImage) {
-      AppToast.show(
-        context,
-        'Debe seleccionar una imagen para el producto.',
-        type: AppToastType.warning,
-      );
-      return;
-    }
+    final effectivePlaceholderType =
+        _placeholderType == 'image' && !_hasPreviewImage
+        ? 'color'
+        : _placeholderType;
+    final usingColor = effectivePlaceholderType == 'color';
 
     if (usingColor) {
       _placeholderColorHex = _resolvePlaceholderColor();
@@ -386,7 +382,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       final stockChanged = differsDouble(stock, old.stock);
 
       final placeholderColor = _resolvePlaceholderColor();
-      final placeholderType = _placeholderType;
+      final placeholderType = effectivePlaceholderType;
       final placeholderChanged =
           old.placeholderType != placeholderType ||
           (old.placeholderColorHex ?? '') != placeholderColor;
@@ -455,7 +451,7 @@ class _ProductFormDialogState extends State<ProductFormDialog> {
       final stock = double.tryParse(_stockController.text.trim()) ?? 0.0;
       final stockMin = double.tryParse(_stockMinController.text.trim()) ?? 0.0;
       final placeholderColor = _resolvePlaceholderColor();
-      final placeholderType = _placeholderType;
+      final placeholderType = effectivePlaceholderType;
 
       final oldImagePath = widget.product?.imagePath;
       final oldImageUrl = widget.product?.imageUrl;

@@ -93,10 +93,10 @@ class _StockHistoryPageState extends State<StockHistoryPage> {
 
   String _qtyLabel(StockMovementModel movement) {
     if (movement.isOutput) {
-      return '-${_qtyFormat.format(movement.quantity)}';
+      return '-${_qtyFormat.format(movement.quantity.abs())}';
     }
     if (movement.isInput) {
-      return '+${_qtyFormat.format(movement.quantity)}';
+      return '+${_qtyFormat.format(movement.quantity.abs())}';
     }
     return movement.quantity >= 0
         ? '+${_qtyFormat.format(movement.quantity)}'

@@ -64,6 +64,30 @@ class PrinterSettingsRepository {
         'ALTER TABLE ${DbTables.printerSettings} ADD COLUMN ${entry.key} ${entry.value}',
       );
     }
+
+    await _ensureSingleGlobalSettingsRow();
+  }
+
+  /// Printer settings are global for the whole terminal/business, not per user.
+  /// If an old/corrupt DB has more than one row, keep the first one and remove
+  /// the rest so every user reads and writes the same configuration.
+  static Future<void> _ensureSingleGlobalSettingsRow() async {
+    final db = await AppDb.database;
+    final rows = await db.query(
+      DbTables.printerSettings,
+      columns: ['id'],
+      orderBy: 'id ASC',
+    );
+    if (rows.length <= 1) return;
+
+    final keepId = rows.first['id'] as int?;
+    if (keepId == null) return;
+
+    await db.delete(
+      DbTables.printerSettings,
+      where: 'id <> ?',
+      whereArgs: [keepId],
+    );
   }
 
   /// Obtiene la configuración actual de impresora
@@ -134,6 +158,9 @@ class PrinterSettingsRepository {
       'line_spacing_level': 6,
       'section_spacing_level': 6,
       'section_separator_style': 'single',
+      'header_alignment': 'left',
+      'details_alignment': 'left',
+      'totals_alignment': 'right',
     };
 
     final db = await AppDb.database;
@@ -237,6 +264,9 @@ class PrinterSettingsRepository {
       'section_spacing_level': 6,
       'section_separator_style':
           currentSettings?.sectionSeparatorStyle ?? 'single',
+      'header_alignment': 'left',
+      'details_alignment': 'left',
+      'totals_alignment': 'right',
     };
 
     await db.update(
@@ -303,6 +333,9 @@ class PrinterSettingsRepository {
       'section_spacing_level': 6,
       'section_separator_style':
           currentSettings?.sectionSeparatorStyle ?? 'single',
+      'header_alignment': 'left',
+      'details_alignment': 'left',
+      'totals_alignment': 'right',
     };
 
     await db.update(

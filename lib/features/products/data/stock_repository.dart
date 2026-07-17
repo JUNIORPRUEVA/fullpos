@@ -14,6 +14,17 @@ import '../models/stock_movement_model.dart';
 
 /// Repositorio para operaciones de movimientos de stock
 class StockRepository {
+  static String _normalizedTypeSql([String column = 'type']) {
+    return '''
+      CASE
+        WHEN lower($column) IN ('in', 'input', 'entrada', 'return', 'sale_rollback', 'cancellation') THEN 'in'
+        WHEN lower($column) IN ('out', 'output', 'salida', 'sale') THEN 'out'
+        WHEN lower($column) IN ('adjust', 'adjustment', 'ajuste') THEN 'adjust'
+        ELSE 'adjust'
+      END
+    ''';
+  }
+
   String? _sanitizeSyncImageUrl(String? rawUrl) {
     final value = rawUrl?.trim();
     if (value == null || value.isEmpty) return null;
@@ -69,7 +80,7 @@ class StockRepository {
     List<dynamic> whereArgs = [];
 
     if (type != null) {
-      where = 'type = ?';
+      where = '${_normalizedTypeSql()} = ?';
       whereArgs.add(type.value);
     }
 
@@ -396,7 +407,7 @@ class StockRepository {
       whereArgs.add(productId);
     }
     if (type != null) {
-      where.add('sm.type = ?');
+      where.add('${_normalizedTypeSql('sm.type')} = ?');
       whereArgs.add(type.value);
     }
     if (from != null) {
@@ -460,7 +471,7 @@ class StockRepository {
 
     if (type != null) {
       where += where.isEmpty ? '' : ' AND ';
-      where += 'type = ?';
+      where += '${_normalizedTypeSql()} = ?';
       whereArgs.add(type.value);
     }
 
@@ -503,7 +514,7 @@ class StockRepository {
       whereArgs.add(productId);
     }
     if (type != null) {
-      where.add('type = ?');
+      where.add('${_normalizedTypeSql()} = ?');
       whereArgs.add(type.value);
     }
     if (from != null) {
@@ -517,9 +528,9 @@ class StockRepository {
 
     final result = await db.rawQuery('''
       SELECT
-        SUM(CASE WHEN type = 'in' THEN quantity ELSE 0 END) AS total_inputs,
-        SUM(CASE WHEN type = 'out' THEN quantity ELSE 0 END) AS total_outputs,
-        SUM(CASE WHEN type = 'adjust' THEN quantity ELSE 0 END) AS total_adjustments,
+        SUM(CASE WHEN ${_normalizedTypeSql()} = 'in' THEN ABS(quantity) ELSE 0 END) AS total_inputs,
+        SUM(CASE WHEN ${_normalizedTypeSql()} = 'out' THEN ABS(quantity) ELSE 0 END) AS total_outputs,
+        SUM(CASE WHEN ${_normalizedTypeSql()} = 'adjust' THEN quantity ELSE 0 END) AS total_adjustments,
         COUNT(*) AS movements_count
       FROM ${DbTables.stockMovements}
       ${where.isNotEmpty ? 'WHERE ${where.join(' AND ')}' : ''}

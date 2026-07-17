@@ -48,6 +48,12 @@ class ReportData {
 class ReportDataService {
   ReportDataService._();
 
+  static const String _reportableSaleVisibilitySql =
+      "(deleted_at_ms IS NULL OR (kind IN ('invoice', 'sale') AND status = 'REFUNDED'))";
+
+  static const String _reportableSaleVisibilitySqlS =
+      "(s.deleted_at_ms IS NULL OR (s.kind IN ('invoice', 'sale') AND s.status = 'REFUNDED'))";
+
   static Future<ReportData> getReportData(DateFilter filter) async {
     final db = await AppDb.database;
     final startMs = filter.start.millisecondsSinceEpoch;
@@ -56,7 +62,7 @@ class ReportDataService {
     final saleRows = await db.query(
       DbTables.sales,
       where:
-          "status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED') AND kind IN ('invoice', 'sale') AND deleted_at_ms IS NULL AND created_at_ms >= ? AND created_at_ms <= ?",
+          "status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED') AND kind IN ('invoice', 'sale') AND $_reportableSaleVisibilitySql AND created_at_ms >= ? AND created_at_ms <= ?",
       whereArgs: [startMs, endMs],
       orderBy: 'created_at_ms DESC',
     );
@@ -100,7 +106,7 @@ class ReportDataService {
         FROM ${DbTables.sales}
         WHERE status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
           AND kind IN ('invoice', 'sale', 'return')
-          AND deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySql
           AND created_at_ms >= ?
           AND created_at_ms <= ?
       ''',
@@ -126,7 +132,7 @@ class ReportDataService {
           )
         WHERE s.status IN ('completed', 'PAID', 'PARTIAL_REFUND', 'REFUNDED')
           AND s.kind IN ('invoice', 'sale')
-          AND s.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlS
           AND s.created_at_ms >= ?
           AND s.created_at_ms <= ?
       ''',

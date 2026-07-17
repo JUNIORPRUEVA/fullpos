@@ -94,8 +94,8 @@ class TicketRenderer {
     ).toUpperCase();
 
     void add(String text) => lines.add(_fitLine(text, width));
-    void addCentered(String text) =>
-        add(alignText(_sanitizeTicketText(text), width, 'center'));
+    void addAligned(String text, String align) =>
+        add(alignText(_sanitizeTicketText(text), width, align));
     void addRule([String char = '-']) =>
         add(ReceiptText.line(char: char, width: width));
     void addPair(String left, String right) => add(
@@ -108,13 +108,15 @@ class TicketRenderer {
 
     if (config.showCompanyInfo) {
       final companyName = _sanitizeTicketText(company.name).toUpperCase();
-      if (companyName.isNotEmpty) addCentered(companyName);
+      if (companyName.isNotEmpty) {
+        addAligned(companyName, config.headerAlignment);
+      }
 
       final rnc = (company.rnc ?? '').trim();
-      if (rnc.isNotEmpty) addCentered('RNC: $rnc');
+      if (rnc.isNotEmpty) addAligned('RNC: $rnc', config.headerAlignment);
 
       final phone = (company.primaryPhone ?? '').trim();
-      if (phone.isNotEmpty) addCentered('TEL: $phone');
+      if (phone.isNotEmpty) addAligned('TEL: $phone', config.headerAlignment);
 
       if (companyAddress.isNotEmpty) {
         final wrappedAddress = ReceiptText.wrapText(
@@ -122,17 +124,17 @@ class TicketRenderer {
           width,
         );
         for (final addressLine in wrappedAddress) {
-          addCentered(addressLine);
+          addAligned(addressLine, config.headerAlignment);
         }
       }
 
       addRule();
     }
 
-    addCentered(documentType);
-    if (data.isCopy) addCentered('COPIA');
+    addAligned(documentType, 'center');
+    if (data.isCopy) addAligned('COPIA', 'center');
     if ((data.extraLegend ?? '').trim().isNotEmpty) {
-      addCentered(data.extraLegend!.trim().toUpperCase());
+      addAligned(data.extraLegend!.trim().toUpperCase(), 'center');
     }
     addRule();
 
@@ -294,7 +296,7 @@ class TicketRenderer {
         ? config.footerMessage.trim()
         : 'Gracias por su preferencia';
     add('');
-    addCentered(footer.toUpperCase());
+    addAligned(footer.toUpperCase(), 'center');
 
     final warranty = config.warrantyPolicy.trim();
     if (warranty.isNotEmpty) {

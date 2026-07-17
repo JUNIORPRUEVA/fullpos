@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -19,6 +21,48 @@ class TicketBuilder {
   final CompanyInfo company;
 
   TicketBuilder({required this.layout, required this.company});
+
+  static ({pw.Font regular, pw.Font bold}) _loadThermalFonts({
+    bool preferSans = false,
+  }) {
+    pw.Font? loadFont(List<String> candidates) {
+      for (final path in candidates) {
+        try {
+          final file = File(path);
+          if (!file.existsSync()) continue;
+          final bytes = file.readAsBytesSync();
+          if (bytes.isEmpty) continue;
+          return pw.Font.ttf(ByteData.sublistView(Uint8List.fromList(bytes)));
+        } catch (_) {
+          continue;
+        }
+      }
+      return null;
+    }
+
+    final executableDir = File(Platform.resolvedExecutable).parent.path;
+    final regularCandidates = <String>[
+      'assets/fonts/RobotoMono-Regular.ttf',
+      '$executableDir/data/flutter_assets/assets/fonts/RobotoMono-Regular.ttf',
+      '$executableDir/flutter_assets/assets/fonts/RobotoMono-Regular.ttf',
+    ];
+    final boldCandidates = <String>[
+      'assets/fonts/RobotoMono-Medium.ttf',
+      '$executableDir/data/flutter_assets/assets/fonts/RobotoMono-Medium.ttf',
+      '$executableDir/flutter_assets/assets/fonts/RobotoMono-Medium.ttf',
+    ];
+
+    final regular = loadFont(regularCandidates);
+    final bold = loadFont(boldCandidates);
+    if (regular != null && bold != null) {
+      return (regular: regular, bold: bold);
+    }
+
+    if (preferSans) {
+      return (regular: pw.Font.helvetica(), bold: pw.Font.helveticaBold());
+    }
+    return (regular: pw.Font.courier(), bold: pw.Font.courierBold());
+  }
 
   // ============================================================
   // HELPERS DE SEGURIDAD PARA ALINEACIÓN Y ANCHO
@@ -195,12 +239,9 @@ class TicketBuilder {
     // Importante: NO forzar negrita en el cuerpo en tamaños normales;
     // pero cuando el tamaño queda muy pequeño (común en 58mm), el normal puede
     // salir “lavado” en algunas impresoras/drivers, así que oscurecemos levemente.
-    final pw.Font normalFont = isCashClosePdf
-        ? pw.Font.helvetica()
-        : pw.Font.courier();
-    final pw.Font boldFont = isCashClosePdf
-        ? pw.Font.helveticaBold()
-        : pw.Font.courierBold();
+    final fonts = _loadThermalFonts(preferSans: isCashClosePdf);
+    final pw.Font normalFont = fonts.regular;
+    final pw.Font boldFont = fonts.bold;
 
     // Ancho real imprimible (ver `TicketLayoutConfig.printableWidthMm`).
     final double pageWidth = layout.printableWidthMm * PdfPageFormat.mm;
@@ -363,8 +404,7 @@ class TicketBuilder {
 
     pw.TextStyle styleFromTag(String tag) {
       final t = tag.toUpperCase();
-      final bool bold =
-          !isCashClosePdf && (t.startsWith('B') || t.startsWith('H'));
+      final bool bold = t.startsWith('B') || t.startsWith('H');
       double size = fontSize;
       if (t.startsWith('H1')) {
         size = isCashClosePdf ? fontSize * 1.16 : fontSize * 1.35;
@@ -404,12 +444,17 @@ class TicketBuilder {
         if (trimmed.startsWith('SUBTOTAL:') ||
             trimmed.startsWith('DESCUENTO:') ||
             trimmed.startsWith('ITBIS') ||
-            trimmed.startsWith('TOTAL:')) {
+            trimmed.startsWith('TOTAL:') ||
+            trimmed.startsWith('TOTAL VENDIDO:') ||
+            trimmed.startsWith('EFECTIVO ESPERADO:') ||
+            trimmed.startsWith('EFECTIVO FINAL:') ||
+            trimmed.startsWith('DIFERENCIA:') ||
+            trimmed.startsWith('TICKETS:')) {
           if (isCashClosePdf) {
             return pw.TextStyle(
-              font: bodyFont,
-              fontSize: fontSize,
-              lineSpacing: 1.0 * layout.lineSpacingFactor,
+              font: boldFont,
+              fontSize: math.min(fontSize * 1.08, 14.0),
+              lineSpacing: 1.02 * layout.lineSpacingFactor,
             );
           }
           return pw.TextStyle(
@@ -482,6 +527,27 @@ class TicketBuilder {
         textAlign: isHeaderBlock ? pw.TextAlign.center : pw.TextAlign.left,
       );
 
+      if (isCashClosePdf && tag.toUpperCase().startsWith('H')) {
+        return pw.Container(
+          width: double.infinity,
+          margin: const pw.EdgeInsets.symmetric(vertical: 3),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: pw.BoxDecoration(
+            color: PdfColors.grey900,
+            borderRadius: pw.BorderRadius.circular(2),
+          ),
+          child: pw.Text(
+            display.trim().isEmpty ? ' ' : display.trim(),
+            style: pw.TextStyle(
+              font: boldFont,
+              fontSize: math.min(fontSize * 1.10, 14.0),
+              color: PdfColors.white,
+            ),
+            textAlign: pw.TextAlign.center,
+          ),
+        );
+      }
+
       if (isCashClosePdf && isSeparatorLine(display)) {
         return pw.Container(
           margin: const pw.EdgeInsets.symmetric(vertical: 2),
@@ -494,7 +560,7 @@ class TicketBuilder {
           ? parseTwoColumnLine(display)
           : null;
       if (parsedPair != null) {
-        final pairStyle = styleForLine('', display, index);
+        final pairStyle = styleForLine(tag, display, index);
         return pw.Padding(
           padding: const pw.EdgeInsets.only(bottom: 1),
           child: pw.Row(
@@ -673,6 +739,119 @@ class TicketBuilder {
     return doc;
   }
 
+  pw.Document buildStyleDiagnosticsPdf() {
+    final doc = pw.Document();
+    final fonts = _loadThermalFonts();
+    final pageWidth = layout.printableWidthMm * PdfPageFormat.mm;
+    final pageHeight = 600 * PdfPageFormat.mm;
+    final marginLeftPts = (layout.leftMarginMm.clamp(0, 4)) * PdfPageFormat.mm;
+    final marginRightPts =
+        (layout.rightMarginMm.clamp(0, 4)) * PdfPageFormat.mm;
+    final contentWidth = pageWidth - marginLeftPts - marginRightPts;
+    final baseSize = layout.paperWidthMm == 58 ? 8.0 : 9.5;
+    final largeSize = layout.paperWidthMm == 58 ? 12.0 : 15.0;
+
+    pw.TextStyle normal(double size) =>
+        pw.TextStyle(font: fonts.regular, fontSize: size);
+    pw.TextStyle bold(double size) =>
+        pw.TextStyle(font: fonts.bold, fontSize: size);
+
+    pw.Widget rule([String char = '-']) => pw.Text(
+      List.filled(layout.maxCharsPerLine, char).join(),
+      style: normal(baseSize),
+    );
+
+    pw.Widget line(
+      String text, {
+      pw.TextStyle? style,
+      pw.TextAlign align = pw.TextAlign.left,
+    }) {
+      return pw.Container(
+        width: double.infinity,
+        padding: const pw.EdgeInsets.only(bottom: 3),
+        child: pw.Text(
+          text,
+          style: style ?? normal(baseSize),
+          textAlign: align,
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat(
+          pageWidth,
+          pageHeight,
+          marginLeft: marginLeftPts,
+          marginRight: marginRightPts,
+          marginTop: 6,
+          marginBottom: 8,
+        ),
+        build: (_) => pw.SizedBox(
+          width: contentWidth,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            mainAxisSize: pw.MainAxisSize.min,
+            children: [
+              line(
+                'PRUEBA DE ESTILOS FULLTECH',
+                style: bold(largeSize),
+                align: pw.TextAlign.center,
+              ),
+              rule('='),
+              line('TEXTO NORMAL', style: normal(baseSize)),
+              line('TEXTO EN NEGRITA', style: bold(baseSize)),
+              line('TEXTO GRANDE', style: normal(largeSize)),
+              line('TEXTO GRANDE Y NEGRITA', style: bold(largeSize)),
+              rule(),
+              line(
+                'ALINEADO IZQUIERDA',
+                style: normal(baseSize),
+                align: pw.TextAlign.left,
+              ),
+              line(
+                'CENTRADO',
+                style: normal(baseSize),
+                align: pw.TextAlign.center,
+              ),
+              line(
+                'DERECHA',
+                style: normal(baseSize),
+                align: pw.TextAlign.right,
+              ),
+              rule(),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 5,
+                  horizontal: 6,
+                ),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.black, width: 1.0),
+                ),
+                child: pw.Text(
+                  'TOTAL DE PRUEBA: RD\$ 12,345.67',
+                  style: bold(largeSize),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ),
+              rule('='),
+              line('ÁÉÍÓÚ Ñ ñ Crédito Garantía', style: bold(baseSize)),
+              line(
+                'Si normal, negrita y grande se ven iguales, el driver/impresora esta escalando o rasterizando sin contraste.',
+                style: normal(math.max(baseSize - 1, 6.5)),
+              ),
+              line(
+                'Motor de impresion: Thermal PDF v2.1.0',
+                style: bold(baseSize),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return doc;
+  }
+
   pw.Document _buildStructuredSalesPdf({
     required pw.Document doc,
     required TicketData data,
@@ -681,31 +860,33 @@ class TicketBuilder {
     required double marginLeftPts,
     required double marginRightPts,
   }) {
-    final bodyFont = pw.Font.courier();
-    final boldFont = pw.Font.courierBold();
+    final fonts = _loadThermalFonts(preferSans: true);
+    final bodyFont = fonts.regular;
+    final boldFont = fonts.bold;
     final is80mm = layout.paperWidthMm == 80;
     final uiBodyFont = bodyFont;
 
     final double baseFontSize = switch (layout.fontSize) {
-      TicketFontSize.small => 9.8,
-      TicketFontSize.normal => 10.0,
-      TicketFontSize.large => 10.4,
+      TicketFontSize.small => 9.4,
+      TicketFontSize.normal => 9.9,
+      TicketFontSize.large => 10.6,
     };
-    final headerFontSize = math.min(baseFontSize + 0.3, 10.1);
-    final titleFontSize = math.min(baseFontSize + 0.7, 10.7);
-    final totalsFontSize = math.min(baseFontSize + 3.8, 14.2);
-    final smallFontSize = math.max(baseFontSize - 1.0, 8.7);
+    final headerFontSize = math.min(baseFontSize + 1.8, 12.2);
+    final titleFontSize = math.min(baseFontSize + 1.2, 11.6);
+    final totalsFontSize = math.min(baseFontSize + 4.2, 14.8);
+    final smallFontSize = math.max(baseFontSize - 1.0, 8.4);
     final compactTableFontSize = is80mm
         ? math.max(9.6, baseFontSize - 0.1)
         : math.max(9.6, baseFontSize - 0.1);
     final compactDescriptionFontSize = is80mm
         ? math.max(9.8, compactTableFontSize)
         : math.max(9.7, compactTableFontSize);
-    final compactHeaderFontSize = math.max(baseFontSize - 1.0, 8.6);
-    final logoSize = layout.logoSizePx.toDouble().clamp(32.0, 42.0);
-    final sectionGap = (5.0 * layout.sectionSpacingFactor).clamp(4.0, 7.0);
+    final compactHeaderFontSize = math.max(baseFontSize - 0.9, 8.5);
+    final logoSize = layout.logoSizePx.toDouble().clamp(30.0, 44.0);
+    final sectionGap = (5.0 * layout.sectionSpacingFactor).clamp(4.0, 8.0);
     final lineGap = math.max(0.9, 0.95 * layout.lineSpacingFactor);
-    const sectionPadding = pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3);
+    const sectionPadding = pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2);
+    const blockPadding = pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4);
     final detailTableInset = is80mm ? 6.0 : 5.0;
     final qtyColumnWidth = is80mm ? 22.0 : 20.0;
     final priceColumnWidth = is80mm ? 32.0 : 30.0;
@@ -771,8 +952,10 @@ class TicketBuilder {
     final paidAmount = data.paidAmount <= 0 ? total : data.paidAmount;
     final itemCount = data.items.length;
     final dividerColor = PdfColor.fromHex('#111111');
+    final lightDividerColor = PdfColor.fromHex('#BDBDBD');
+    final softFillColor = PdfColor.fromHex('#F3F3F3');
     final bodyTextColor = PdfColor.fromHex('#000000');
-    final mutedTextColor = PdfColor.fromHex('#080808');
+    final mutedTextColor = PdfColor.fromHex('#3A3A3A');
 
     String money(num value) =>
         CurrencyDisplay.formatPlain(value, decimalDigits: 2);
@@ -781,6 +964,44 @@ class TicketBuilder {
     String tableMoney(num value) =>
         CurrencyDisplay.formatPlain(value, decimalDigits: 0);
     final footerFontSize = math.max(baseFontSize - 0.7, 8.8);
+
+    pw.Widget sectionLabel(String text, {String? trailing}) {
+      return pw.Container(
+        width: double.infinity,
+        margin: const pw.EdgeInsets.only(top: 2, bottom: 3),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: pw.BoxDecoration(
+          color: softFillColor,
+          border: pw.Border(
+            top: pw.BorderSide(color: dividerColor, width: 0.7),
+            bottom: pw.BorderSide(color: lightDividerColor, width: 0.5),
+          ),
+        ),
+        child: pw.Row(
+          children: [
+            pw.Expanded(
+              child: pw.Text(
+                text,
+                style: pw.TextStyle(
+                  font: boldFont,
+                  fontSize: compactHeaderFontSize,
+                  color: bodyTextColor,
+                ),
+              ),
+            ),
+            if (trailing != null)
+              pw.Text(
+                trailing,
+                style: pw.TextStyle(
+                  font: boldFont,
+                  fontSize: compactHeaderFontSize,
+                  color: bodyTextColor,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
 
     final content = <pw.Widget>[
       pw.Container(
@@ -797,7 +1018,7 @@ class TicketBuilder {
                   fit: pw.BoxFit.contain,
                 ),
               ),
-              pw.SizedBox(width: 10),
+              pw.SizedBox(width: 7),
             ],
             pw.Expanded(
               child: pw.Column(
@@ -837,20 +1058,30 @@ class TicketBuilder {
         ),
       ),
       pw.SizedBox(height: math.max(2.0, sectionGap - 1)),
-      pw.Padding(
-        padding: sectionPadding,
+      pw.Container(
+        width: double.infinity,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.black,
+          borderRadius: pw.BorderRadius.circular(2),
+        ),
         child: pw.Text(
           title,
           style: pw.TextStyle(
             font: boldFont,
             fontSize: titleFontSize,
-            color: bodyTextColor,
+            color: PdfColors.white,
           ),
           textAlign: pw.TextAlign.center,
         ),
       ),
-      pw.Padding(
-        padding: sectionPadding,
+      pw.Container(
+        padding: blockPadding,
+        decoration: pw.BoxDecoration(
+          border: pw.Border(
+            bottom: pw.BorderSide(color: lightDividerColor, width: 0.6),
+          ),
+        ),
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -909,8 +1140,14 @@ class TicketBuilder {
           ),
         ),
       pw.SizedBox(height: math.max(2.0, sectionGap - 2)),
-      pw.Padding(
-        padding: sectionPadding,
+      sectionLabel('DATOS DE LA FACTURA'),
+      pw.Container(
+        padding: blockPadding,
+        decoration: pw.BoxDecoration(
+          border: pw.Border(
+            bottom: pw.BorderSide(color: lightDividerColor, width: 0.5),
+          ),
+        ),
         child: pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -975,20 +1212,30 @@ class TicketBuilder {
         ),
       ),
       if (ecfCode.isNotEmpty)
-        pw.Padding(
-          padding: sectionPadding,
+        pw.Container(
+          width: double.infinity,
+          margin: const pw.EdgeInsets.only(top: 3),
+          padding: blockPadding,
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: dividerColor, width: 0.7),
+          ),
           child: pw.Text(
             'E-CF: $ecfCode',
             style: pw.TextStyle(
-              font: uiBodyFont,
+              font: boldFont,
               fontSize: smallFontSize,
               color: bodyTextColor,
             ),
           ),
         ),
       if (fiscalReceiptNumber.isNotEmpty)
-        pw.Padding(
-          padding: sectionPadding,
+        pw.Container(
+          width: double.infinity,
+          margin: const pw.EdgeInsets.only(top: 3),
+          padding: blockPadding,
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: dividerColor, width: 0.7),
+          ),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
@@ -1029,172 +1276,241 @@ class TicketBuilder {
           ),
         ),
       pw.SizedBox(height: math.max(2.0, sectionGap - 2)),
-      pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 1),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text(
-              'DETALLE DE VENTA',
-              style: pw.TextStyle(
-                font: boldFont,
-                fontSize: compactHeaderFontSize,
-                color: bodyTextColor,
-              ),
-            ),
-            pw.Text(
-              '$itemCount ART.',
-              style: pw.TextStyle(
-                font: bodyFont,
-                fontSize: compactHeaderFontSize,
-                color: mutedTextColor,
-              ),
-            ),
-          ],
-        ),
-      ),
+      sectionLabel('DETALLE DE VENTA', trailing: '$itemCount ART.'),
       pw.Container(
         margin: pw.EdgeInsets.symmetric(horizontal: detailTableInset),
-        padding: const pw.EdgeInsets.only(top: 1, bottom: 2),
+        padding: const pw.EdgeInsets.only(top: 3, bottom: 3),
         decoration: pw.BoxDecoration(
+          color: softFillColor,
           border: pw.Border(
-            bottom: pw.BorderSide(color: dividerColor, width: 0.6),
+            bottom: pw.BorderSide(color: dividerColor, width: 0.7),
           ),
         ),
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.SizedBox(
-              width: qtyColumnWidth,
-              child: pw.Text(
-                'CANT',
-                style: pw.TextStyle(
-                  font: boldFont,
-                  fontSize: compactHeaderFontSize,
-                  color: mutedTextColor,
-                ),
-                maxLines: 1,
-                textAlign: pw.TextAlign.right,
-              ),
-            ),
-            pw.SizedBox(width: detailGapWidth),
-            pw.Expanded(
-              child: pw.Text(
-                'PRODUCTO',
-                style: pw.TextStyle(
-                  font: boldFont,
-                  fontSize: compactHeaderFontSize,
-                  color: mutedTextColor,
-                ),
-                maxLines: 1,
-                overflow: pw.TextOverflow.clip,
-              ),
-            ),
-            pw.SizedBox(width: detailGapWidth),
-            pw.SizedBox(
-              width: priceColumnWidth,
-              child: pw.Text(
-                'P/U',
-                style: pw.TextStyle(
-                  font: boldFont,
-                  fontSize: compactHeaderFontSize,
-                  color: mutedTextColor,
-                ),
-                textAlign: pw.TextAlign.right,
-                maxLines: 1,
-              ),
-            ),
-            pw.SizedBox(width: detailGapWidth),
-            pw.SizedBox(
-              width: totalColumnWidth,
-              child: pw.Text(
-                'TOTAL',
-                style: pw.TextStyle(
-                  font: boldFont,
-                  fontSize: compactHeaderFontSize,
-                  color: mutedTextColor,
-                ),
-                textAlign: pw.TextAlign.right,
-                maxLines: 1,
-              ),
-            ),
-          ],
+          children: is80mm
+              ? [
+                  pw.SizedBox(
+                    width: qtyColumnWidth,
+                    child: pw.Text(
+                      'CANT',
+                      style: pw.TextStyle(
+                        font: boldFont,
+                        fontSize: compactHeaderFontSize,
+                        color: mutedTextColor,
+                      ),
+                      maxLines: 1,
+                      textAlign: pw.TextAlign.right,
+                    ),
+                  ),
+                  pw.SizedBox(width: detailGapWidth),
+                  pw.Expanded(
+                    child: pw.Text(
+                      'PRODUCTO',
+                      style: pw.TextStyle(
+                        font: boldFont,
+                        fontSize: compactHeaderFontSize,
+                        color: mutedTextColor,
+                      ),
+                      maxLines: 1,
+                      overflow: pw.TextOverflow.clip,
+                    ),
+                  ),
+                  pw.SizedBox(width: detailGapWidth),
+                  pw.SizedBox(
+                    width: priceColumnWidth,
+                    child: pw.Text(
+                      'P/U',
+                      style: pw.TextStyle(
+                        font: boldFont,
+                        fontSize: compactHeaderFontSize,
+                        color: mutedTextColor,
+                      ),
+                      textAlign: pw.TextAlign.right,
+                      maxLines: 1,
+                    ),
+                  ),
+                  pw.SizedBox(width: detailGapWidth),
+                  pw.SizedBox(
+                    width: totalColumnWidth,
+                    child: pw.Text(
+                      'TOTAL',
+                      style: pw.TextStyle(
+                        font: boldFont,
+                        fontSize: compactHeaderFontSize,
+                        color: mutedTextColor,
+                      ),
+                      textAlign: pw.TextAlign.right,
+                      maxLines: 1,
+                    ),
+                  ),
+                ]
+              : [
+                  pw.Text(
+                    'CANT  DESCRIPCION',
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontSize: compactHeaderFontSize,
+                      color: mutedTextColor,
+                    ),
+                  ),
+                  pw.Text(
+                    'IMPORTE',
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontSize: compactHeaderFontSize,
+                      color: mutedTextColor,
+                    ),
+                    textAlign: pw.TextAlign.right,
+                  ),
+                ],
         ),
       ),
       pw.SizedBox(height: 0.2),
-      ...data.items.map(
-        (item) => pw.Container(
-          margin: pw.EdgeInsets.symmetric(horizontal: detailTableInset),
-          padding: const pw.EdgeInsets.symmetric(vertical: 0.5),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            children: [
-              pw.SizedBox(
-                width: qtyColumnWidth,
-                child: pw.Text(
-                  _formatTableQty(item.quantity),
-                  style: pw.TextStyle(
-                    font: boldFont,
-                    fontSize: compactTableFontSize,
-                    color: bodyTextColor,
+      if (is80mm)
+        ...data.items.map(
+          (item) => pw.Container(
+            margin: pw.EdgeInsets.symmetric(horizontal: detailTableInset),
+            padding: const pw.EdgeInsets.symmetric(vertical: 0.7),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              children: [
+                pw.SizedBox(
+                  width: qtyColumnWidth,
+                  child: pw.Text(
+                    _formatTableQty(item.quantity),
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontSize: compactTableFontSize,
+                      color: bodyTextColor,
+                    ),
+                    maxLines: 1,
+                    textAlign: pw.TextAlign.right,
                   ),
-                  maxLines: 1,
-                  textAlign: pw.TextAlign.right,
                 ),
-              ),
-              pw.SizedBox(width: detailGapWidth),
-              pw.Expanded(
-                child: pw.Text(
-                  ReceiptText.truncateWithEllipsis(
-                    _sanitizePrintText(item.name).toUpperCase(),
-                    detailNameChars,
+                pw.SizedBox(width: detailGapWidth),
+                pw.Expanded(
+                  child: pw.Text(
+                    ReceiptText.truncateWithEllipsis(
+                      _sanitizePrintText(item.name).toUpperCase(),
+                      detailNameChars,
+                    ),
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontSize: math.max(compactDescriptionFontSize - 0.1, 9.6),
+                      lineSpacing: 0.9,
+                      color: bodyTextColor,
+                    ),
+                    maxLines: 1,
+                    overflow: pw.TextOverflow.clip,
                   ),
-                  style: pw.TextStyle(
-                    font: boldFont,
-                    fontSize: math.max(compactDescriptionFontSize - 0.1, 9.6),
-                    lineSpacing: 0.9,
-                    color: bodyTextColor,
-                  ),
-                  maxLines: 1,
-                  overflow: pw.TextOverflow.clip,
                 ),
-              ),
-              pw.SizedBox(width: detailGapWidth),
-              pw.SizedBox(
-                width: priceColumnWidth,
-                child: pw.Text(
-                  tableMoney(item.unitPrice),
-                  style: pw.TextStyle(
-                    font: boldFont,
-                    fontSize: math.max(compactTableFontSize - 0.1, 9.4),
-                    color: bodyTextColor,
+                pw.SizedBox(width: detailGapWidth),
+                pw.SizedBox(
+                  width: priceColumnWidth,
+                  child: pw.Text(
+                    tableMoney(item.unitPrice),
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontSize: math.max(compactTableFontSize - 0.1, 9.4),
+                      color: bodyTextColor,
+                    ),
+                    maxLines: 1,
+                    textAlign: pw.TextAlign.right,
                   ),
-                  maxLines: 1,
-                  textAlign: pw.TextAlign.right,
                 ),
-              ),
-              pw.SizedBox(width: detailGapWidth),
-              pw.SizedBox(
-                width: totalColumnWidth,
-                child: pw.Text(
-                  tableMoney(item.total),
-                  style: pw.TextStyle(
-                    font: boldFont,
-                    fontSize: math.max(compactTableFontSize - 0.1, 9.4),
-                    color: bodyTextColor,
+                pw.SizedBox(width: detailGapWidth),
+                pw.SizedBox(
+                  width: totalColumnWidth,
+                  child: pw.Text(
+                    tableMoney(item.total),
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontSize: math.max(compactTableFontSize - 0.1, 9.4),
+                      color: bodyTextColor,
+                    ),
+                    maxLines: 1,
+                    textAlign: pw.TextAlign.right,
                   ),
-                  maxLines: 1,
-                  textAlign: pw.TextAlign.right,
                 ),
+              ],
+            ),
+          ),
+        )
+      else
+        ...data.items.map(
+          (item) => pw.Container(
+            margin: pw.EdgeInsets.symmetric(horizontal: detailTableInset),
+            padding: const pw.EdgeInsets.symmetric(vertical: 2),
+            decoration: pw.BoxDecoration(
+              border: pw.Border(
+                bottom: pw.BorderSide(color: lightDividerColor, width: 0.35),
               ),
-            ],
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              children: [
+                pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.SizedBox(
+                      width: 18,
+                      child: pw.Text(
+                        _formatTableQty(item.quantity),
+                        style: pw.TextStyle(
+                          font: boldFont,
+                          fontSize: compactTableFontSize,
+                          color: bodyTextColor,
+                        ),
+                      ),
+                    ),
+                    pw.SizedBox(width: 3),
+                    pw.Expanded(
+                      child: pw.Text(
+                        _sanitizePrintText(item.name).toUpperCase(),
+                        style: pw.TextStyle(
+                          font: boldFont,
+                          fontSize: compactDescriptionFontSize,
+                          color: bodyTextColor,
+                          lineSpacing: 0.9,
+                        ),
+                        maxLines: 2,
+                        overflow: pw.TextOverflow.clip,
+                      ),
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 1),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                      child: pw.Text(
+                        'P/U ${tableMoney(item.unitPrice)}',
+                        style: pw.TextStyle(
+                          font: bodyFont,
+                          fontSize: smallFontSize,
+                          color: mutedTextColor,
+                        ),
+                      ),
+                    ),
+                    pw.Text(
+                      tableMoney(item.total),
+                      style: pw.TextStyle(
+                        font: boldFont,
+                        fontSize: compactTableFontSize,
+                        color: bodyTextColor,
+                      ),
+                      textAlign: pw.TextAlign.right,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-      ),
       pw.SizedBox(height: 4),
-      _buildRule(color: dividerColor),
-      pw.SizedBox(height: 3),
+      sectionLabel('RESUMEN'),
       if (layout.showTotalsBreakdown) ...[
         _buildAmountRow(
           'SUBT.:',
@@ -1220,15 +1536,36 @@ class TicketBuilder {
             baseFontSize,
           ),
       ],
-      _buildRule(color: dividerColor),
-      pw.SizedBox(height: 4),
-      _buildAmountRow(
-        'TOTAL:',
-        money(total),
-        uiBodyFont,
-        boldFont,
-        totalsFontSize,
-        emphasize: true,
+      pw.Container(
+        margin: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: pw.BoxDecoration(
+          border: pw.Border.all(color: dividerColor, width: 1.0),
+          color: PdfColors.white,
+        ),
+        child: pw.Row(
+          children: [
+            pw.Expanded(
+              child: pw.Text(
+                'TOTAL',
+                style: pw.TextStyle(
+                  font: boldFont,
+                  fontSize: math.max(baseFontSize + 0.8, 10.6),
+                  color: bodyTextColor,
+                ),
+              ),
+            ),
+            pw.Text(
+              money(total),
+              style: pw.TextStyle(
+                font: boldFont,
+                fontSize: totalsFontSize,
+                color: bodyTextColor,
+              ),
+              textAlign: pw.TextAlign.right,
+            ),
+          ],
+        ),
       ),
       if (layout.showPaymentInfo) ...[
         pw.SizedBox(height: math.max(3.0, sectionGap - 2)),
@@ -1249,12 +1586,21 @@ class TicketBuilder {
         ),
       ],
       pw.SizedBox(height: sectionGap),
-      pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 14),
+      pw.Container(
+        width: double.infinity,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        decoration: pw.BoxDecoration(
+          border: pw.Border(
+            top: pw.BorderSide(color: lightDividerColor, width: 0.6),
+          ),
+        ),
         child: pw.Text(
-          'GRACIAS POR SU COMPRA',
+          (layout.footerMessage.trim().isEmpty
+                  ? 'GRACIAS POR SU COMPRA'
+                  : layout.footerMessage.trim())
+              .toUpperCase(),
           style: pw.TextStyle(
-            font: bodyFont,
+            font: boldFont,
             fontSize: footerFontSize,
             color: bodyTextColor,
           ),
@@ -1339,14 +1685,6 @@ class TicketBuilder {
     );
 
     return doc;
-  }
-
-  pw.Widget _buildRule({PdfColor color = PdfColors.black}) {
-    return pw.Container(
-      height: 0.8,
-      color: color,
-      margin: const pw.EdgeInsets.symmetric(vertical: 1),
-    );
   }
 
   pw.Widget _buildAmountRow(

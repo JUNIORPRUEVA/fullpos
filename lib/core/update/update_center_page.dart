@@ -110,7 +110,7 @@ class _UpdateCenterPageState extends State<UpdateCenterPage> {
 
     if (confirmed == true && mounted) {
       setState(() => _isInstalling = true);
-      unawaited(_coordinator.launchInstaller());
+      unawaited(_coordinator.launchInstaller(userConfirmed: true));
     }
   }
 

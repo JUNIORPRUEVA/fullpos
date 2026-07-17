@@ -431,7 +431,13 @@ class AppUpdateCoordinator extends ChangeNotifier {
     dismissOptional();
   }
 
-  Future<void> launchInstaller() async {
+  Future<void> launchInstaller({required bool userConfirmed}) async {
+    if (!userConfirmed) {
+      await _logWarn(
+        'Installer launch ignored: missing explicit user confirmation',
+      );
+      return;
+    }
     final existing = _launchFlowInFlight;
     if (existing != null) return existing;
     final future = _launchInstaller();
@@ -509,7 +515,13 @@ class AppUpdateCoordinator extends ChangeNotifier {
     }
   }
 
-  Future<void> closeFullPos() async {
+  Future<void> closeFullPos({required bool userConfirmed}) async {
+    if (!userConfirmed) {
+      await _logWarn(
+        'closeFullPos ignored: missing explicit user confirmation',
+      );
+      return;
+    }
     // Intentar preparación segura antes de cerrar.
     // Si hay operaciones activas, el usuario verá el mensaje y podrá decidir.
     final safety = await _safetyValidator.validate();

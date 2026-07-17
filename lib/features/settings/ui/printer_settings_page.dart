@@ -403,6 +403,50 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
     );
   }
 
+  Future<void> _printStyleTest() async {
+    if (_settings.selectedPrinterName == null ||
+        _settings.selectedPrinterName!.isEmpty) {
+      _showNoPrinterWarning();
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _printing = true);
+
+    try {
+      final updatedSettings = _buildSettingsForPersist();
+      await PrinterSettingsRepository.updateSettings(updatedSettings);
+      if (mounted) {
+        setState(() => _settings = updatedSettings);
+      }
+
+      final result = await UnifiedTicketPrinter.printStyleDiagnosticsTicket();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.success
+                ? 'Prueba de estilos enviada'
+                : 'No se pudo imprimir la prueba: ${result.message}',
+          ),
+          backgroundColor: result.success ? _scheme.tertiary : _scheme.error,
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('Error printing style diagnostics: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al imprimir prueba de estilos: $e'),
+            backgroundColor: _scheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _printing = false);
+    }
+  }
+
   Widget _buildSettingsPanel(BoxConstraints constraints) {
     final gap = constraints.maxWidth < 640 ? 12.0 : 14.0;
 
@@ -452,6 +496,14 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: const Color(0xFF64748B),
               height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Motor de impresión: Thermal PDF v2.1.0',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: _scheme.primary,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -504,7 +556,9 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 minimumSize: const Size(44, 44),
                 backgroundColor: Colors.white,
                 foregroundColor: _scheme.primary,
-                side: BorderSide(color: _scheme.outlineVariant.withOpacity(0.6)),
+                side: BorderSide(
+                  color: _scheme.outlineVariant.withOpacity(0.6),
+                ),
               ),
             ),
           ],
@@ -561,6 +615,20 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                 ),
               ),
             );
+            final styleTestButton = OutlinedButton.icon(
+              onPressed: _printing ? null : _printStyleTest,
+              icon: const Icon(Icons.format_bold, size: 18),
+              label: const Text('Probar estilos'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            );
 
             if (stacked) {
               return Column(
@@ -569,6 +637,8 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
                   paperSelector,
                   const SizedBox(height: 10),
                   SizedBox(width: double.infinity, child: testButton),
+                  const SizedBox(height: 8),
+                  SizedBox(width: double.infinity, child: styleTestButton),
                 ],
               );
             }
@@ -577,6 +647,8 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
               children: [
                 Expanded(child: paperSelector),
                 const SizedBox(width: 12),
+                styleTestButton,
+                const SizedBox(width: 8),
                 testButton,
               ],
             );

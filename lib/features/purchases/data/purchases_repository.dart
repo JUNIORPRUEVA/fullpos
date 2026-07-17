@@ -1,6 +1,7 @@
 import '../../../core/db/app_db.dart';
 import '../../../core/db/tables.dart';
 import '../../../core/services/cloud_sync_service.dart';
+import '../../products/data/inventory_mutation_fields.dart';
 import '../../products/models/stock_movement_model.dart';
 import 'purchase_order_models.dart';
 import 'package:sqflite/sqflite.dart';
@@ -215,7 +216,10 @@ class PurchasesRepository {
 
         await txn.update(
           DbTables.products,
-          {'stock': newStock, 'updated_at_ms': now},
+          {
+            'stock': newStock,
+            ...InventoryMutationFields.productTouched(now: now),
+          },
           where: 'id = ?',
           whereArgs: [productId],
         );
@@ -449,7 +453,10 @@ class PurchasesRepository {
 
       await txn.update(
         DbTables.products,
-        {'stock': newStock, 'updated_at_ms': now},
+        {
+          'stock': newStock,
+          ...InventoryMutationFields.productTouched(now: now),
+        },
         where: 'id = ?',
         whereArgs: [productId],
       );
@@ -639,7 +646,10 @@ class PurchasesRepository {
 
             await txn.update(
               DbTables.products,
-              {'stock': newStock, 'updated_at_ms': now},
+              {
+                'stock': newStock,
+                ...InventoryMutationFields.productTouched(now: now),
+              },
               where: 'id = ?',
               whereArgs: [productId],
             );

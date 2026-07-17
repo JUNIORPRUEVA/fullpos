@@ -1677,6 +1677,12 @@ class _InventoryMovementsWorkspaceState
   }
 
   String _qtyText(StockMovementModel movement) {
+    if (movement.isOutput) {
+      return '-${_numberFormat.format(movement.quantity.abs())}';
+    }
+    if (movement.isInput) {
+      return '+${_numberFormat.format(movement.quantity.abs())}';
+    }
     return '${movement.quantity >= 0 ? '+' : ''}${_numberFormat.format(movement.quantity)}';
   }
 

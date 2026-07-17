@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:intl/intl.dart';
 
 import '../../../core/printing/models/receipt_text_utils.dart';
@@ -49,18 +47,14 @@ class SessionCloseTicketComposer {
     String money(double value) =>
         CurrencyDisplay.formatPlain(value, decimalDigits: 2);
 
-    String center(String text) {
-      final cleaned = sanitize(text).trim();
-      if (cleaned.isEmpty) return '';
-      final left = ((width - cleaned.length) / 2).floor().clamp(0, width);
-      final right = math.max(0, width - cleaned.length - left);
-      return ' ' * left + cleaned + ' ' * right;
-    }
-
     void addValueRow(String label, String value, {String prefix = ''}) {
       lines.add(
         '$prefix${ReceiptText.formatLine(sanitize(label), sanitize(value), width)}',
       );
+    }
+
+    void addStrongValueRow(String label, String value) {
+      addValueRow(label, value, prefix: '<BR>');
     }
 
     void addWrappedBlock(String text, {String prefix = ''}) {
@@ -117,14 +111,14 @@ class SessionCloseTicketComposer {
         sanitize(companyName),
         width,
       )) {
-        lines.add('<H2C>${fit(nameLine)}');
+        lines.add('<H2L>${fit(nameLine)}');
       }
     }
     if ((companyRnc ?? '').trim().isNotEmpty) {
-      lines.add(center(fit('RNC: ${companyRnc!.trim()}')));
+      lines.add(fit('RNC: ${companyRnc!.trim()}'));
     }
     if ((companyPhone ?? '').trim().isNotEmpty) {
-      lines.add(center(fit('TEL: ${companyPhone!.trim()}')));
+      lines.add(fit('TEL: ${companyPhone!.trim()}'));
     }
 
     if (lines.isNotEmpty) {
@@ -151,8 +145,8 @@ class SessionCloseTicketComposer {
     if (summary.totalRefunds > 0) {
       addValueRow('DEVOLUCIONES', summary.totalRefunds.toString());
     }
-    addValueRow('TOTAL VENDIDO', money(summary.totalSold));
-    addValueRow('EFECTIVO', money(summary.salesCashTotal));
+    addStrongValueRow('TOTAL VENDIDO', money(summary.totalSold));
+    addStrongValueRow('EFECTIVO', money(summary.salesCashTotal));
     addValueRow('TARJETA', money(summary.salesCardTotal));
     addValueRow('TRANSFERENCIA', money(summary.salesTransferTotal));
     addValueRow('CREDITO', money(summary.salesCreditTotal));
@@ -193,7 +187,7 @@ class SessionCloseTicketComposer {
       addValueRow('BASE CAJA DIARIA', money(cashboxInitialAmount));
     }
     addValueRow('BASE DE SESION', money(summary.openingAmount));
-    addValueRow('EFECTIVO VENTAS', money(summary.salesCashTotal));
+    addStrongValueRow('EFECTIVO VENTAS', money(summary.salesCashTotal));
     if (summary.refundsCash > 0) {
       addValueRow('DEVOLUCIONES EFECTIVO', money(summary.refundsCash));
     }
@@ -281,7 +275,7 @@ class SessionCloseTicketComposer {
     lines.add(strongRule());
     lines.add('<H2C>${fit('TOTALES DEL CIERRE')}');
     lines.add(strongRule());
-    addLeftAmountLine('TOTAL VENDIDO', summary.totalSold);
+    lines.add('<BR>${fit('TOTAL VENDIDO: ${money(summary.totalSold)}')}');
     lines.add(fit('TOTAL TICKETS: ${summary.totalTickets}'));
     if (summary.totalRefunds > 0) {
       addLeftAmountLine('DEVOLUCIONES', summary.refundsCash, prefix: '');
@@ -293,7 +287,9 @@ class SessionCloseTicketComposer {
       addLeftAmountLine('SALIDAS DE CAJA', summary.cashOutManual, prefix: '');
     }
     lines.add(sectionRule());
-    lines.add(fit('EFECTIVO ESPERADO: ${money(summary.expectedCash)}'));
+    lines.add(
+      '<BR>${fit('EFECTIVO ESPERADO: ${money(summary.expectedCash)}')}',
+    );
     lines.add('<H1L>${fit('EFECTIVO CONTADO: ${money(closingAmount)}')}');
     lines.add('<H1L>${fit('DIFERENCIA: ${money(difference)}')}');
     lines.add(strongRule());

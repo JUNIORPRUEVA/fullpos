@@ -325,16 +325,22 @@ class LayawayRepository {
             reserved_stock = CASE
               WHEN reserved_stock - ? < 0 THEN 0
               ELSE reserved_stock - ?
-            END
+            END,
+            sync_status = 'pending',
+            local_updated_at_ms = ?,
+            last_modified_by = 'fullpos_local',
+            last_sync_error = NULL,
+            needs_sync = 1,
+            updated_at_ms = ?
         WHERE id = ?
       ''',
-        [qty, qty, qty, productId],
+        [qty, qty, qty, now, now, productId],
       );
 
       await txn.insert(DbTables.stockMovements, {
         'product_id': productId,
-        'type': 'SALE',
-        'quantity': -qty,
+        'type': 'out',
+        'quantity': qty,
         'note': 'Apartado liquidado #$saleCode',
         'created_at_ms': now,
       });

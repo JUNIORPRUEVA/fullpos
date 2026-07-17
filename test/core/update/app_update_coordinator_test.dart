@@ -273,12 +273,47 @@ void main() {
     downloader.completer.complete(installer);
     await Future.wait([firstDownload, secondDownload]);
 
-    final firstLaunch = coordinator.launchInstaller();
-    final secondLaunch = coordinator.launchInstaller();
+    final firstLaunch = coordinator.launchInstaller(userConfirmed: true);
+    final secondLaunch = coordinator.launchInstaller(userConfirmed: true);
     await Future<void>.delayed(Duration.zero);
     expect(launcher.calls, 1);
     launcher.completer.complete();
     await Future.wait([firstLaunch, secondLaunch]);
     await temp.delete(recursive: true);
   });
+
+  test(
+    'installer launch is ignored without explicit user confirmation',
+    () async {
+      final downloader = _FakeDownloader();
+      final launcher = _FakeLauncher();
+      final coordinator = AppUpdateCoordinator.testing(
+        repository: _FakeRepository(remote: policy()),
+        downloader: downloader,
+        launcher: launcher,
+        safetyValidator: const _SafeValidator(),
+        installedVersionLoader: () async => AppVersion.parse('1.0.1+5'),
+      );
+
+      await coordinator.check();
+      final download = coordinator.downloadAndInstall(presentWhenReady: false);
+      await Future<void>.delayed(Duration.zero);
+
+      final temp = await Directory.systemTemp.createTemp(
+        'fullpos_unconfirmed_launch_test_',
+      );
+      final installer = File(
+        '${temp.path}${Platform.pathSeparator}FullPOS-Setup.exe',
+      );
+      await installer.writeAsBytes([0x4d, 0x5a]);
+      downloader.completer.complete(installer);
+      await download;
+
+      await coordinator.launchInstaller(userConfirmed: false);
+
+      expect(launcher.calls, 0);
+      expect(coordinator.state.phase, AppUpdatePhase.ready);
+      await temp.delete(recursive: true);
+    },
+  );
 }

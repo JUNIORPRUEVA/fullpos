@@ -38,6 +38,11 @@ class UnifiedTicketPrinter {
     required TicketData data,
     int? overrideCopies,
   }) async {
+    debugPrint('[PRINT TRACE] Inicio impresion ticket ${data.type.name}');
+    debugPrint(
+      '[PRINT TRACE] Archivo ejecutado: lib/core/printing/unified_ticket_printer.dart',
+    );
+    debugPrint('[PRINT TRACE] Builder utilizado: TicketBuilder.buildPdf');
     PrintActivityTracker.instance.markPrintStarted();
     try {
       // 1. Obtener datos de empresa (FUENTE ÚNICA)
@@ -65,6 +70,7 @@ class UnifiedTicketPrinter {
         document: pdf,
         settings: printerSettings,
         overrideCopies: copies,
+        traceSource: 'UnifiedTicketPrinter.printTicket/${data.type.name}',
       );
 
       if (result.success) {
@@ -103,8 +109,9 @@ class UnifiedTicketPrinter {
             sectionSpacingLevel: layout.sectionSpacingLevel > 4
                 ? 4
                 : layout.sectionSpacingLevel,
+            headerAlignment: 'left',
           )
-        : layout;
+        : layout.copyWith(headerAlignment: 'left');
 
     if (data.type != TicketType.sale) {
       return optimizedLayout;
@@ -130,6 +137,10 @@ class UnifiedTicketPrinter {
     TicketLayoutConfig? layoutOverride,
   }) async {
     try {
+      debugPrint('[PRINT TRACE] Inicio impresion lineas personalizadas');
+      debugPrint(
+        '[PRINT TRACE] Builder utilizado: TicketBuilder.buildPdfFromLines',
+      );
       final company = await CompanyInfoRepository.getCurrentCompanyInfo();
       final printerSettings = await PrinterSettingsRepository.getOrCreate();
       final layout =
@@ -144,6 +155,7 @@ class UnifiedTicketPrinter {
         document: pdf,
         settings: printerSettings,
         overrideCopies: copies,
+        traceSource: 'UnifiedTicketPrinter.printCustomLines/$ticketNumber',
       );
 
       return PrintTicketResult(
@@ -175,6 +187,10 @@ class UnifiedTicketPrinter {
     String? statusLabel,
     bool isLayaway = false,
   }) async {
+    debugPrint('[PRINT TRACE] Inicio impresion factura/venta');
+    debugPrint(
+      '[PRINT TRACE] Metodo real: UnifiedTicketPrinter.printSaleTicket',
+    );
     final electronicInvoice = await _loadElectronicInvoice(sale);
 
     // Convertir items a TicketItemData
@@ -358,8 +374,44 @@ class UnifiedTicketPrinter {
 
   /// Imprime un ticket de prueba con datos demo
   static Future<PrintTicketResult> printTestTicket() async {
+    debugPrint('[PRINT TRACE] Inicio impresion prueba demo');
     final demoData = TicketData.demo();
     return await printTicket(data: demoData, overrideCopies: 1);
+  }
+
+  /// Imprime una prueba fisica para verificar negrita, tamaños, alineación y
+  /// caracteres especiales en la impresora real configurada.
+  static Future<PrintTicketResult> printStyleDiagnosticsTicket() async {
+    try {
+      debugPrint('[PRINT TRACE] Inicio impresion prueba de estilos');
+      final company = await CompanyInfoRepository.getCurrentCompanyInfo();
+      final settings = await PrinterSettingsRepository.getOrCreate();
+      final layout = _layoutForPrintedTicket(
+        TicketLayoutConfig.fromPrinterSettings(settings),
+        TicketData.demo(),
+      );
+      final builder = TicketBuilder(layout: layout, company: company);
+      final pdf = builder.buildStyleDiagnosticsPdf();
+
+      final result = await ThermalPrinterService.printDocument(
+        document: pdf,
+        settings: settings,
+        overrideCopies: 1,
+        traceSource: 'UnifiedTicketPrinter.printStyleDiagnosticsTicket',
+      );
+
+      return PrintTicketResult(
+        success: result.success,
+        message: result.message,
+        ticketNumber: 'STYLE-DIAG',
+      );
+    } catch (e) {
+      return PrintTicketResult(
+        success: false,
+        message: 'Error en prueba de estilos: $e',
+        ticketNumber: 'STYLE-DIAG',
+      );
+    }
   }
 
   /// Intenta abrir la caja registradora enviando un trabajo mínimo a la
@@ -389,6 +441,7 @@ class UnifiedTicketPrinter {
         document: pdf,
         settings: settings,
         overrideCopies: 1,
+        traceSource: 'UnifiedTicketPrinter.openCashDrawerPulse',
       );
 
       return PrintTicketResult(
@@ -451,6 +504,7 @@ class UnifiedTicketPrinter {
         document: pdf,
         settings: settings,
         overrideCopies: 1,
+        traceSource: 'UnifiedTicketPrinter.printWidthRulerTest',
       );
 
       return PrintTicketResult(

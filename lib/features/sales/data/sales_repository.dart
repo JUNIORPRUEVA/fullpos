@@ -26,6 +26,11 @@ class SalesRepository {
 
   static final Random _random = Random();
 
+  static bool _isNonInventoryCode(String? code) {
+    final normalized = (code ?? '').trim().toUpperCase();
+    return normalized.isEmpty || normalized == 'N/A' || normalized == 'MANUAL';
+  }
+
   static Future<void> _rollbackSaleAfterElectronicFailure(
     int saleId,
     StockUpdateMode stockUpdateMode,
@@ -64,20 +69,40 @@ class SalesRepository {
 
         if (stockUpdateMode == StockUpdateMode.deduct) {
           await txn.rawUpdate(
-            'UPDATE ${DbTables.products} SET stock = stock + ? WHERE id = ?',
-            [qty, productId],
+            '''
+            UPDATE ${DbTables.products}
+            SET stock = stock + ?,
+                sync_status = 'pending',
+                local_updated_at_ms = ?,
+                last_modified_by = 'fullpos_local',
+                last_sync_error = NULL,
+                needs_sync = 1,
+                updated_at_ms = ?
+            WHERE id = ?
+            ''',
+            [qty, now, now, productId],
           );
           await txn.insert(DbTables.stockMovements, {
             'product_id': productId,
-            'type': 'SALE_ROLLBACK',
+            'type': 'in',
             'quantity': qty,
             'note': 'Rollback FE venta #$saleId - $localCode',
             'created_at_ms': now,
           });
         } else if (stockUpdateMode == StockUpdateMode.reserve) {
           await txn.rawUpdate(
-            'UPDATE ${DbTables.products} SET reserved_stock = CASE WHEN reserved_stock >= ? THEN reserved_stock - ? ELSE 0 END WHERE id = ?',
-            [qty, qty, productId],
+            '''
+            UPDATE ${DbTables.products}
+            SET reserved_stock = CASE WHEN reserved_stock >= ? THEN reserved_stock - ? ELSE 0 END,
+                sync_status = 'pending',
+                local_updated_at_ms = ?,
+                last_modified_by = 'fullpos_local',
+                last_sync_error = NULL,
+                needs_sync = 1,
+                updated_at_ms = ?
+            WHERE id = ?
+            ''',
+            [qty, qty, now, now, productId],
           );
         }
       }
@@ -625,13 +650,12 @@ class SalesRepository {
           // Si falta product_id o falta costo snapshot, intentar resolver desde products
           // usando primero product_id y luego product_code_snapshot.
           if ((resolvedProductId == null || resolvedPurchaseSnapshot <= 0) &&
-              codeSnapshot != null &&
-              codeSnapshot.isNotEmpty &&
-              codeSnapshot != 'N/A') {
+              !_isNonInventoryCode(codeSnapshot)) {
             final rows = await txn.query(
               DbTables.products,
               columns: ['id', 'purchase_price'],
-              where: 'TRIM(code) = TRIM(?) COLLATE NOCASE',
+              where:
+                  'TRIM(code) = TRIM(?) COLLATE NOCASE AND deleted_at_ms IS NULL AND is_active = 1',
               whereArgs: [codeSnapshot],
               limit: 1,
             );
@@ -663,6 +687,16 @@ class SalesRepository {
                 resolvedPurchaseSnapshot = cost;
               }
             }
+          }
+
+          if (resolvedProductId == null && !_isNonInventoryCode(codeSnapshot)) {
+            throw BusinessRuleException(
+              code: 'product_not_found',
+              messageUser:
+                  'No se encontró el producto "$codeSnapshot" en inventario. Reagrégalo al carrito antes de cobrar.',
+              messageDev:
+                  'Sale item has product_code_snapshot=$codeSnapshot but no active product_id could be resolved.',
+            );
           }
 
           await txn.insert(DbTables.saleItems, {
@@ -698,7 +732,7 @@ class SalesRepository {
             final productRows = await txn.query(
               DbTables.products,
               columns: ['stock', 'reserved_stock', 'name', 'code'],
-              where: 'id = ?',
+              where: 'id = ? AND deleted_at_ms IS NULL AND is_active = 1',
               whereArgs: [productId],
               limit: 1,
             );
@@ -742,15 +776,25 @@ class SalesRepository {
             if (stockUpdateMode == StockUpdateMode.deduct) {
               // Restar stock del producto
               await txn.rawUpdate(
-                'UPDATE ${DbTables.products} SET stock = stock - ? WHERE id = ?',
-                [qty, productId],
+                '''
+                UPDATE ${DbTables.products}
+                SET stock = stock - ?,
+                    sync_status = 'pending',
+                    local_updated_at_ms = ?,
+                    last_modified_by = 'fullpos_local',
+                    last_sync_error = NULL,
+                    needs_sync = 1,
+                    updated_at_ms = ?
+                WHERE id = ?
+                ''',
+                [qty, now, now, productId],
               );
 
               // Registrar movimiento de stock
               await txn.insert(DbTables.stockMovements, {
                 'product_id': productId,
-                'type': 'SALE',
-                'quantity': -qty,
+                'type': 'out',
+                'quantity': qty,
                 'note': allowNegativeStock && newStock < 0
                     ? 'Venta #$saleId - $localCode (sin stock)'
                     : 'Venta #$saleId - $localCode',
@@ -758,8 +802,18 @@ class SalesRepository {
               });
             } else if (stockUpdateMode == StockUpdateMode.reserve) {
               await txn.rawUpdate(
-                'UPDATE ${DbTables.products} SET reserved_stock = reserved_stock + ? WHERE id = ?',
-                [qty, productId],
+                '''
+                UPDATE ${DbTables.products}
+                SET reserved_stock = reserved_stock + ?,
+                    sync_status = 'pending',
+                    local_updated_at_ms = ?,
+                    last_modified_by = 'fullpos_local',
+                    last_sync_error = NULL,
+                    needs_sync = 1,
+                    updated_at_ms = ?
+                WHERE id = ?
+                ''',
+                [qty, now, now, productId],
               );
             }
           }
@@ -1315,26 +1369,56 @@ class SalesRepository {
         final qty = (item['qty'] as num?)?.toDouble() ?? 0.0;
 
         if (productId != null && qty > 0) {
-          // Restaurar stock
-          await txn.rawUpdate(
-            'UPDATE ${DbTables.products} SET stock = stock + ? WHERE id = ?',
-            [qty, productId],
-          );
+          if (normalizedStatus == 'LAYAWAY') {
+            await txn.rawUpdate(
+              '''
+              UPDATE ${DbTables.products}
+              SET reserved_stock = CASE
+                    WHEN reserved_stock >= ? THEN reserved_stock - ?
+                    ELSE 0
+                  END,
+                  sync_status = 'pending',
+                  local_updated_at_ms = ?,
+                  last_modified_by = 'fullpos_local',
+                  last_sync_error = NULL,
+                  needs_sync = 1,
+                  updated_at_ms = ?
+              WHERE id = ?
+              ''',
+              [qty, qty, now, now, productId],
+            );
+          } else {
+            // Restaurar stock
+            await txn.rawUpdate(
+              '''
+              UPDATE ${DbTables.products}
+              SET stock = stock + ?,
+                  sync_status = 'pending',
+                  local_updated_at_ms = ?,
+                  last_modified_by = 'fullpos_local',
+                  last_sync_error = NULL,
+                  needs_sync = 1,
+                  updated_at_ms = ?
+              WHERE id = ?
+              ''',
+              [qty, now, now, productId],
+            );
 
-          // Registrar movimiento de stock (cancelación)
-          final cancelNote = reason != null && reason.trim().isNotEmpty
-              ? reason.trim()
-              : null;
+            // Registrar movimiento de stock (cancelación)
+            final cancelNote = reason != null && reason.trim().isNotEmpty
+                ? reason.trim()
+                : null;
 
-          await txn.insert(DbTables.stockMovements, {
-            'product_id': productId,
-            'type': 'CANCELLATION',
-            'quantity': qty,
-            'note': cancelNote == null
-                ? 'Anulación venta #$saleId - ${sale.localCode}'
-                : 'Anulación venta #$saleId - ${sale.localCode} | Motivo: $cancelNote',
-            'created_at_ms': now,
-          });
+            await txn.insert(DbTables.stockMovements, {
+              'product_id': productId,
+              'type': 'in',
+              'quantity': qty,
+              'note': cancelNote == null
+                  ? 'Anulación venta #$saleId - ${sale.localCode}'
+                  : 'Anulación venta #$saleId - ${sale.localCode} | Motivo: $cancelNote',
+              'created_at_ms': now,
+            });
+          }
         }
       }
 

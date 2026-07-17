@@ -4326,7 +4326,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
       final bool isCreditPayment = method == payment.PaymentMethod.credit;
       final receivedAmount = isCreditPayment ? 0.0 : receivedAmountRaw;
       final changeAmount = isCreditPayment ? 0.0 : changeAmountRaw;
-      final shouldPrint = paymentResult['printTicket'] == true;
+      final shouldPrint =
+          paymentResult['printTicket'] == true ||
+          resolvedKind == SaleKind.invoice;
       final shouldDownloadInvoicePdf =
           paymentResult['downloadInvoicePdf'] == true &&
           resolvedKind == SaleKind.invoice;
@@ -4412,25 +4414,35 @@ class _SalesPageState extends ConsumerState<SalesPage>
 
       for (final item in _currentCart.items) {
         var enriched = item;
+        ProductModel? product;
 
         if (item.productId != null) {
-          final product = await productsRepo.getById(item.productId!);
-          if (product != null) {
-            enriched = enriched.copyWith(
-              productCodeSnapshot: enriched.productCodeSnapshot.isNotEmpty
-                  ? enriched.productCodeSnapshot
-                  : product.code,
-              productNameSnapshot: enriched.productNameSnapshot.isNotEmpty
-                  ? enriched.productNameSnapshot
-                  : product.name,
-              unitPrice: enriched.unitPrice > 0
-                  ? enriched.unitPrice
-                  : product.salePrice,
-              purchasePriceSnapshot: enriched.purchasePriceSnapshot > 0
-                  ? enriched.purchasePriceSnapshot
-                  : product.purchasePrice,
-            );
+          product = await productsRepo.getById(item.productId!);
+        } else {
+          final code = item.productCodeSnapshot.trim();
+          if (code.isNotEmpty &&
+              code.toUpperCase() != 'N/A' &&
+              code.toUpperCase() != 'MANUAL') {
+            product = await productsRepo.getByCode(code);
           }
+        }
+
+        if (product != null) {
+          enriched = enriched.copyWith(
+            productId: enriched.productId ?? product.id,
+            productCodeSnapshot: enriched.productCodeSnapshot.isNotEmpty
+                ? enriched.productCodeSnapshot
+                : product.code,
+            productNameSnapshot: enriched.productNameSnapshot.isNotEmpty
+                ? enriched.productNameSnapshot
+                : product.name,
+            unitPrice: enriched.unitPrice > 0
+                ? enriched.unitPrice
+                : product.salePrice,
+            purchasePriceSnapshot: enriched.purchasePriceSnapshot > 0
+                ? enriched.purchasePriceSnapshot
+                : product.purchasePrice,
+          );
         }
 
         final totalLine =
@@ -6942,6 +6954,10 @@ class _SalesPageState extends ConsumerState<SalesPage>
           bottomLeft: Radius.circular(5),
           bottomRight: Radius.circular(13),
         );
+        const searchLeadingRadius = BorderRadius.only(
+          topLeft: Radius.circular(13),
+          bottomLeft: Radius.circular(5),
+        );
 
         const productRadius = BorderRadius.only(
           topLeft: Radius.circular(12),
@@ -7008,61 +7024,35 @@ class _SalesPageState extends ConsumerState<SalesPage>
                         prefixIcon: Tooltip(
                           message: 'Buscar producto',
                           waitDuration: const Duration(milliseconds: 350),
-                          child: InkWell(
-                            onTap: () {
-                              _searchFocusNode.requestFocus();
+                          child: Material(
+                            color: fullposBlue,
+                            borderRadius: searchLeadingRadius,
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              onTap: () {
+                                _searchFocusNode.requestFocus();
 
-                              showSearchNotice(
-                                icon: Icons.search_rounded,
-                                message:
-                                    'Escribe el nombre o código del producto.',
-                              );
-                            },
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(13),
-                              topRight: Radius.circular(5),
-                              bottomLeft: Radius.circular(5),
-                              bottomRight: Radius.circular(13),
-                            ),
-                            child: SizedBox(
-                              width: 58,
-                              child: Center(
-                                child: Container(
-                                  width: 34,
-                                  height: 34,
-                                  decoration: BoxDecoration(
-                                    color: fullposBlue,
-                                    borderRadius: const BorderRadius.only(
-                                      topLeft: Radius.circular(10),
-                                      topRight: Radius.circular(4),
-                                      bottomLeft: Radius.circular(4),
-                                      bottomRight: Radius.circular(10),
-                                    ),
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.16),
-                                      width: 0.8,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: fullposBlue.withOpacity(0.22),
-                                        blurRadius: 9,
-                                        spreadRadius: -4,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  alignment: Alignment.center,
+                                showSearchNotice(
+                                  icon: Icons.search_rounded,
+                                  message:
+                                      'Escribe el nombre o código del producto.',
+                                );
+                              },
+                              child: SizedBox(
+                                width: 48,
+                                height: barHeight,
+                                child: Center(
                                   child: Image.asset(
                                     'assets/imagen/iconos/buscar_limpio.png',
-                                    width: 19,
-                                    height: 19,
+                                    width: 20,
+                                    height: 20,
                                     color: Colors.white,
                                     filterQuality: FilterQuality.high,
                                     errorBuilder: (_, _, _) {
                                       return const Icon(
                                         Icons.search_rounded,
                                         color: Colors.white,
-                                        size: 19,
+                                        size: 20,
                                       );
                                     },
                                   ),
@@ -7071,9 +7061,9 @@ class _SalesPageState extends ConsumerState<SalesPage>
                             ),
                           ),
                         ),
-                        prefixIconConstraints: const BoxConstraints(
-                          minWidth: 58,
-                          minHeight: 42,
+                        prefixIconConstraints: BoxConstraints(
+                          minWidth: 48,
+                          minHeight: barHeight,
                         ),
                         border: searchBorder,
                         enabledBorder: InputBorder.none,

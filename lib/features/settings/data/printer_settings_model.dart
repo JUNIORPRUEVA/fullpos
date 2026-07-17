@@ -208,7 +208,7 @@ class PrinterSettingsModel {
         copies: map['copies'] as int? ?? 1,
         showItbis: map['show_itbis'] as int? ?? 1,
         showElectronicInvoiceReference:
-          map['show_electronic_invoice_reference'] as int? ?? 1,
+            map['show_electronic_invoice_reference'] as int? ?? 1,
         showCashier: map['show_cashier'] as int? ?? 1,
         showClient: map['show_client'] as int? ?? 1,
         showPaymentMethod: map['show_payment_method'] as int? ?? 1,
@@ -307,8 +307,7 @@ class PrinterSettingsModel {
     copies: copies ?? this.copies,
     showItbis: showItbis ?? this.showItbis,
     showElectronicInvoiceReference:
-      showElectronicInvoiceReference ??
-      this.showElectronicInvoiceReference,
+        showElectronicInvoiceReference ?? this.showElectronicInvoiceReference,
     showCashier: showCashier ?? this.showCashier,
     showClient: showClient ?? this.showClient,
     showPaymentMethod: showPaymentMethod ?? this.showPaymentMethod,
@@ -387,7 +386,7 @@ class PrinterSettingsModel {
       fontSizeLevel: 6,
       lineSpacingLevel: 6,
       sectionSpacingLevel: 6,
-      headerAlignment: 'center',
+      headerAlignment: 'left',
       detailsAlignment: 'left',
       totalsAlignment: 'right',
     );
@@ -432,7 +431,7 @@ class PrinterSettingsModel {
       fontSizeLevel: 6,
       lineSpacingLevel: 6,
       sectionSpacingLevel: 6,
-      headerAlignment: 'center',
+      headerAlignment: 'left',
       detailsAlignment: 'left',
       totalsAlignment: 'right',
     );

@@ -51,6 +51,12 @@ class ProductsRepository {
   final ProductSyncOutboxRepository _productOutbox =
       ProductSyncOutboxRepository();
 
+  String _normalizeCode(String code) => code.trim();
+
+  ProductModel _normalizeForSave(ProductModel product) {
+    return product.copyWith(code: _normalizeCode(product.code));
+  }
+
   void _triggerCloudProductsSyncSoon() {
     CloudSyncService.instance.scheduleProductsSyncSoon();
   }
@@ -223,10 +229,8 @@ class ProductsRepository {
     if (product.stock < 0 || product.stockMin < 0) {
       throw ArgumentError('Stock invalido');
     }
-    if (!wantsColor && !hasImage) {
-      throw ArgumentError('La imagen del producto es obligatoria');
-    }
-    if (wantsColor && (placeholderColor == null || placeholderColor.isEmpty)) {
+    if ((wantsColor || !hasImage) &&
+        (placeholderColor == null || placeholderColor.isEmpty)) {
       throw ArgumentError('Debe generar o elegir un color para el producto');
     }
   }
@@ -517,11 +521,13 @@ class ProductsRepository {
   /// Obtiene un producto por código
   Future<ProductModel?> getByCode(String code) async {
     final db = await AppDb.database;
+    final normalizedCode = _normalizeCode(code);
 
     final List<Map<String, dynamic>> maps = await db.query(
       DbTables.products,
-      where: 'code = ? AND deleted_at_ms IS NULL',
-      whereArgs: [code],
+      where:
+          'TRIM(code) = TRIM(?) COLLATE NOCASE AND deleted_at_ms IS NULL AND is_active = 1',
+      whereArgs: [normalizedCode],
       limit: 1,
     );
 
@@ -534,7 +540,7 @@ class ProductsRepository {
     final db = await AppDb.database;
     final syncContext = await _loadSyncContext();
 
-    final prepared = _withPlaceholderDefaults(product);
+    final prepared = _withPlaceholderDefaults(_normalizeForSave(product));
     _validateRequiredForSave(prepared);
 
     // Verificar que el codigo sea unico
@@ -562,7 +568,8 @@ class ProductsRepository {
 
       final deletedRows = await txn.query(
         DbTables.products,
-        where: 'code = ? AND deleted_at_ms IS NOT NULL',
+        where:
+            'TRIM(code) = TRIM(?) COLLATE NOCASE AND deleted_at_ms IS NOT NULL',
         whereArgs: [prepared.code],
         limit: 1,
       );
@@ -626,7 +633,7 @@ class ProductsRepository {
 
     final db = await AppDb.database;
     final syncContext = await _loadSyncContext();
-    final prepared = _withPlaceholderDefaults(product);
+    final prepared = _withPlaceholderDefaults(_normalizeForSave(product));
 
     _validateRequiredForSave(prepared);
 
@@ -1118,9 +1125,11 @@ class ProductsRepository {
   /// Verifica si existe un producto con el mismo código
   Future<bool> existsByCode(String code, {int? excludeId}) async {
     final db = await AppDb.database;
+    final normalizedCode = _normalizeCode(code);
 
-    String where = 'code = ? AND deleted_at_ms IS NULL';
-    List<dynamic> whereArgs = [code];
+    String where =
+        'TRIM(code) = TRIM(?) COLLATE NOCASE AND deleted_at_ms IS NULL';
+    List<dynamic> whereArgs = [normalizedCode];
 
     if (excludeId != null) {
       where += ' AND id != ?';
@@ -1219,13 +1228,13 @@ class ProductsRepository {
       await AppDb.deleteDemoCategories(txn);
 
       for (final product in products) {
-        final prepared = _withPlaceholderDefaults(product);
+        final prepared = _withPlaceholderDefaults(_normalizeForSave(product));
         _validateRequiredForSave(prepared);
 
         final rows = await txn.query(
           DbTables.products,
           columns: ['id', 'created_at_ms'],
-          where: 'code = ?',
+          where: 'TRIM(code) = TRIM(?) COLLATE NOCASE',
           whereArgs: [prepared.code],
           limit: 1,
         );

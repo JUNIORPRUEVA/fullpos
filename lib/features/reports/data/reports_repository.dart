@@ -173,6 +173,15 @@ class SaleRecord {
 class ReportsRepository {
   ReportsRepository._();
 
+  static const String _reportableSaleVisibilitySql =
+      "(deleted_at_ms IS NULL OR (kind IN ('invoice', 'sale') AND status = 'REFUNDED'))";
+
+  static const String _reportableSaleVisibilitySqlS =
+      "(s.deleted_at_ms IS NULL OR (s.kind IN ('invoice', 'sale') AND s.status = 'REFUNDED'))";
+
+  static const String _reportableSaleVisibilitySqlRs =
+      "(rs.deleted_at_ms IS NULL OR (rs.kind IN ('invoice', 'sale') AND rs.status = 'REFUNDED'))";
+
   static String _normalizePaymentMethodLabel(String? method) {
     return switch ((method ?? '').trim().toLowerCase()) {
       '' || 'cash' || 'efectivo' => 'Efectivo',
@@ -319,7 +328,7 @@ class ReportsRepository {
             SELECT id FROM ${DbTables.sales}
             WHERE kind IN ('invoice', 'sale')
               AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-              AND deleted_at_ms IS NULL
+              AND $_reportableSaleVisibilitySql
               AND created_at_ms >= ?
               AND created_at_ms <= ?
           )
@@ -347,7 +356,7 @@ class ReportsRepository {
             SELECT id FROM ${DbTables.sales}
             WHERE kind IN ('invoice', 'sale')
               AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-              AND deleted_at_ms IS NULL
+              AND $_reportableSaleVisibilitySql
               AND created_at_ms >= ?
               AND created_at_ms <= ?
           )
@@ -403,7 +412,7 @@ class ReportsRepository {
       SELECT COUNT(id) as quotes_count
       FROM ${DbTables.sales}
       WHERE kind = 'quote'
-        AND deleted_at_ms IS NULL
+        AND $_reportableSaleVisibilitySql
         AND created_at_ms >= ?
         AND created_at_ms <= ?
     ''';
@@ -419,7 +428,7 @@ class ReportsRepository {
       FROM ${DbTables.sales}
       WHERE kind IN ('invoice', 'sale')
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-        AND deleted_at_ms IS NULL
+        AND $_reportableSaleVisibilitySql
         AND created_at_ms >= ?
         AND created_at_ms <= ?
     ''';
@@ -466,7 +475,7 @@ class ReportsRepository {
         FROM ${DbTables.sales}
         WHERE kind IN ('invoice', 'sale', 'return')
           AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySql
           AND created_at_ms >= ?
           AND created_at_ms <= ?
         GROUP BY date_label
@@ -544,7 +553,7 @@ class ReportsRepository {
         LEFT JOIN ${DbTables.categories} c ON p.category_id = c.id
         WHERE s.kind IN ('invoice', 'sale')
           AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlS
           AND s.created_at_ms >= ?
           AND s.created_at_ms <= ?
         GROUP BY category
@@ -578,7 +587,7 @@ class ReportsRepository {
         LEFT JOIN ${DbTables.categories} c ON p.category_id = c.id
         WHERE s.kind = 'return'
           AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlS
           AND s.created_at_ms >= ?
           AND s.created_at_ms <= ?
         GROUP BY category
@@ -624,7 +633,7 @@ class ReportsRepository {
           FROM ${DbTables.sales} s
           WHERE s.kind IN ('invoice', 'sale')
             AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-            AND s.deleted_at_ms IS NULL
+            AND $_reportableSaleVisibilitySqlS
             AND s.created_at_ms >= ?
             AND s.created_at_ms <= ?
           GROUP BY date_label
@@ -635,7 +644,7 @@ class ReportsRepository {
           FROM ${DbTables.sales} s
           WHERE s.kind = 'return'
             AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-            AND s.deleted_at_ms IS NULL
+            AND $_reportableSaleVisibilitySqlS
             AND s.created_at_ms >= ?
             AND s.created_at_ms <= ?
           GROUP BY date_label
@@ -655,7 +664,7 @@ class ReportsRepository {
             )
           WHERE s.kind IN ('invoice', 'sale')
             AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-            AND s.deleted_at_ms IS NULL
+            AND $_reportableSaleVisibilitySqlS
             AND s.created_at_ms >= ?
             AND s.created_at_ms <= ?
           GROUP BY date_label
@@ -672,7 +681,7 @@ class ReportsRepository {
           LEFT JOIN ${DbTables.products} p ON COALESCE(ri.product_id, si.product_id) = p.id
           WHERE s.kind = 'return'
             AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-            AND s.deleted_at_ms IS NULL
+            AND $_reportableSaleVisibilitySqlS
             AND s.created_at_ms >= ?
             AND s.created_at_ms <= ?
           GROUP BY date_label
@@ -697,7 +706,7 @@ class ReportsRepository {
           FROM ${DbTables.sales}
           WHERE kind IN ('invoice', 'sale', 'return')
             AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-            AND deleted_at_ms IS NULL
+            AND $_reportableSaleVisibilitySql
             AND created_at_ms >= ?
             AND created_at_ms <= ?
           GROUP BY date_label
@@ -782,7 +791,7 @@ class ReportsRepository {
           )
         WHERE s.kind IN ('invoice', 'sale')
           AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlS
           AND s.created_at_ms >= ?
           AND s.created_at_ms <= ?
         UNION ALL
@@ -821,7 +830,7 @@ class ReportsRepository {
         LEFT JOIN ${DbTables.products} p ON COALESCE(ri.product_id, si.product_id) = p.id
         WHERE s.kind = 'return'
           AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlS
           AND s.created_at_ms >= ?
           AND s.created_at_ms <= ?
       ) t
@@ -888,7 +897,7 @@ class ReportsRepository {
         FROM ${DbTables.sales} s
         WHERE s.kind IN ('invoice', 'sale', 'return')
           AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlS
           AND s.customer_id IS NOT NULL
           AND s.created_at_ms >= ?
           AND s.created_at_ms <= ?
@@ -934,7 +943,7 @@ class ReportsRepository {
       FROM ${DbTables.sales} s
       WHERE s.kind IN ('invoice', 'sale', 'return')
         AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-        AND s.deleted_at_ms IS NULL
+        AND $_reportableSaleVisibilitySqlS
         AND s.created_at_ms >= ?
         AND s.created_at_ms <= ?
     ''';
@@ -1011,7 +1020,7 @@ class ReportsRepository {
         FROM ${DbTables.sales} s
         WHERE s.kind IN ('invoice', 'sale')
           AND s.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND s.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlS
           AND s.customer_id IS NOT NULL
           AND s.created_at_ms >= ?
           AND s.created_at_ms <= ?
@@ -1031,7 +1040,7 @@ class ReportsRepository {
         INNER JOIN ${DbTables.sales} os ON r.original_sale_id = os.id
         WHERE rs.kind = 'return'
           AND rs.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND rs.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlRs
           AND rs.customer_id IS NOT NULL
           AND rs.created_at_ms >= ?
           AND rs.created_at_ms <= ?
@@ -1086,7 +1095,7 @@ class ReportsRepository {
       FROM ${DbTables.sales}
       WHERE kind IN ('invoice', 'sale', 'return')
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-        AND deleted_at_ms IS NULL
+        AND $_reportableSaleVisibilitySql
         AND customer_id = ?
         AND created_at_ms >= ?
         AND created_at_ms <= ?
@@ -1154,7 +1163,7 @@ class ReportsRepository {
         FROM ${DbTables.sales}
         WHERE kind IN ('invoice', 'sale')
           AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySql
           AND created_at_ms >= ?
           AND created_at_ms <= ?
       ''',
@@ -1175,7 +1184,7 @@ class ReportsRepository {
         INNER JOIN ${DbTables.sales} os ON r.original_sale_id = os.id
         WHERE rs.kind = 'return'
           AND rs.status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-          AND rs.deleted_at_ms IS NULL
+          AND $_reportableSaleVisibilitySqlRs
           AND rs.created_at_ms >= ?
           AND rs.created_at_ms <= ?
       ''',
@@ -1273,7 +1282,7 @@ class ReportsRepository {
       FROM ${DbTables.sales}
       WHERE kind IN ('invoice', 'sale', 'return')
         AND status IN ('completed', 'PAID', 'PARTIAL_REFUND','REFUNDED')
-        AND deleted_at_ms IS NULL
+        AND $_reportableSaleVisibilitySql
         AND created_at_ms >= ? AND created_at_ms < ?
     ''';
     final todayResult = await db.rawQuery(todayQuery, [

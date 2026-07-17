@@ -1629,7 +1629,7 @@ class _StockAdjustmentsPageState extends State<StockAdjustmentsPage> {
         ? '-'
         : '→';
 
-    final qty = movement.quantity.toStringAsFixed(0);
+    final qty = movement.quantity.abs().toStringAsFixed(0);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),

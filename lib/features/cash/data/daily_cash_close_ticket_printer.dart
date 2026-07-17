@@ -113,20 +113,13 @@ class DailyCashCloseTicketPrinter {
     String fit(String text) => ReceiptText.fitText(text, w);
     String line() => ReceiptText.line(width: w);
 
-    String center(String text) {
-      final cleaned = sanitize(text).toUpperCase();
-      return ReceiptText.alignColumns(
-        values: [cleaned],
-        widths: [w],
-        aligns: const [TextAlignMode.center],
-      );
-    }
-
     String pair(String left, String right) {
       return ReceiptText.formatLine(sanitize(left), sanitize(right), w);
     }
 
     void addPair(String left, String right) => lines.add(pair(left, right));
+    void addStrongPair(String left, String right) =>
+        lines.add('<BR>${pair(left, right)}');
 
     String money(double value) => ReceiptText.formatMoney(value);
 
@@ -137,14 +130,14 @@ class DailyCashCloseTicketPrinter {
     final closedAt = msToLocal(cashbox.closedAtMs);
 
     if (companyName.trim().isNotEmpty) {
-      lines.add(center(companyName));
+      lines.add(fit(companyName.toUpperCase()));
     }
 
     if ((companyRnc ?? '').trim().isNotEmpty) {
-      lines.add(center('RNC: ${companyRnc!.trim()}'));
+      lines.add(fit('RNC: ${companyRnc!.trim()}'));
     }
     if ((companyPhone ?? '').trim().isNotEmpty) {
-      lines.add(center('TEL: ${companyPhone!.trim()}'));
+      lines.add(fit('TEL: ${companyPhone!.trim()}'));
     }
 
     lines.add(line());
@@ -167,16 +160,18 @@ class DailyCashCloseTicketPrinter {
     }
     lines.add(line());
 
+    lines.add('<H2C>RESUMEN DE CAJA');
     addPair('FONDO INICIAL:', money(openingAmount));
-    addPair('TOTAL VENDIDO:', money(totalSold));
+    addStrongPair('TOTAL VENDIDO:', money(totalSold));
     addPair('SALIDAS CAJA:', money(cashOutTotal));
-    addPair('EFECTIVO ESPERADO:', money(expectedCash));
-    addPair('EFECTIVO FINAL:', money(finalCash));
-    addPair('DIFERENCIA:', money(difference));
+    addStrongPair('EFECTIVO ESPERADO:', money(expectedCash));
+    addStrongPair('EFECTIVO FINAL:', money(finalCash));
+    addStrongPair('DIFERENCIA:', money(difference));
     addPair('TICKETS:', totalTickets.toString());
     lines.add(line());
 
-    addPair('EFECTIVO:', money(salesCashTotal));
+    lines.add('<H2C>MEDIOS DE PAGO');
+    addStrongPair('EFECTIVO:', money(salesCashTotal));
     if (salesCardTotal > 0) addPair('TARJETA:', money(salesCardTotal));
     if (salesTransferTotal > 0) {
       addPair('TRANSFERENCIA:', money(salesTransferTotal));

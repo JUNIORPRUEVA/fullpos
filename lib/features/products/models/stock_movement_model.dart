@@ -10,10 +10,26 @@ enum StockMovementType {
   const StockMovementType(this.value, this.label);
 
   static StockMovementType fromString(String value) {
-    return StockMovementType.values.firstWhere(
-      (e) => e.value == value,
-      orElse: () => StockMovementType.adjust,
-    );
+    switch (value.trim().toLowerCase()) {
+      case 'in':
+      case 'input':
+      case 'entrada':
+      case 'return':
+      case 'sale_rollback':
+      case 'cancellation':
+        return StockMovementType.input;
+      case 'out':
+      case 'output':
+      case 'salida':
+      case 'sale':
+        return StockMovementType.output;
+      case 'adjust':
+      case 'adjustment':
+      case 'ajuste':
+        return StockMovementType.adjust;
+      default:
+        return StockMovementType.adjust;
+    }
   }
 }
 

@@ -369,8 +369,18 @@ class ReturnsRepository {
 
           // Sumar stock
           await txn.rawUpdate(
-            'UPDATE ${DbTables.products} SET stock = stock + ?, updated_at_ms = ? WHERE id = ?',
-            [qty, now, productId],
+            '''
+            UPDATE ${DbTables.products}
+            SET stock = stock + ?,
+                sync_status = 'pending',
+                local_updated_at_ms = ?,
+                last_modified_by = 'fullpos_local',
+                last_sync_error = NULL,
+                needs_sync = 1,
+                updated_at_ms = ?
+            WHERE id = ?
+            ''',
+            [qty, now, now, productId],
           );
 
           // Registrar movimiento de stock

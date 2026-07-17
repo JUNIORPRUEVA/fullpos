@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -38,11 +39,9 @@ class ThermalPrinterService {
     }
 
     final printers = await getAvailablePrinters();
-    
+
     try {
-      final printer = printers.firstWhere(
-        (p) => p.name == printerName,
-      );
+      final printer = printers.firstWhere((p) => p.name == printerName);
       _cachedPrinter = printer;
       _cachedPrinterName = printerName;
       return printer;
@@ -56,8 +55,8 @@ class ThermalPrinterService {
   static Future<PrinterStatus> checkPrinterStatus() async {
     try {
       final settings = await PrinterSettingsRepository.getOrCreate();
-      
-      if (settings.selectedPrinterName == null || 
+
+      if (settings.selectedPrinterName == null ||
           settings.selectedPrinterName!.isEmpty) {
         return PrinterStatus(
           isConfigured: false,
@@ -68,7 +67,7 @@ class ThermalPrinterService {
       }
 
       final printer = await findPrinter(settings.selectedPrinterName);
-      
+
       if (printer == null) {
         return PrinterStatus(
           isConfigured: true,
@@ -100,11 +99,21 @@ class ThermalPrinterService {
     required pw.Document document,
     PrinterSettingsModel? settings,
     int? overrideCopies,
+    String traceSource = 'unknown',
   }) async {
     try {
-      final printerSettings = settings ?? await PrinterSettingsRepository.getOrCreate();
-      
-      if (printerSettings.selectedPrinterName == null || 
+      final printerSettings =
+          settings ?? await PrinterSettingsRepository.getOrCreate();
+      debugPrint('[PRINT TRACE] ThermalPrinterService.printDocument');
+      debugPrint('[PRINT TRACE] Fuente/ruta: $traceSource');
+      debugPrint(
+        '[PRINT TRACE] Tipo de salida: PDF directo via Printing.directPrintPdf',
+      );
+      debugPrint(
+        '[PRINT TRACE] Config global id=${printerSettings.id}, printer=${printerSettings.selectedPrinterName}, paper=${printerSettings.paperWidthMm}mm, chars=${printerSettings.charsPerLine}, copies=${printerSettings.copies}',
+      );
+
+      if (printerSettings.selectedPrinterName == null ||
           printerSettings.selectedPrinterName!.isEmpty) {
         return PrintResult(
           success: false,
@@ -124,14 +133,19 @@ class ThermalPrinterService {
       if (printer == null) {
         return PrintResult(
           success: false,
-          message: 'Impresora no encontrada: ${printerSettings.selectedPrinterName}',
+          message:
+              'Impresora no encontrada: ${printerSettings.selectedPrinterName}',
         );
       }
 
       debugPrint('🖨️ Imprimiendo $copies copia(s) a: ${printer.name}');
+      debugPrint('[PRINT TRACE] Impresora seleccionada: ${printer.name}');
 
       final pdfBytes = await document.save();
-      
+      debugPrint(
+        '[PRINT TRACE] PDF bytes=${pdfBytes.length}, sha1=${sha1.convert(pdfBytes).toString().substring(0, 12)}',
+      );
+
       for (int i = 0; i < copies; i++) {
         final result = await Printing.directPrintPdf(
           printer: printer,
@@ -139,27 +153,25 @@ class ThermalPrinterService {
           name: 'Ticket_${DateTime.now().millisecondsSinceEpoch}',
           usePrinterSettings: true,
         );
-        
+
         if (!result) {
           return PrintResult(
             success: false,
             message: 'Error en copia ${i + 1} de $copies',
           );
         }
-        
+
         // Sin pausas: la impresora/spooler maneja el pacing.
       }
 
+      debugPrint('[PRINT TRACE] Ruta real completada: $traceSource');
       return PrintResult(
         success: true,
         message: '$copies copia(s) impresa(s) correctamente',
       );
     } catch (e) {
       debugPrint('❌ Error al imprimir: $e');
-      return PrintResult(
-        success: false,
-        message: 'Error de impresión: $e',
-      );
+      return PrintResult(success: false, message: 'Error de impresión: $e');
     }
   }
 
@@ -170,11 +182,11 @@ class ThermalPrinterService {
     // - 58mm típicamente imprime ~48mm (384 dots @ 203dpi)
     final int printableMm = settings.paperWidthMm == 80 ? 72 : 48;
     final double widthPts = printableMm * PdfPageFormat.mm;
-    
+
     // Alto del rollo: usar un valor grande FINITO.
     // En algunos drivers/spoolers (Windows) `double.infinity` puede imprimir en blanco.
     final double heightPts = 2000 * PdfPageFormat.mm;
-    
+
     return PdfPageFormat(
       widthPts,
       heightPts,
@@ -216,8 +228,5 @@ class PrintResult {
   final bool success;
   final String message;
 
-  PrintResult({
-    required this.success,
-    required this.message,
-  });
+  PrintResult({required this.success, required this.message});
 }
